@@ -4,7 +4,7 @@ import uuid
 import secrets
 from datetime import datetime
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "data.db")
 DEFAULT_POINTS = 20
@@ -134,6 +134,11 @@ def user_response(user_row):
         "points": user_row["points"],
         "activity_points": user_row["activity_points"],
     }
+
+
+@app.route("/")
+def index():
+    return render_template("index.html")
 
 
 @app.route("/api/v1/auth/register", methods=["POST"])
