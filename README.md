@@ -89,25 +89,41 @@
 - M4：推荐算法、积分兑换、更多运营工具
 
 ## 运行与开发
-已提供基础后端接口与数据存储的最小可用实现。
+前端：Vue3 + Vite（位于 frontend/sixth_element）
+后端：Django（提供 /api/v1 JSON API）
+数据库：MySQL
 
-### 本地运行
+### 本地开发（建议：前后端分开跑）
+
+1) 启动后端（Django + MySQL）
+
+确保本机 MySQL 已创建数据库 `sixth_element`，并存在用户 `sixth_element`（密码 `123456`）。
+
+然后运行：
+
 ```bash
 python -m venv .venv
-source .venv/bin/activate
+.venv\\Scripts\\activate
 pip install -r requirements.txt
-python manage.py makemigrations core
-python manage.py migrate
-python manage.py runserver
+python Main.py makemigrations core
+python Main.py migrate
+python Main.py runserver
 ```
 
-服务启动后，接口地址为 `http://127.0.0.1:8000/api/v1`。
-前端页面地址为 `http://127.0.0.1:8000/`。
+后端接口：`http://127.0.0.1:8000/api/v1/`
+
+2) 启动前端（Vite）
+
+```bash
+cd frontend/sixth_element
+npm install
+npm run dev
+```
+
+Vite 已配置 `/api` 代理到 Django（8000），前端可直接请求 `/api/v1/...`。
 
 ## 贡献方式
 欢迎提交功能建议、PR 或 Issue。请保持描述清晰并说明场景与预期效果。
 
 ## 版权
 本项目遵循 `LICENSE` 中的协议。
-
-00

@@ -3,7 +3,7 @@ import secrets
 import uuid
 
 from django.http import JsonResponse
-from django.shortcuts import render
+from django.http import HttpResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 
@@ -74,7 +74,10 @@ def survey_response(survey):
 
 
 def index(request):
-    return render(request, "index.html")
+    return HttpResponse(
+        "Frontend is served by Vite. Start it from frontend/sixth_element.",
+        content_type="text/plain; charset=utf-8",
+    )
 
 
 @csrf_exempt
