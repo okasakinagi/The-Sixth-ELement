@@ -89,7 +89,17 @@
 - M4：推荐算法、积分兑换、更多运营工具
 
 ## 运行与开发
-本仓库当前以产品规划与文档为主，代码实现待补充。
+已提供基础后端接口与数据存储的最小可用实现。
+
+### 本地运行
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python app.py
+```
+
+服务启动后，接口地址为 `http://127.0.0.1:5000/api/v1`。
 
 ## 贡献方式
 欢迎提交功能建议、PR 或 Issue。请保持描述清晰并说明场景与预期效果。
