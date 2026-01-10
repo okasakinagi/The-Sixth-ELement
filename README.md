@@ -96,11 +96,13 @@
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-python app.py
+python manage.py makemigrations core
+python manage.py migrate
+python manage.py runserver
 ```
 
-服务启动后，接口地址为 `http://127.0.0.1:5000/api/v1`。
-前端页面地址为 `http://127.0.0.1:5000/`。
+服务启动后，接口地址为 `http://127.0.0.1:8000/api/v1`。
+前端页面地址为 `http://127.0.0.1:8000/`。
 
 ## 贡献方式
 欢迎提交功能建议、PR 或 Issue。请保持描述清晰并说明场景与预期效果。
