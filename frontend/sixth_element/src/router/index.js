@@ -1,21 +1,42 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import HomeView from '../views/HomeView.vue'
+import SurveyManagementView from '../views/SurveyManagementView.vue'
+import TaskHallView from '../views/TaskHallView.vue'
+import ProfileView from '../views/ProfileView.vue'
+import SurveyBuilderView from '../views/SurveyBuilderView.vue'
+import SurveyAnalyticsView from '../views/SurveyAnalyticsView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     {
       path: '/',
-      name: 'home',
-      component: HomeView,
+      name: 'task-hall',
+      component: TaskHallView,
     },
     {
-      path: '/about',
-      name: 'about',
-      // route level code-splitting
-      // this generates a separate chunk (About.[hash].js) for this route
-      // which is lazy-loaded when the route is visited.
-      component: () => import('../views/AboutView.vue'),
+      path: '/surveys',
+      name: 'survey-management',
+      component: SurveyManagementView,
+    },
+    {
+      path: '/survey/new',
+      name: 'survey-new',
+      component: SurveyBuilderView,
+    },
+    {
+      path: '/survey/:id',
+      name: 'survey-builder',
+      component: SurveyBuilderView,
+    },
+    {
+      path: '/survey/:id/analytics',
+      name: 'survey-analytics',
+      component: SurveyAnalyticsView,
+    },
+    {
+      path: '/profile',
+      name: 'profile',
+      component: ProfileView,
     },
   ],
 })
