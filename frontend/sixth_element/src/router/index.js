@@ -10,6 +10,18 @@ const router = createRouter({
   routes: [
     {
       path: '/',
+      name: 'home',
+      redirect: '/profile',
+    },
+    {
+      path: '/profile',
+      name: 'userProfile',
+      component: () => import('../views/UserProfileView.vue'),
+    },
+    {
+      path: '/profile/edit',
+      name: 'editProfile',
+      component: () => import('../views/EditProfileView.vue'),
       name: 'task-hall',
       component: TaskHallView,
     },
