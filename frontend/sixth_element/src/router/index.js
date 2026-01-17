@@ -4,6 +4,8 @@ import TaskHallView from '../views/TaskHallView.vue'
 import ProfileView from '../views/ProfileView.vue'
 import SurveyBuilderView from '../views/SurveyBuilderView.vue'
 import SurveyAnalyticsView from '../views/SurveyAnalyticsView.vue'
+import SurveyEntryView from '../views/SurveyEntryView.vue'
+import SurveyAiPromptView from '../views/SurveyAiPromptView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -22,6 +24,9 @@ const router = createRouter({
       path: '/profile/edit',
       name: 'editProfile',
       component: () => import('../views/EditProfileView.vue'),
+    },
+    {
+      path: '/task-hall',
       name: 'task-hall',
       component: TaskHallView,
     },
@@ -32,7 +37,17 @@ const router = createRouter({
     },
     {
       path: '/survey/new',
-      name: 'survey-new',
+      name: 'survey-entry',
+      component: SurveyEntryView,
+    },
+    {
+      path: '/survey/new/ai',
+      name: 'survey-ai',
+      component: SurveyAiPromptView,
+    },
+    {
+      path: '/survey/new/editor',
+      name: 'survey-editor',
       component: SurveyBuilderView,
     },
     {
