@@ -13,10 +13,15 @@
             <p class="user-subtitle">{{ userData.college || '未设置学院' }} · {{ userData.major || '未设置专业' }}</p>
           </div>
         </div>
-        <button class="edit-button" @click="goToEdit">
-          <span class="edit-icon">✏️</span>
-          编辑资料
-        </button>
+        <div class="header-actions">
+          <button class="ghost-button" @click="goToTaskHall">
+            返回任务大厅
+          </button>
+          <button class="edit-button" @click="goToEdit">
+            <span class="edit-icon">✏️</span>
+            编辑资料
+          </button>
+        </div>
       </div>
     </div>
 
@@ -284,6 +289,10 @@ const progressOffset = computed(() => {
 const goToEdit = () => {
   router.push('/profile/edit')
 }
+
+const goToTaskHall = () => {
+  router.push('/task-hall')
+}
 </script>
 
 <style scoped>
@@ -385,6 +394,30 @@ const goToEdit = () => {
   transition: all 0.3s ease;
   box-shadow: 0 2px 8px rgba(33, 150, 243, 0.3);
   margin-bottom: 10px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.ghost-button {
+  padding: 10px 20px;
+  background: #ffffff;
+  color: #1565c0;
+  border: 1px solid rgba(21, 101, 192, 0.2);
+  border-radius: 25px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.ghost-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(33, 150, 243, 0.2);
 }
 
 .edit-button:hover {
@@ -715,6 +748,16 @@ const goToEdit = () => {
 
   .edit-button {
     margin-bottom: 0;
+    width: 100%;
+    justify-content: center;
+  }
+
+  .header-actions {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .ghost-button {
     width: 100%;
     justify-content: center;
   }

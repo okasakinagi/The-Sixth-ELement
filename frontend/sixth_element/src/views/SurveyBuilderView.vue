@@ -1,42 +1,460 @@
 <script setup>
-import { computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 
+const router = useRouter()
 const route = useRoute()
-const surveyId = computed(() => route.params.id)
+
+const makeId = () => `q-${Date.now()}-${Math.floor(Math.random() * 10000)}`
+
+const AI_TEMPLATES = [
+  {
+    key: 'cafeteria',
+    title: '员工餐厅就餐满意度调查',
+    description: '本问卷用于了解员工对餐厅服务的满意度，结果仅用于改进餐厅服务。',
+    questions: [
+      { type: 'single', title: '您一周大约在员工餐厅就餐几次？', options: ['1-2 次', '3-4 次', '5 次以上'], required: true },
+      { type: 'single', title: '您对餐厅整体环境的满意度如何？', options: ['非常满意', '满意', '一般', '不满意'], required: true },
+      { type: 'single', title: '餐厅菜品口味是否符合您的预期？', options: ['非常符合', '比较符合', '一般', '不符合'], required: true },
+      { type: 'multi', title: '您最常选择的菜系是？', options: ['家常菜', '轻食沙拉', '面食/汤粉', '特色窗口'], required: false },
+      { type: 'single', title: '餐厅菜品丰富度是否充足？', options: ['非常充足', '还可以', '一般', '不足'], required: true },
+      { type: 'single', title: '菜品价格与品质是否匹配？', options: ['非常匹配', '较匹配', '一般', '不匹配'], required: true },
+      { type: 'single', title: '餐厅排队时间是否可接受？', options: ['非常快', '较快', '一般', '过长'], required: true },
+      { type: 'multi', title: '您希望餐厅增加哪些服务？', options: ['夜宵档', '自助称重', '移动支付', '健康营养标识'], required: false },
+      { type: 'single', title: '餐厅工作人员服务态度如何？', options: ['非常好', '较好', '一般', '较差'], required: true },
+      { type: 'single', title: '您对餐厅卫生情况的评价？', options: ['非常干净', '比较干净', '一般', '不满意'], required: true },
+      { type: 'single', title: '餐厅座位充足度如何？', options: ['充足', '基本够用', '偏紧张'], required: false },
+      { type: 'multi', title: '您更倾向于哪种用餐方式？', options: ['堂食', '打包', '外卖到工位'], required: false },
+      { type: 'single', title: '餐厅营业时间是否满足需求？', options: ['完全满足', '基本满足', '不太满足'], required: true },
+      { type: 'text', title: '您对餐厅最满意的地方是？', options: [], required: false },
+      { type: 'text', title: '您希望餐厅优先改进的方面是？', options: [], required: false },
+    ],
+  },
+  {
+    key: 'training',
+    title: '新员工培训体验调研',
+    description: '请分享你对近期培训安排的反馈，我们将持续优化课程设计。',
+    questions: [
+      { type: 'single', title: '本次培训整体节奏是否合适？', options: ['非常合适', '较合适', '一般', '过快/过慢'], required: true },
+      { type: 'multi', title: '你最喜欢的培训形式是？', options: ['现场讲授', '实操演练', '案例讨论', '线上学习'], required: false },
+      { type: 'single', title: '培训内容与岗位需求匹配度如何？', options: ['非常匹配', '较匹配', '一般', '不匹配'], required: true },
+      { type: 'single', title: '讲师答疑是否及时清晰？', options: ['非常清晰', '较清晰', '一般', '不清晰'], required: true },
+      { type: 'single', title: '培训资料的可用性如何？', options: ['非常好', '较好', '一般', '需要改进'], required: true },
+      { type: 'multi', title: '你希望补充哪些主题？', options: ['业务流程', '工具系统', '团队协作', '职业发展'], required: false },
+      { type: 'text', title: '你在培训中遇到的最大困难是什么？', options: [], required: false },
+      { type: 'text', title: '你对培训安排的建议是？', options: [], required: false },
+    ],
+  },
+  {
+    key: 'service',
+    title: '会员服务体验反馈',
+    description: '帮助我们了解会员服务体验，提升服务质量。',
+    questions: [
+      { type: 'single', title: '客服响应速度如何？', options: ['非常快', '较快', '一般', '较慢'], required: true },
+      { type: 'single', title: '客服解决问题的效率如何？', options: ['非常高', '较高', '一般', '较低'], required: true },
+      { type: 'multi', title: '你最常使用的会员权益是？', options: ['专属折扣', '优先客服', '会员活动', '积分兑换'], required: false },
+      { type: 'single', title: '会员权益是否有吸引力？', options: ['非常有', '较有', '一般', '不足'], required: true },
+      { type: 'text', title: '你希望增加哪些新的会员权益？', options: [], required: false },
+      { type: 'text', title: '你对会员服务的整体评价？', options: [], required: false },
+    ],
+  },
+]
+
+const state = reactive({
+  title: '未命名问卷',
+  description: '',
+  descriptionEditing: false,
+  titleEditing: false,
+  questions: [],
+  lastSaved: null,
+  outlineOpen: false,
+  settingsOpen: false,
+  addMenuOpen: false,
+  saveModalOpen: false,
+})
+
+const formatTime = (value) => {
+  if (!value) return ''
+  const hours = `${value.getHours()}`.padStart(2, '0')
+  const minutes = `${value.getMinutes()}`.padStart(2, '0')
+  return `${hours}:${minutes} 已自动保存`
+}
+
+const lastSavedText = computed(() => formatTime(state.lastSaved))
+
+const saveDraft = () => {
+  const payload = {
+    title: state.title,
+    description: state.description,
+    questions: state.questions,
+  }
+  sessionStorage.setItem('survey-autosave', JSON.stringify(payload))
+  state.lastSaved = new Date()
+}
+
+let autosaveTimer
+
+const setQuestions = (questions) => {
+  state.questions = questions.map((question) => ({
+    id: makeId(),
+    required: false,
+    isAi: true,
+    ...question,
+  }))
+}
+
+const loadDraft = () => {
+  const raw = sessionStorage.getItem('survey-draft')
+  if (raw) {
+    try {
+      const draft = JSON.parse(raw)
+      state.title = draft.title || state.title
+      state.description = draft.description || ''
+      if (route.query.ai === '1') {
+        const prompt = `${draft.prompt || ''}${draft.title || ''}`
+        const matched =
+          AI_TEMPLATES.find((item) => (prompt.includes('餐厅') ? item.key === 'cafeteria' : false)) ||
+          AI_TEMPLATES.find((item) => (prompt.includes('培训') ? item.key === 'training' : false)) ||
+          AI_TEMPLATES.find((item) => (prompt.includes('会员') ? item.key === 'service' : false))
+        const fallback = matched || AI_TEMPLATES[0]
+        setQuestions(fallback.questions)
+        state.description = fallback.description
+        return
+      }
+    } catch {
+      state.title = state.title
+    }
+  }
+
+  if (route.params.id) {
+    state.title = '城市通勤满意度问卷'
+    state.description = '本问卷用于了解城市通勤体验，请根据实际情况填写。'
+    setQuestions([
+      { type: 'single', title: '您常用的通勤方式是？', options: ['地铁', '公交', '自驾', '骑行'], required: true },
+      { type: 'single', title: '通勤时间是否可接受？', options: ['非常可接受', '还可以', '一般', '不可接受'], required: true },
+      { type: 'text', title: '您希望改善的通勤环节是？', options: [], required: false },
+    ])
+  }
+}
+
+onMounted(() => {
+  loadDraft()
+  autosaveTimer = setInterval(saveDraft, 2 * 60 * 1000)
+})
+
+onBeforeUnmount(() => {
+  if (autosaveTimer) clearInterval(autosaveTimer)
+})
+
+const startTitleEdit = () => {
+  state.titleEditing = true
+  nextTick(() => {
+    const input = document.querySelector('.title-input')
+    if (input) input.focus()
+  })
+}
+
+const stopTitleEdit = () => {
+  state.titleEditing = false
+  if (!state.title.trim()) {
+    state.title = '未命名问卷'
+  }
+}
+
+const startDescriptionEdit = () => {
+  state.descriptionEditing = true
+  nextTick(() => {
+    const input = document.querySelector('.description-input')
+    if (input) input.focus()
+  })
+}
+
+const stopDescriptionEdit = () => {
+  state.descriptionEditing = false
+}
+
+const createQuestion = (type) => {
+  if (type === 'single' || type === 'multi') {
+    return {
+      id: makeId(),
+      type,
+      title: type === 'single' ? '单选题标题' : '多选题标题',
+      options: ['选项1', '选项2'],
+      required: true,
+      isAi: false,
+    }
+  }
+  if (type === 'multi-text') {
+    return {
+      id: makeId(),
+      type,
+      title: '多项填空题标题',
+      options: ['填空1', '填空2'],
+      required: false,
+      isAi: false,
+    }
+  }
+  return {
+    id: makeId(),
+    type,
+    title: '填空题标题',
+    options: [],
+    required: false,
+    isAi: false,
+  }
+}
+
+const addQuestion = (type) => {
+  state.questions.push(createQuestion(type))
+  state.addMenuOpen = false
+}
+
+const removeQuestion = (id) => {
+  state.questions = state.questions.filter((question) => question.id !== id)
+}
+
+const addOption = (question) => {
+  question.options.push(`选项${question.options.length + 1}`)
+  question.isAi = false
+}
+
+const removeOption = (question, index) => {
+  question.options.splice(index, 1)
+  question.isAi = false
+}
+
+const markEdited = (question) => {
+  question.isAi = false
+}
+
+const openSaveModal = () => {
+  state.saveModalOpen = true
+  saveDraft()
+}
+
+const closeSaveModal = () => {
+  state.saveModalOpen = false
+}
+
+const publishSurvey = () => {
+  state.saveModalOpen = false
+  router.push({ name: 'survey-management', query: { publish: '1' } })
+}
+
+const openOutline = () => {
+  state.outlineOpen = !state.outlineOpen
+  state.settingsOpen = false
+}
+
+const openSettings = () => {
+  state.settingsOpen = !state.settingsOpen
+  state.outlineOpen = false
+}
+
+const scrollToQuestion = (id) => {
+  const element = document.getElementById(id)
+  if (element) {
+    element.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+}
 </script>
 
 <template>
-  <div class="builder">
-    <header>
-      <RouterLink class="back" to="/surveys">返回问卷管理</RouterLink>
-      <h1>问卷制作</h1>
-      <p v-if="surveyId">正在编辑：{{ surveyId }}</p>
-      <p v-else>新建问卷模板</p>
+  <div class="builder-shell">
+    <header class="builder-header">
+      <div>
+        <RouterLink class="back" to="/surveys">返回问卷管理</RouterLink>
+        <div class="title-block">
+          <button v-if="!state.titleEditing" class="title-display" type="button" @click="startTitleEdit">
+            {{ state.title }}
+          </button>
+          <input
+            v-else
+            v-model="state.title"
+            class="title-input"
+            type="text"
+            @blur="stopTitleEdit"
+          />
+          <span class="status-pill">自动保存</span>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button class="ghost-button" type="button">预览</button>
+        <button class="primary-button" type="button" @click="openSaveModal">保存</button>
+      </div>
     </header>
-    <section class="canvas">
-      <h2>拖拽题型到这里开始设计</h2>
-      <p>这是问卷制作入口示意，后续可接入真实编辑器。</p>
+
+    <section class="description-area">
+      <p class="section-title">问卷说明</p>
+      <button
+        v-if="!state.descriptionEditing && !state.description"
+        class="description-placeholder"
+        type="button"
+        @click="startDescriptionEdit"
+      >
+        添加问卷说明
+      </button>
+      <div v-else class="description-edit">
+        <textarea
+          v-model="state.description"
+          class="description-input"
+          rows="3"
+          placeholder="请输入问卷说明，将同步到任务大厅副标题"
+          @blur="stopDescriptionEdit"
+          @input="saveDraft"
+        ></textarea>
+        <button class="ghost-button small" type="button" @click="stopDescriptionEdit">完成</button>
+      </div>
     </section>
+
+    <main class="question-area">
+      <div v-if="state.questions.length === 0" class="empty-state">
+        <p>点击下方 + 号，开始你的第一道题</p>
+      </div>
+
+      <div v-for="(question, index) in state.questions" :id="question.id" :key="question.id" class="question-card">
+        <header class="question-header">
+          <div class="question-index">Q{{ index + 1 }}</div>
+          <div class="question-meta">
+            <span v-if="question.isAi" class="ai-tag">AI 生成</span>
+            <span class="question-type">{{ question.type === 'single' ? '单选题' : question.type === 'multi' ? '多选题' : question.type === 'multi-text' ? '多项填空题' : '填空题' }}</span>
+          </div>
+          <button class="delete-button" type="button" @click="removeQuestion(question.id)">删除</button>
+        </header>
+
+        <textarea
+          v-model="question.title"
+          class="question-title"
+          rows="2"
+          placeholder="请输入题干"
+          @input="markEdited(question)"
+        ></textarea>
+
+        <div v-if="question.type === 'single' || question.type === 'multi'" class="option-list">
+          <div v-for="(option, optionIndex) in question.options" :key="`${question.id}-opt-${optionIndex}`" class="option-row">
+            <span class="option-index">{{ optionIndex + 1 }}</span>
+            <input
+              v-model="question.options[optionIndex]"
+              class="option-input"
+              type="text"
+              @input="markEdited(question)"
+            />
+            <button class="icon-button" type="button" @click="removeOption(question, optionIndex)">-</button>
+          </div>
+          <button class="ghost-button small" type="button" @click="addOption(question)">+ 添加选项</button>
+        </div>
+
+        <div v-if="question.type === 'multi-text'" class="option-list">
+          <div v-for="(option, optionIndex) in question.options" :key="`${question.id}-text-${optionIndex}`" class="option-row">
+            <span class="option-index">{{ optionIndex + 1 }}</span>
+            <input
+              v-model="question.options[optionIndex]"
+              class="option-input"
+              type="text"
+              @input="markEdited(question)"
+            />
+            <button class="icon-button" type="button" @click="removeOption(question, optionIndex)">-</button>
+          </div>
+          <button class="ghost-button small" type="button" @click="addOption(question)">+ 添加填空</button>
+        </div>
+
+        <div v-if="question.type === 'text'" class="text-hint">填答者将输入简答内容</div>
+
+        <div class="question-footer">
+          <label class="switch">
+            <input v-model="question.required" type="checkbox" @change="markEdited(question)" />
+            <span class="switch-track"></span>
+            <span class="switch-label">必填</span>
+          </label>
+        </div>
+      </div>
+    </main>
+
+    <div class="toolbar">
+      <div class="toolbar-left">
+        <button class="ghost-button small" type="button" @click="openOutline">大纲</button>
+        <button class="ghost-button small" type="button" @click="openSettings">设置</button>
+        <span class="autosave-text">{{ lastSavedText }}</span>
+      </div>
+      <div class="toolbar-right">
+        <div class="add-menu">
+          <button class="add-button" type="button" @click="state.addMenuOpen = !state.addMenuOpen">+</button>
+          <div v-if="state.addMenuOpen" class="add-panel">
+            <button class="add-item" type="button" @click="addQuestion('single')">单选题</button>
+            <button class="add-item" type="button" @click="addQuestion('multi')">多选题</button>
+            <button class="add-item" type="button" @click="addQuestion('text')">填空题</button>
+            <button class="add-item" type="button" @click="addQuestion('multi-text')">多项填空题</button>
+            <button class="add-item disabled" type="button" disabled>评分题（预留）</button>
+            <button class="add-item disabled" type="button" disabled>排序题（预留）</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="state.outlineOpen" class="side-panel">
+      <div class="panel-header">
+        <h3>问卷大纲</h3>
+        <button class="ghost-button small" type="button" @click="state.outlineOpen = false">关闭</button>
+      </div>
+      <div class="panel-body">
+        <button
+          v-for="(question, index) in state.questions"
+          :key="`${question.id}-outline`"
+          class="outline-item"
+          type="button"
+          @click="scrollToQuestion(question.id)"
+        >
+          Q{{ index + 1 }} {{ question.title || '未命名题目' }}
+        </button>
+      </div>
+    </div>
+
+    <div v-if="state.settingsOpen" class="side-panel">
+      <div class="panel-header">
+        <h3>问卷设置</h3>
+        <button class="ghost-button small" type="button" @click="state.settingsOpen = false">关闭</button>
+      </div>
+      <div class="panel-body settings">
+        <label class="settings-item">
+          <span>逻辑跳题</span>
+          <input type="checkbox" disabled />
+        </label>
+        <label class="settings-item">
+          <span>提交后提示文案</span>
+          <input type="text" placeholder="感谢填写" disabled />
+        </label>
+        <p class="settings-hint">逻辑设置与高级选项将在后续版本开放。</p>
+      </div>
+    </div>
+  </div>
+
+  <div v-if="state.saveModalOpen" class="modal-backdrop" @click.self="closeSaveModal">
+    <div class="modal">
+      <h3>问卷保存成功，是否立即发布？</h3>
+      <p>发布后将进入问卷管理并进行积分结算确认。</p>
+      <div class="modal-actions">
+        <button class="ghost-button" type="button" @click="closeSaveModal">继续编辑</button>
+        <button class="primary-button" type="button" @click="publishSurvey">发布调查</button>
+      </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.builder {
+.builder-shell {
   min-height: 100vh;
-  padding: 48px;
-  background: radial-gradient(circle at top right, #eef4ff 0%, #ffffff 60%);
-}
-
-header {
+  padding: 36px 40px 120px;
+  background: radial-gradient(circle at top right, #eaf2ff 0%, #ffffff 55%);
   display: grid;
-  gap: 10px;
-  margin-bottom: 32px;
+  gap: 28px;
+  position: relative;
 }
 
-h1 {
-  font-family: 'Newsreader', serif;
-  font-size: 32px;
+.builder-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
 }
 
 .back {
@@ -44,12 +462,485 @@ h1 {
   font-weight: 600;
 }
 
-.canvas {
+.title-block {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.title-display {
+  font-family: 'Newsreader', serif;
+  font-size: 28px;
+  color: #0e2a55;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+.title-input {
+  font-family: 'Newsreader', serif;
+  font-size: 26px;
+  padding: 6px 10px;
+  border-radius: 12px;
+  border: 1px solid #d4e1f6;
+}
+
+.status-pill {
+  padding: 6px 12px;
+  background: #f2f6ff;
+  color: #1e4fb4;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.header-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.ghost-button,
+.primary-button {
+  padding: 10px 18px;
+  border-radius: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+}
+
+.ghost-button {
   background: #ffffff;
-  padding: 32px;
-  border-radius: 24px;
-  border: 2px dashed #c8d6ee;
+  border: 1px solid rgba(26, 59, 127, 0.2);
+  color: #1a3b7f;
+}
+
+.ghost-button.small {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+.primary-button {
+  background: linear-gradient(135deg, #2665d4, #4f80f1);
+  color: #ffffff;
+}
+
+.description-area {
+  background: #ffffff;
+  border-radius: 20px;
+  padding: 20px 24px;
+  box-shadow: var(--color-shadow);
+  display: grid;
+  gap: 12px;
+}
+
+.section-title {
+  font-weight: 600;
+  color: #1a3b7f;
+}
+
+.description-placeholder {
+  text-align: left;
+  color: #8a9ab2;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.description-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.description-input {
+  width: 100%;
+  border-radius: 14px;
+  border: 1px solid #d4e1f6;
+  padding: 12px;
+  resize: vertical;
+}
+
+.question-area {
+  display: grid;
+  gap: 18px;
+}
+
+.empty-state {
+  padding: 50px;
   text-align: center;
-  color: #5f6f86;
+  border-radius: 20px;
+  border: 2px dashed #c8d6ee;
+  color: #7b8da7;
+  background: #ffffff;
+}
+
+.question-card {
+  background: #ffffff;
+  border-radius: 22px;
+  padding: 22px;
+  box-shadow: var(--color-shadow);
+  display: grid;
+  gap: 14px;
+  animation: fadeIn 0.4s ease;
+}
+
+.question-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.question-index {
+  font-weight: 700;
+  color: #1e4fb4;
+}
+
+.question-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.ai-tag {
+  background: rgba(38, 101, 212, 0.15);
+  color: #1e4fb4;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  animation: pulse 2s infinite;
+}
+
+.question-type {
+  font-size: 12px;
+  color: #6b7b94;
+}
+
+.delete-button {
+  background: none;
+  border: none;
+  color: #ef4444;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.question-title {
+  width: 100%;
+  border-radius: 14px;
+  border: 1px solid #d4e1f6;
+  padding: 12px;
+  resize: vertical;
+}
+
+.option-list {
+  display: grid;
+  gap: 10px;
+}
+
+.option-row {
+  display: grid;
+  grid-template-columns: 26px 1fr 32px;
+  align-items: center;
+  gap: 10px;
+}
+
+.option-index {
+  background: #eef4ff;
+  color: #1e4fb4;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+}
+
+.option-input {
+  border-radius: 12px;
+  border: 1px solid #d4e1f6;
+  padding: 8px 10px;
+}
+
+.icon-button {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  border: 1px solid #d4e1f6;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.text-hint {
+  font-size: 12px;
+  color: #8a9ab2;
+}
+
+.question-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.switch input {
+  display: none;
+}
+
+.switch-track {
+  width: 38px;
+  height: 20px;
+  border-radius: 999px;
+  background: #d8e4f4;
+  position: relative;
+  transition: background 0.2s ease;
+}
+
+.switch-track::after {
+  content: '';
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #ffffff;
+  top: 3px;
+  left: 3px;
+  transition: transform 0.2s ease;
+  box-shadow: 0 3px 6px rgba(16, 35, 63, 0.2);
+}
+
+.switch input:checked + .switch-track {
+  background: #2665d4;
+}
+
+.switch input:checked + .switch-track::after {
+  transform: translateX(18px);
+}
+
+.switch-label {
+  font-size: 12px;
+  color: #5a7395;
+}
+
+.toolbar {
+  position: fixed;
+  left: 40px;
+  right: 40px;
+  bottom: 24px;
+  background: #ffffff;
+  border-radius: 18px;
+  box-shadow: 0 20px 40px rgba(16, 35, 63, 0.12);
+  padding: 12px 18px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  z-index: 20;
+}
+
+.toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.autosave-text {
+  font-size: 12px;
+  color: #8a9ab2;
+}
+
+.add-menu {
+  position: relative;
+}
+
+.add-button {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  border: none;
+  background: linear-gradient(135deg, #2665d4, #4f80f1);
+  color: #ffffff;
+  font-size: 24px;
+  cursor: pointer;
+}
+
+.add-panel {
+  position: absolute;
+  right: 0;
+  bottom: 54px;
+  background: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 20px 40px rgba(16, 35, 63, 0.12);
+  padding: 12px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.add-item {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid #d4e1f6;
+  background: #f7faff;
+  color: #1a3b7f;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.add-item.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.side-panel {
+  position: fixed;
+  left: 40px;
+  bottom: 90px;
+  width: min(320px, 90vw);
+  background: #ffffff;
+  border-radius: 18px;
+  box-shadow: 0 20px 40px rgba(16, 35, 63, 0.12);
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+  z-index: 25;
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.panel-body {
+  display: grid;
+  gap: 10px;
+  max-height: 260px;
+  overflow: auto;
+}
+
+.outline-item {
+  background: #f7faff;
+  border: 1px solid #d4e1f6;
+  border-radius: 12px;
+  padding: 8px 10px;
+  text-align: left;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.settings {
+  gap: 12px;
+}
+
+.settings-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  color: #5a7395;
+}
+
+.settings-item input[type='text'] {
+  flex: 1;
+  padding: 6px 8px;
+  border-radius: 10px;
+  border: 1px solid #d4e1f6;
+}
+
+.settings-hint {
+  font-size: 12px;
+  color: #8a9ab2;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(13, 27, 55, 0.4);
+  display: grid;
+  place-items: center;
+  z-index: 30;
+}
+
+.modal {
+  background: #ffffff;
+  border-radius: 20px;
+  padding: 24px;
+  width: min(380px, 90vw);
+  box-shadow: 0 20px 50px rgba(13, 27, 55, 0.25);
+  display: grid;
+  gap: 16px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(38, 101, 212, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(38, 101, 212, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(38, 101, 212, 0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 960px) {
+  .builder-shell {
+    padding: 24px 24px 120px;
+  }
+
+  .toolbar {
+    left: 20px;
+    right: 20px;
+  }
+}
+
+@media (max-width: 720px) {
+  .builder-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .add-panel {
+    right: auto;
+    left: 0;
+  }
+
+  .side-panel {
+    left: 20px;
+  }
 }
 </style>

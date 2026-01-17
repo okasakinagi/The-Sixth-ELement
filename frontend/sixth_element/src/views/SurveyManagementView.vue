@@ -1,12 +1,14 @@
 <script setup>
-import { computed, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 
 const router = useRouter()
+const route = useRoute()
 const pointsBalance = ref(1240)
 const hideCompleted = ref(false)
 const showDeleteModal = ref(false)
 const deleteTarget = ref(null)
+const showPublishModal = ref(false)
 
 const surveys = ref([
   {
@@ -99,6 +101,11 @@ const closeDeleteModal = () => {
   deleteTarget.value = null
 }
 
+const closePublishModal = () => {
+  showPublishModal.value = false
+  router.replace({ query: {} })
+}
+
 const confirmDelete = () => {
   if (!deleteTarget.value) return
   surveys.value = surveys.value.filter((survey) => survey.id !== deleteTarget.value.id)
@@ -122,6 +129,16 @@ const openSurvey = (survey) => {
 const openAnalytics = (survey) => {
   router.push({ name: 'survey-analytics', params: { id: survey.id } })
 }
+
+watch(
+  () => route.query.publish,
+  (value) => {
+    if (value === '1') {
+      showPublishModal.value = true
+    }
+  },
+  { immediate: true },
+)
 </script>
 
 <template>
@@ -258,6 +275,17 @@ const openAnalytics = (survey) => {
       <div class="modal-actions">
         <button class="ghost-button" type="button" @click="closeDeleteModal">取消</button>
         <button class="danger-button" type="button" @click="confirmDelete">确认</button>
+      </div>
+    </div>
+  </div>
+
+  <div v-if="showPublishModal" class="modal-backdrop" @click.self="closePublishModal">
+    <div class="modal">
+      <h3>发问卷确认</h3>
+      <p>发布将进行积分结算并进入投放流程，确认现在发布吗？</p>
+      <div class="modal-actions">
+        <button class="ghost-button" type="button" @click="closePublishModal">稍后再说</button>
+        <button class="primary-button" type="button" @click="closePublishModal">确认发布</button>
       </div>
     </div>
   </div>
@@ -610,6 +638,16 @@ const openAnalytics = (survey) => {
   background: #ffffff;
   border: 1px solid rgba(26, 59, 127, 0.2);
   color: #1a3b7f;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.primary-button {
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: none;
+  background: linear-gradient(135deg, #2665d4, #4f80f1);
+  color: #ffffff;
   font-weight: 600;
   cursor: pointer;
 }

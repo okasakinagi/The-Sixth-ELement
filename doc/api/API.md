@@ -3,6 +3,11 @@
 本文件为后端 API 的总览文档（草案），用于前后端对齐接口与字段。更细的页面级接口说明请见：
 
 - 个人主页/编辑资料：doc/api/API-个人界面.md
+- 任务大厅：doc/api/API-任务大厅.md
+- 问卷管理：doc/api/API-问卷管理.md
+- 问卷制作 + AI 编辑器：doc/api/API-问卷制作.md
+- 问卷填写：doc/api/API-问卷填写.md
+- 问卷数据分析：doc/api/API-数据分析.md
 
 ## 约定
 

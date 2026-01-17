@@ -79,6 +79,23 @@
 - `current_status`：<= 100
 - `consumption_preferences` / `career_intention` / `skills`：数组长度建议 <= 20，每个元素 <= 20
 
+### 字段校验 / 枚举表（建议）
+
+| 字段 | 类型 | 约束 | 枚举/说明 |
+| --- | --- | --- | --- |
+| `gender` | string | 可选 | `male` / `female` / `other` / `secret` |
+| `age` | number | 0-120 | 整数 |
+| `grade` | string | <= 10 | 示例：`大一` |
+| `college` | string | <= 50 | 任意文本 |
+| `major` | string | <= 50 | 任意文本 |
+| `mbti` | string | 可选 | 16 种（如 `INTJ`），可为空 |
+| `interests` | string | <= 200 | 逗号分隔或自由文本 |
+| `organizations` | string | <= 200 | 逗号分隔或自由文本 |
+| `consumption_preferences` | string[] | <= 20 项 | 每项 <= 20 |
+| `career_intention` | string[] | <= 20 项 | 每项 <= 20 |
+| `skills` | string[] | <= 20 项 | 每项 <= 20 |
+| `current_status` | string | <= 100 | 任意文本 |
+
 ---
 
 ## 页面：个人主页（展示） UserProfileView
