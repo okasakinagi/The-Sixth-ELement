@@ -46,6 +46,9 @@ All endpoints return JSON:
 ### Backend Development
 ```bash
 # Ensure MySQL: database 'sixth_element', user 'sixth_element', password '123456'
+python Main.py runserver  # Runs on http://127.0.0.1:8000
+python Main.py migrate   # Apply migrations from core/migrations/
+```
 
 ### Frontend Development
 ```bash
