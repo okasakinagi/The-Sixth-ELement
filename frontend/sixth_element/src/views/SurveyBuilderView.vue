@@ -25,7 +25,7 @@ const surveyId = computed(() => route.params.id)
 .builder {
   min-height: 100vh;
   padding: 48px;
-  background: radial-gradient(circle at top right, #eef4ff 0%, #ffffff 60%);
+  background: radial-gradient(circle at top left, #edf3ff 0%, #f7f9ff 45%, #ffffff 100%);
 }
 
 header {

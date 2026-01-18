@@ -26,7 +26,7 @@
 .profile {
   min-height: 100vh;
   padding: 48px;
-  background: radial-gradient(circle at top, #f0f5ff 0%, #ffffff 55%);
+  background: radial-gradient(circle at top left, #edf3ff 0%, #f7f9ff 45%, #ffffff 100%);
 }
 
 header {
