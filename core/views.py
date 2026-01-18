@@ -55,6 +55,7 @@ def user_response(user):
         "credit_score": user.credit_score,
         "points": user.points,
         "activity_points": user.activity_points,
+        "has_honor": user.credit_score >= 85,
     }
 
 
@@ -380,19 +381,66 @@ def points_logs(request):
         queryset = queryset.filter(delta__gt=0)
     elif log_type == "spend":
         queryset = queryset.filter(delta__lt=0)
+    
     total = queryset.count()
     offset = (page - 1) * page_size
-    items = [
-        {
+    items = []
+    
+    for log in queryset[offset : offset + page_size]:
+        # Try to find associated survey or fill record for navigation
+        related_id = None
+        related_type = None
+        
+        if "问卷" in log.reason or "填" in log.reason:
+            # Try to find matching fill record by timestamp and delta
+            try:
+                if log.delta > 0:  # Earn - likely from completing a survey
+                    fill = FillRecord.objects.filter(
+                        user=user, 
+                        points_awarded=log.delta,
+                        created_at__date=log.created_at.date()
+                    ).first()
+                    if fill:
+                        related_id = fill.survey_id
+                        related_type = "survey_fill"
+                elif log.delta < 0:  # Spend - likely from publishing
+                    survey = Survey.objects.filter(
+                        owner=user,
+                        reward_points=-log.delta,
+                        created_at__date=log.created_at.date()
+                    ).first()
+                    if survey:
+                        related_id = survey.id
+                        related_type = "survey_publish"
+            except:
+                pass
+        
+        items.append({
             "id": log.id,
             "delta": log.delta,
             "reason": log.reason,
             "created_at": now_iso(log.created_at),
-        }
-        for log in queryset[offset : offset + page_size]
-    ]
+            "related_id": related_id,
+            "related_type": related_type,
+        })
+    
+    # Calculate honor status: credit_score >= 85 = qualified
+    has_honor = user.credit_score >= 85
+    
     return JsonResponse(
-        {"items": items, "page": page, "page_size": page_size, "total": total}
+        {
+            "items": items,
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+            "user": {
+                "id": user.id,
+                "points": user.points,
+                "credit_score": user.credit_score,
+                "activity_points": user.activity_points,
+                "has_honor": has_honor,
+            },
+        }
     )
 
 

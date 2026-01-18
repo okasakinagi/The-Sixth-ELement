@@ -443,8 +443,11 @@ const scrollToQuestion = (id) => {
 <style scoped>
 .builder-shell {
   min-height: 100vh;
-  padding: 36px 40px 120px;
-  background: radial-gradient(circle at top right, #eaf2ff 0%, #ffffff 55%);
+  padding: 48px;
+  background: radial-gradient(circle at top left, #edf3ff 0%, #f7f9ff 45%, #ffffff 100%);
+}
+
+header {
   display: grid;
   gap: 28px;
   position: relative;

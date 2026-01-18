@@ -142,57 +142,28 @@ watch(
 </script>
 
 <template>
-  <div class="survey-shell">
-    <aside class="sidebar">
-      <div class="brand">
-        <span class="brand-mark">6</span>
-        <div>
-          <p class="brand-title">第六元素</p>
-          <p class="brand-subtitle">Survey Console</p>
-        </div>
+  <div class="survey-main">
+    <header class="survey-header">
+      <div>
+        <p class="header-kicker">Survey Management</p>
+        <h1>问卷管理</h1>
       </div>
-      <nav class="menu">
-        <RouterLink class="menu-item" to="/">任务大厅</RouterLink>
-        <RouterLink class="menu-item active" to="/surveys">问卷管理</RouterLink>
-        <span class="menu-item muted">数据洞察</span>
-      </nav>
-      <div class="sidebar-footer">
-        <p class="sidebar-caption">状态总览</p>
-        <div class="sidebar-stat">
-          <span>已发出</span>
-          <strong>{{ sections[1].items.length }}</strong>
+      <div class="header-actions">
+        <div class="points">
+          <span>积分余额</span>
+          <strong>{{ pointsBalance.toLocaleString() }}</strong>
         </div>
-        <div class="sidebar-stat">
-          <span>未发出</span>
-          <strong>{{ sections[0].items.length }}</strong>
-        </div>
-      </div>
-    </aside>
-
-    <main class="survey-main">
-      <header class="survey-header">
-        <div>
-          <p class="header-kicker">Survey Management</p>
-          <h1>问卷管理</h1>
-        </div>
-        <div class="header-actions">
-          <RouterLink class="header-link" to="/">返回任务大厅</RouterLink>
-          <div class="points">
-            <span>积分余额</span>
-            <strong>{{ pointsBalance.toLocaleString() }}</strong>
-          </div>
-          <RouterLink class="avatar" to="/profile">PL</RouterLink>
-        </div>
-      </header>
-
-      <section class="control-bar">
         <RouterLink class="primary-button" to="/survey/new">+ 创建新问卷</RouterLink>
-        <label class="toggle">
-          <input v-model="hideCompleted" type="checkbox" />
-          <span class="toggle-track"></span>
-          <span class="toggle-label">隐藏已完成问卷</span>
-        </label>
-      </section>
+      </div>
+    </header>
+
+    <section class="control-bar">
+      <label class="toggle">
+        <input v-model="hideCompleted" type="checkbox" />
+        <span class="toggle-track"></span>
+        <span class="toggle-label">隐藏已完成问卷</span>
+      </label>
+    </section>
 
       <section class="survey-lists">
         <div v-for="section in sections" :key="section.key" class="survey-section">
@@ -265,8 +236,7 @@ watch(
           </div>
         </div>
       </section>
-    </main>
-  </div>
+    </div>
 
   <div v-if="showDeleteModal" class="modal-backdrop" @click.self="closeDeleteModal">
     <div class="modal">
@@ -292,97 +262,10 @@ watch(
 </template>
 
 <style scoped>
-.survey-shell {
-  min-height: 100vh;
-  display: grid;
-  grid-template-columns: 260px 1fr;
-  background: radial-gradient(circle at top, #eef4ff 0%, #f7f9ff 45%, #ffffff 100%);
-}
-
-.sidebar {
-  padding: 32px 26px;
-  background: linear-gradient(160deg, #1e4fb4 0%, #1a3b7f 60%, #122d5e 100%);
-  color: #edf3ff;
-  display: flex;
-  flex-direction: column;
-  gap: 32px;
-  box-shadow: 20px 0 40px rgba(18, 45, 94, 0.2);
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.brand-mark {
-  width: 40px;
-  height: 40px;
-  border-radius: 14px;
-  background: #f2f6ff;
-  color: #1e4fb4;
-  display: grid;
-  place-items: center;
-  font-weight: 700;
-  font-size: 20px;
-}
-
-.brand-title {
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-
-.brand-subtitle {
-  font-size: 12px;
-  color: rgba(237, 243, 255, 0.7);
-}
-
-.menu {
-  display: grid;
-  gap: 12px;
-}
-
-.menu-item {
-  padding: 10px 14px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.08);
-  color: inherit;
-  font-weight: 500;
-}
-
-.menu-item.active {
-  background: #f2f6ff;
-  color: #1a3b7f;
-}
-
-.menu-item.muted {
-  opacity: 0.6;
-}
-
-.sidebar-footer {
-  margin-top: auto;
-  background: rgba(7, 19, 46, 0.4);
-  border-radius: 16px;
-  padding: 16px;
-  display: grid;
-  gap: 12px;
-}
-
-.sidebar-caption {
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  font-size: 11px;
-  color: rgba(237, 243, 255, 0.7);
-}
-
-.sidebar-stat {
-  display: flex;
-  justify-content: space-between;
-  font-size: 14px;
-}
-
 .survey-main {
-  padding: 36px 40px 48px;
+  min-height: 100vh;
+  background: radial-gradient(circle at top left, #edf3ff 0%, #f7f9ff 45%, #ffffff 100%);
+  padding: 48px;
   display: flex;
   flex-direction: column;
   gap: 28px;
@@ -398,6 +281,8 @@ watch(
 .survey-header h1 {
   font-family: 'Newsreader', serif;
   font-size: 32px;
+  color: #0d1b37;
+  margin: 6px 0 0 0;
 }
 
 .header-kicker {
@@ -405,21 +290,13 @@ watch(
   letter-spacing: 0.24em;
   font-size: 11px;
   color: #5a7395;
+  margin: 0;
 }
 
 .header-actions {
   display: flex;
   align-items: center;
   gap: 16px;
-}
-
-.header-link {
-  padding: 10px 16px;
-  border-radius: 999px;
-  border: 1px solid rgba(38, 101, 212, 0.2);
-  color: #1a3b7f;
-  background: #ffffff;
-  font-weight: 600;
 }
 
 .points {
@@ -431,18 +308,24 @@ watch(
 
 .points strong {
   font-size: 18px;
-  color: #0e2a55;
+  color: #1e4fb4;
+  font-weight: 600;
 }
 
-.avatar {
-  width: 44px;
-  height: 44px;
-  border-radius: 14px;
-  background: linear-gradient(135deg, #1e4fb4, #4f80f1);
+.primary-button {
+  background: linear-gradient(135deg, #2665d4, #4f80f1);
   color: #ffffff;
+  padding: 12px 20px;
+  border-radius: 14px;
   font-weight: 600;
-  display: grid;
-  place-items: center;
+  text-decoration: none;
+  display: inline-block;
+  cursor: pointer;
+  border: none;
+}
+
+.primary-button:hover {
+  opacity: 0.9;
 }
 
 .control-bar {
@@ -453,15 +336,7 @@ watch(
   padding: 18px 20px;
   background: #ffffff;
   border-radius: 20px;
-  box-shadow: var(--color-shadow);
-}
-
-.primary-button {
-  background: linear-gradient(135deg, #2665d4, #4f80f1);
-  color: #ffffff;
-  padding: 12px 20px;
-  border-radius: 14px;
-  font-weight: 600;
+  box-shadow: 0 4px 12px rgba(13, 27, 55, 0.08);
 }
 
 .toggle {
@@ -470,6 +345,7 @@ watch(
   gap: 12px;
   font-size: 14px;
   color: #415673;
+  cursor: pointer;
 }
 
 .toggle input {
@@ -506,6 +382,10 @@ watch(
   transform: translateX(20px);
 }
 
+.toggle-label {
+  user-select: none;
+}
+
 .survey-lists {
   display: grid;
   gap: 24px;
@@ -515,7 +395,7 @@ watch(
   background: #ffffff;
   padding: 20px;
   border-radius: 22px;
-  box-shadow: var(--color-shadow);
+  box-shadow: 0 4px 12px rgba(13, 27, 55, 0.08);
   display: grid;
   gap: 16px;
 }
@@ -524,15 +404,20 @@ watch(
   display: flex;
   justify-content: space-between;
   align-items: center;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e5edf8;
 }
 
 .section-header h2 {
   font-size: 20px;
+  color: #0d1b37;
+  margin: 0;
 }
 
 .section-header p {
   font-size: 13px;
   color: #6d7f9a;
+  margin: 0;
 }
 
 .section-count {
@@ -544,6 +429,7 @@ watch(
   display: grid;
   place-items: center;
   font-weight: 600;
+  font-size: 14px;
 }
 
 .survey-card {
@@ -553,17 +439,26 @@ watch(
   display: grid;
   gap: 14px;
   background: #fbfdff;
+  transition: all 0.3s ease;
+}
+
+.survey-card:hover {
+  border-color: #d0dff0;
+  box-shadow: 0 4px 12px rgba(13, 27, 55, 0.08);
 }
 
 .survey-meta {
   display: flex;
   justify-content: space-between;
+  align-items: flex-start;
   gap: 16px;
 }
 
 .survey-title {
   font-weight: 600;
   font-size: 16px;
+  color: #0d1b37;
+  flex: 1;
 }
 
 .survey-id {
@@ -577,6 +472,7 @@ watch(
   font-size: 12px;
   font-weight: 600;
   align-self: flex-start;
+  white-space: nowrap;
 }
 
 .status-badge[data-status='draft'] {
@@ -616,6 +512,7 @@ watch(
 .progress-fill {
   height: 100%;
   background: linear-gradient(90deg, #2665d4, #4f80f1);
+  border-radius: 999px;
 }
 
 .progress-text {
@@ -630,6 +527,8 @@ watch(
   flex-wrap: wrap;
   align-items: center;
   gap: 12px;
+  padding-top: 6px;
+  border-top: 1px solid #e7edf7;
 }
 
 .ghost-button {
@@ -640,6 +539,13 @@ watch(
   color: #1a3b7f;
   font-weight: 600;
   cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s ease;
+}
+
+.ghost-button:hover {
+  border-color: #1e4fb4;
+  background: #f5f9ff;
 }
 
 .primary-button {
@@ -663,6 +569,7 @@ watch(
   background: #f2f6ff;
   color: #6c7c95;
   font-size: 14px;
+  text-align: center;
 }
 
 .modal-backdrop {
@@ -684,6 +591,18 @@ watch(
   gap: 16px;
 }
 
+.modal h3 {
+  font-size: 18px;
+  color: #0d1b37;
+  margin: 0;
+}
+
+.modal p {
+  font-size: 14px;
+  color: #6b7b94;
+  margin: 0;
+}
+
 .modal-actions {
   display: flex;
   justify-content: flex-end;
@@ -698,35 +617,17 @@ watch(
   color: #ffffff;
   font-weight: 600;
   cursor: pointer;
+  font-size: 13px;
+  transition: background 0.2s ease;
 }
 
-@media (max-width: 960px) {
-  .survey-shell {
-    grid-template-columns: 1fr;
-  }
-
-  .sidebar {
-    position: sticky;
-    top: 0;
-    z-index: 5;
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-    padding: 16px 20px;
-  }
-
-  .menu {
-    grid-auto-flow: column;
-    gap: 10px;
-  }
-
-  .sidebar-footer {
-    display: none;
-  }
+.danger-button:hover {
+  background: #dc2626;
 }
 
-@media (max-width: 720px) {
+@media (max-width: 768px) {
   .survey-main {
+    margin-left: 0;
     padding: 24px;
   }
 
@@ -738,6 +639,29 @@ watch(
   .control-bar {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .header-actions {
+    width: 100%;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 480px) {
+  .survey-main {
+    padding: 16px;
+  }
+
+  .survey-card {
+    padding: 14px 16px;
+  }
+
+  .survey-header h1 {
+    font-size: 24px;
+  }
+
+  .survey-meta {
+    flex-direction: column;
   }
 }
 </style>
