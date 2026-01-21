@@ -9,6 +9,7 @@ import SurveyAiPromptView from '../views/SurveyAiPromptView.vue'
 import PointsRecordView from '../views/PointsRecordView.vue'
 import SurveyFillView from '../views/SurveyFillView.vue'
 import AuthView from '../views/AuthView.vue'
+import HelpCenterView from '../views/HelpCenterView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -92,6 +93,12 @@ const router = createRouter({
       component: PointsRecordView,
       meta: { requiresAuth: true },
     },
+    {
+      path: '/help',
+      name: 'help-center',
+      component: HelpCenterView,
+      meta: { requiresAuth: true },
+    },
   ],
 })
 
@@ -110,6 +117,11 @@ router.beforeEach((to, from, next) => {
   if (to.name === 'auth' && token) {
     next({ name: 'task-hall' })
     return
+  }
+
+  // 保存来源路径到帮助中心
+  if (to.name === 'help-center' && from.name) {
+    localStorage.setItem('help_center_referrer', from.fullPath)
   }
 
   next()

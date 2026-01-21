@@ -1,6 +1,6 @@
 <script setup>
 import { useRouter, useRoute } from 'vue-router'
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -24,6 +24,17 @@ function closeMobileMenu() {
 function toggleMobileMenu() {
   isMobileMenuOpen.value = !isMobileMenuOpen.value
 }
+
+function goBack() {
+  // 从本地存储中获取帮助中心的来源路径
+  const referrer = localStorage.getItem('help_center_referrer') || '/task-hall'
+  router.push(referrer)
+}
+
+// 判断当前是否在帮助中心页面
+const isHelpCenterPage = computed(() => {
+  return route.name === 'help-center'
+})
 </script>
 
 <template>
@@ -74,9 +85,17 @@ function toggleMobileMenu() {
           <span class="menu-icon">👤</span>
           <span class="menu-label">个人资料</span>
         </RouterLink>
+
       </nav>
 
       <div class="sidebar-footer">
+        <RouterLink
+          to="/help"
+          :class="['help-btn', { active: isActive('help-center') }]"
+          @click="closeMobileMenu"
+        >
+          <span class="help-icon">?</span>
+        </RouterLink>
         <button class="logout-btn" @click="handleLogout">
           <span class="menu-icon">🚪</span>
           <span class="menu-label">登出</span>
@@ -85,10 +104,14 @@ function toggleMobileMenu() {
     </aside>
 
     <!-- 移动端菜单按钮 -->
-    <button class="mobile-menu-toggle" @click="toggleMobileMenu">
+    <button v-if="!isHelpCenterPage" class="mobile-menu-toggle" @click="toggleMobileMenu">
       <span></span>
       <span></span>
       <span></span>
+    </button>
+    <!-- 帮助中心返回按钮 -->
+    <button v-else class="mobile-back-button" @click="goBack">
+      ← 返回
     </button>
 
     <!-- 移动端遮罩 -->
@@ -226,6 +249,48 @@ function toggleMobileMenu() {
   color: white;
 }
 
+/* ====== 帮助按钮 ====== */
+.sidebar-footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.help-btn {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  color: white;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.help-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: scale(1.1);
+}
+
+.help-btn.active {
+  background: rgba(255, 255, 255, 0.4);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.help-icon {
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.logout-btn {
+  flex: 1;
+  width: auto;
+}
+
 /* ====== 主内容区域 ====== */
 .main-content {
   flex: 1;
@@ -261,15 +326,40 @@ function toggleMobileMenu() {
 }
 
 .mobile-overlay {
-  display: none;
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.4);
-  z-index: 999;
-}
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 999;
+  }
+
+  /* 移动端返回按钮样式 */
+  .mobile-back-button {
+    display: none;
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    z-index: 1001;
+    background: white;
+    border: none;
+    padding: 8px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    font-size: 14px;
+    color: #1e4fb4;
+    font-weight: 500;
+    transition: all 0.2s ease;
+  }
+
+  .mobile-back-button:hover {
+    background: #f5f7fa;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  }
 
 @media (max-width: 768px) {
   .sidebar {
@@ -287,6 +377,10 @@ function toggleMobileMenu() {
 
   .mobile-menu-toggle {
     display: flex;
+  }
+
+  .mobile-back-button {
+    display: block;
   }
 
   .mobile-overlay {
