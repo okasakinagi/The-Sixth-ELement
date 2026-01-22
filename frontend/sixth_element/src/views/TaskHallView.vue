@@ -6,7 +6,9 @@
         <h1>任务大厅</h1>
         <p class="subtitle">集中查看任务、问卷和数据流转。</p>
       </div>
-      <RouterLink class="cta" to="/surveys">进入问卷管理</RouterLink>
+      <div class="header-actions">
+          <RouterLink class="cta" to="/surveys">进入问卷管理</RouterLink>
+        </div>
     </header>
 
     <section class="hall-grid">
@@ -65,6 +67,12 @@ h1 {
   color: #637089;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .cta {
   background: linear-gradient(135deg, #2665d4, #4f80f1);
   color: #ffffff;
@@ -78,6 +86,31 @@ h1 {
 .cta:hover {
   transform: translateY(-2px);
   box-shadow: 0 8px 16px rgba(30, 79, 180, 0.3);
+}
+
+.help-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: white;
+  border: 1px solid #e8eef5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.help-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(30, 79, 180, 0.2);
+  border-color: #2196f3;
+}
+
+.help-icon {
+  font-size: 16px;
+  color: #2196f3;
 }
 
 .hall-grid {
