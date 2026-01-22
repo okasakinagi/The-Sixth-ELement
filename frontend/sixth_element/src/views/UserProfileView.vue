@@ -327,8 +327,9 @@ const goToTaskHall = () => {
   position: relative;
   display: flex;
   justify-content: space-between;
-  align-items: flex-end;
-  padding-bottom: 30px;
+  align-items: center;
+  padding-bottom: 20px;
+  margin-top: 30px;
 }
 
 @media (max-width: 1024px) {
@@ -380,36 +381,34 @@ const goToTaskHall = () => {
 }
 
 .edit-button {
-  padding: 10px 24px;
+  padding: 8px 20px;
   background: linear-gradient(135deg, #2196f3, #1976d2);
   color: white;
   border: none;
-  border-radius: 25px;
-  font-size: 15px;
+  border-radius: 20px;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   transition: all 0.3s ease;
-  box-shadow: 0 2px 8px rgba(33, 150, 243, 0.3);
-  margin-bottom: 10px;
+  box-shadow: 0 2px 6px rgba(33, 150, 243, 0.3);
 }
 
 .header-actions {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 10px;
 }
 
 .ghost-button {
-  padding: 10px 20px;
+  padding: 8px 18px;
   background: #ffffff;
   color: #1565c0;
   border: 1px solid rgba(21, 101, 192, 0.2);
-  border-radius: 25px;
-  font-size: 14px;
+  border-radius: 20px;
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.3s ease;
@@ -426,7 +425,7 @@ const goToTaskHall = () => {
 }
 
 .edit-icon {
-  font-size: 16px;
+  font-size: 14px;
 }
 
 /* 内容区域 */
@@ -718,8 +717,9 @@ const goToTaskHall = () => {
   .header-content {
     flex-direction: column;
     align-items: center;
-    gap: 20px;
+    gap: 15px;
     padding: 0 15px 20px;
+    margin-top: 20px;
   }
 
   .avatar-section {

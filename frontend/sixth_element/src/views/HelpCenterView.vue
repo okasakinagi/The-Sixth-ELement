@@ -33,6 +33,7 @@
 
       <div class="sidebar-header">
         <h2 v-if="!sidebarCollapsed">帮助中心</h2>
+        <p v-if="!sidebarCollapsed" class="sidebar-subtitle">Help Center</p>
         <div v-if="!sidebarCollapsed" class="search-container">
           <input 
             type="text" 
@@ -98,6 +99,10 @@
       class="help-content"
       :class="{ 'expanded': sidebarCollapsed }"
     >
+      <!-- 顶部导航 -->
+      <div class="top-nav">
+        <a href="/task-hall" class="app-logo">第六元素</a>
+      </div>
       <!-- 面包屑导航 -->
       <div class="breadcrumb">
         <span>帮助中心</span>
@@ -197,8 +202,8 @@ const referrer = ref(localStorage.getItem('help_center_referrer') || '/task-hall
 const categories = ref([
   {
     id: 'faq',
-    title: '常见问题 (FAQ)',
-    icon: '❓',
+    title: '常见问题',
+    icon: '•',
     items: [
       {
         id: 'faq-1',
@@ -245,7 +250,7 @@ const categories = ref([
   {
     id: 'points',
     title: '关于积分',
-    icon: '💰',
+    icon: '•',
     items: [
       {
         id: 'points-1',
@@ -293,7 +298,7 @@ const categories = ref([
   {
     id: 'survey-publish',
     title: '问卷发布',
-    icon: '📝',
+    icon: '•',
     items: [
       {
         id: 'publish-1',
@@ -349,7 +354,7 @@ const categories = ref([
   {
     id: 'survey-fill',
     title: '问卷填写',
-    icon: '📋',
+    icon: '•',
     items: [
       {
         id: 'fill-1',
@@ -384,7 +389,7 @@ const categories = ref([
   {
     id: 'account-security',
     title: '账号安全',
-    icon: '🔒',
+    icon: '•',
     items: [
       {
         id: 'security-1',
@@ -609,13 +614,42 @@ watch(
   display: flex;
   flex-direction: column;
   position: fixed;
-  left: 260px; /* 与主应用侧边栏宽度保持一致 */
+  left: 0;
   top: 0;
   height: 100vh;
   overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   z-index: 999;
   transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  border-radius: 0 16px 16px 0;
+}
+
+.help-sidebar::-webkit-scrollbar {
+  display: none;
+}
+
+.help-sidebar:hover {
+  scrollbar-width: thin;
+  -ms-overflow-style: auto;
+}
+
+.help-sidebar:hover::-webkit-scrollbar {
+  display: block;
+  width: 6px;
+}
+
+.help-sidebar::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+.help-sidebar::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+.help-sidebar::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
 }
 
 /* 为侧边栏内容添加过渡效果 */
@@ -750,15 +784,25 @@ watch(
   border-bottom: 1px solid rgba(0, 0, 0, 0.08);
   position: relative;
   background: linear-gradient(135deg, #4299e1 0%, #3182ce 100%);
-  border-radius: 0 16px 0 0;
 }
 
 .sidebar-header h2 {
-  margin: 0 0 20px 0;
+  margin: 0 0 4px 0;
   font-size: 20px;
   color: white;
   font-weight: 700;
+  font-family: 'Newsreader', serif;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.sidebar-subtitle {
+  margin: 0 0 20px 0;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.8);
+  font-weight: 400;
+  font-family: 'Newsreader', serif;
+  letter-spacing: 1px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 .search-container {
@@ -940,8 +984,12 @@ watch(
 }
 
 .category-icon {
+  width: 24px;
+  text-align: center;
   margin-right: 12px;
-  font-size: 18px;
+  font-size: 24px;
+  color: #4299e1;
+  line-height: 1;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -1080,6 +1128,21 @@ watch(
   margin-left: 270px; /* 主应用侧边栏宽度(260px) + 收起后的帮助中心侧边栏宽度(10px) */
 }
 
+.top-nav {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  margin-bottom: 32px;
+}
+
+.app-logo {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1a202c;
+  text-decoration: none;
+  cursor: pointer;
+}
+
 .breadcrumb {
   font-size: 14px;
   color: #4299e1;
@@ -1106,21 +1169,17 @@ watch(
 }
 
 .article-title {
-  font-size: 28px;
+  font-size: 34px;
   color: #1a202c;
   margin: 0 0 32px 0;
   font-weight: 700;
-  background: linear-gradient(135deg, #4299e1 0%, #3182ce 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
   line-height: 1.3;
 }
 
 .article-content {
   font-size: 15px;
   line-height: 1.8;
-  color: #4a5568;
+  color: #66788f;
   background: rgba(255, 255, 255, 0.5);
   padding: 24px;
   border-radius: 12px;
@@ -1130,12 +1189,8 @@ watch(
 .article-content h4 {
   margin: 32px 0 16px 0;
   font-size: 20px;
-  color: #2d3748;
+  color: #1a202c;
   font-weight: 600;
-  background: linear-gradient(135deg, #4299e1 0%, #3182ce 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
 }
 
 .article-content p {
@@ -1230,13 +1285,9 @@ watch(
 
 .related-section h3 {
   font-size: 18px;
-  color: #2d3748;
+  color: #1a202c;
   margin: 0 0 20px 0;
   font-weight: 600;
-  background: linear-gradient(135deg, #4299e1 0%, #3182ce 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
 }
 
 .related-list {
