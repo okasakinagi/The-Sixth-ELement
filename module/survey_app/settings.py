@@ -44,11 +44,11 @@ ASGI_APPLICATION = "survey_app.asgi.application"
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.mysql",
-        "NAME": "sixth_element",
-        "USER": "sixth_element",
-        "PASSWORD": "123456",
-        "HOST": "127.0.0.1",
-        "PORT": "3306",
+        "NAME": os.environ.get("DJANGO_DB_NAME", "sixth_element"),
+        "USER": os.environ.get("DJANGO_DB_USER", "sixth_element"),
+        "PASSWORD": os.environ.get("DJANGO_DB_PASSWORD", "123456"),
+        "HOST": os.environ.get("DJANGO_DB_HOST", "localhost"),
+        "PORT": os.environ.get("DJANGO_DB_PORT", "3306"),
         "OPTIONS": {"charset": "utf8mb4"},
     }
 }
