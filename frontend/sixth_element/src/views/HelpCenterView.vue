@@ -653,36 +653,52 @@ watch(
 }
 
 /* 为侧边栏内容添加过渡效果 */
-.sidebar-header,
-.help-menu,
-.category-title,
+.sidebar-header {
+  transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1), transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.help-menu {
+  transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1), transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  transition-delay: 0.1s;
+}
+
+.category-title {
+  transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1), transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  transition-delay: 0.15s;
+}
+
 .menu-item {
-  transition: opacity 0.3s ease, transform 0.3s ease;
+  transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1), transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  transition-delay: 0.2s;
 }
 
 /* 收起状态 */
 .help-sidebar.collapsed .sidebar-header {
   opacity: 0;
-  transform: translateX(-20px);
+  transform: translateX(-10px);
   pointer-events: none;
+  transition-delay: 0s;
 }
 
 .help-sidebar.collapsed .help-menu {
   opacity: 0;
-  transform: translateX(-20px);
+  transform: translateX(-10px);
   pointer-events: none;
+  transition-delay: 0s;
 }
 
 .help-sidebar.collapsed .category-title {
   opacity: 0;
-  transform: translateX(-20px);
+  transform: translateX(-10px);
   pointer-events: none;
+  transition-delay: 0s;
 }
 
 .help-sidebar.collapsed .menu-item {
   opacity: 0;
-  transform: translateX(-20px);
+  transform: translateX(-10px);
   pointer-events: none;
+  transition-delay: 0s;
 }
 
 /* 展开状态 */
