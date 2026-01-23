@@ -89,15 +89,13 @@ const isHelpCenterPage = computed(() => {
       </nav>
 
       <div class="sidebar-footer">
-        <a
-          href="/help"
-          target="_blank"
-          rel="noopener noreferrer"
-          :class="['help-btn', { active: isActive('help-center') }]"
-          @click="closeMobileMenu"
-        >
-          <span class="help-icon">?</span>
-        </a>
+        <RouterLink
+              to="/help"
+              :class="['help-btn', { active: isActive('help-center') }]"
+              @click="closeMobileMenu"
+            >
+              <span class="help-icon">?</span>
+            </RouterLink>
         <button class="logout-btn" @click="handleLogout">
           <span class="menu-icon">🚪</span>
           <span class="menu-label">登出</span>
