@@ -40,8 +40,6 @@ async function fetchPointsLogs() {
     router.push('/login')
     return
   }
-
-  loading.value = true
   try {
     const typeParam = selectedType.value === 'all' ? '' : selectedType.value
     const url = new URL('/api/v1/points/logs', window.location.origin)
@@ -54,7 +52,6 @@ async function fetchPointsLogs() {
         'Authorization': `Bearer ${token}`,
       },
     })
-
     if (!res.ok) {
       throw new Error(`API 错误: ${res.status}`)
     }
@@ -66,12 +63,9 @@ async function fetchPointsLogs() {
       userCredit.value = data.user.credit_score
       hasHonor.value = data.user.has_honor
       activityPoints.value = data.user.activity_points
-      
       const earnedRecords = data.items.filter(item => item.delta > 0)
       totalEarned.value = earnedRecords.reduce((sum, item) => sum + item.delta, 0)
     }
-
-    logs.value = data.items
     totalRecords.value = data.total
   } catch (err) {
     console.error('Failed to fetch points logs:', err)
@@ -122,95 +116,97 @@ onMounted(() => {
 
 <template>
   <div class="points-record">
-    <header class="header">
-      <button class="back-btn" @click="goBack">&larr; 返回</button>
-      <h1>积分记录</h1>
-      <button class="shop-btn" @click="router.push('/profile')">👤 个人</button>
-    </header>
+    <div class="page-shell">
+      <header class="header">
+        <button class="back-btn" @click="goBack">&larr; 返回</button>
+        <h1>积分记录</h1>
+        <button class="shop-btn" @click="router.push('/profile')">👤 个人</button>
+      </header>
 
-    <section class="honor-card">
-      <div class="card-content">
-        <div class="balance-section">
-          <div class="balance">
-            <p class="balance-label">当前余额</p>
-            <p class="balance-value">{{ userBalance ?? '-' }}</p>
+      <section class="honor-card">
+        <div class="card-content">
+          <div class="balance-section">
+            <div class="balance">
+              <p class="balance-label">当前余额</p>
+              <p class="balance-value">{{ userBalance ?? '-' }}</p>
+            </div>
+            <div class="earned">
+              <p class="earned-label">累计赚取</p>
+              <p class="earned-value">{{ totalEarned }}</p>
+            </div>
           </div>
-          <div class="earned">
-            <p class="earned-label">累计赚取</p>
-            <p class="earned-value">{{ totalEarned }}</p>
+
+          <div class="honor-badge" v-if="hasHonor">
+            <span class="badge-icon">🎖️</span>
+            <span class="badge-text">优质问卷填写者</span>
+            <div
+              class="tooltip"
+              tabindex="0"
+              @mouseenter="showHonorTooltip = true"
+              @mouseleave="showHonorTooltip = false"
+              @focus="showHonorTooltip = true"
+              @blur="showHonorTooltip = false"
+            >
+              <span v-if="showHonorTooltip" class="tooltip-content">
+                ✨ 您是优质填答者！由于您填写的问卷质量极高，发布问卷时将享受积分折扣优惠。
+              </span>
+            </div>
+          </div>
+          <div class="honor-badge disabled" v-else>
+            <span class="badge-icon">☆</span>
+            <span class="badge-text">升级中...</span>
           </div>
         </div>
+      </section>
 
-        <div class="honor-badge" v-if="hasHonor">
-          <span class="badge-icon">🎖️</span>
-          <span class="badge-text">优质问卷填写者</span>
-          <div
-            class="tooltip"
-            tabindex="0"
-            @mouseenter="showHonorTooltip = true"
-            @mouseleave="showHonorTooltip = false"
-            @focus="showHonorTooltip = true"
-            @blur="showHonorTooltip = false"
-          >
-            <span v-if="showHonorTooltip" class="tooltip-content">
-              ✨ 您是优质填答者！由于您填写的问卷质量极高，发布问卷时将享受积分折扣优惠。
-            </span>
-          </div>
-        </div>
-        <div class="honor-badge disabled" v-else>
-          <span class="badge-icon">☆</span>
-          <span class="badge-text">升级中...</span>
-        </div>
-      </div>
-    </section>
-
-    <section class="filter-tabs">
-      <button 
-        v-for="tab in ['all', 'earn', 'spend']" 
-        :key="tab"
-        :class="['tab', selectedType === tab ? 'active' : '']"
-        @click="changeType(tab)"
-      >
-        {{ tab === 'all' ? '全部' : tab === 'earn' ? '收入' : '支出' }}
-      </button>
-    </section>
-
-    <section class="transaction-list">
-      <div v-if="loading && currentPage === 1" class="loading">
-        加载中...
-      </div>
-      
-      <div v-else-if="logs.length === 0" class="empty">
-        暂无记录
-      </div>
-
-      <div v-else class="list-items">
-        <div 
-          v-for="log in displayedLogs" 
-          :key="log.id"
-          :class="['list-item', { clickable: log.related_id }]"
-          @click="navigateToSurvey(log)"
+      <section class="filter-tabs">
+        <button 
+          v-for="tab in ['all', 'earn', 'spend']" 
+          :key="tab"
+          :class="['tab', selectedType === tab ? 'active' : '']"
+          @click="changeType(tab)"
         >
-          <div class="item-left">
-            <p class="item-reason">{{ log.reason }}</p>
-            <p class="item-time">{{ formatDateTime(log.created_at) }}</p>
-          </div>
-          <div :class="['item-right', log.delta > 0 ? 'earn' : 'spend']">
-            {{ log.delta > 0 ? '+' : '' }}{{ log.delta }}
+          {{ tab === 'all' ? '全部' : tab === 'earn' ? '收入' : '支出' }}
+        </button>
+      </section>
+
+      <section class="transaction-list">
+        <div v-if="loading && currentPage === 1" class="loading">
+          加载中...
+        </div>
+        
+        <div v-else-if="logs.length === 0" class="empty">
+          暂无记录
+        </div>
+
+        <div v-else class="list-items">
+          <div 
+            v-for="log in displayedLogs" 
+            :key="log.id"
+            :class="['list-item', { clickable: log.related_id }]"
+            @click="navigateToSurvey(log)"
+          >
+            <div class="item-left">
+              <p class="item-reason">{{ log.reason }}</p>
+              <p class="item-time">{{ formatDateTime(log.created_at) }}</p>
+            </div>
+            <div :class="['item-right', log.delta > 0 ? 'earn' : 'spend']">
+              {{ log.delta > 0 ? '+' : '' }}{{ log.delta }}
+            </div>
           </div>
         </div>
-      </div>
 
-      <div v-if="hasMore && !loading" class="load-more">
-        <button @click="loadMore" class="load-more-btn">
-          加载更多
-        </button>
-      </div>
+        <div v-if="hasMore && !loading" class="load-more">
+          <button @click="loadMore" class="load-more-btn">
+            加载更多
+          </button>
+        </div>
 
-      <div v-if="loading && currentPage > 1" class="loading-more">
-        加载中...
-      </div>
-    </section>
+        <div v-if="loading && currentPage > 1" class="loading-more">
+          加载中...
+        </div>
+      </section>
+    </div>
   </div>
 </template>
 
@@ -218,14 +214,25 @@ onMounted(() => {
 .points-record {
   min-height: 100vh;
   background: radial-gradient(circle at top left, #edf3ff 0%, #f7f9ff 45%, #ffffff 100%);
-  padding: 0;
+  display: flex;
+  justify-content: center;
+  padding: 6px 0 18px;
+}
+
+.page-shell {
+  width: 100%;
+  max-width: 1100px;
+  padding: 0 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 24px;
+  padding: 12px 16px;
   background: #ffffff;
   border-bottom: 1px solid #e8eef5;
 }
@@ -257,7 +264,7 @@ onMounted(() => {
 }
 
 .honor-card {
-  margin: 24px;
+  width: 100%;
   padding: 24px;
   background: linear-gradient(135deg, #0d47a1 0%, #1e4fb4 100%);
   border-radius: 12px;
@@ -409,10 +416,10 @@ onMounted(() => {
 
 .filter-tabs {
   display: flex;
-  gap: 16px;
-  padding: 16px 24px;
-  background: #ffffff;
-  border-bottom: 1px solid #e8eef5;
+  gap: 12px;
+  padding: 0 0 10px;
+  background: transparent;
+  border-bottom: none;
 }
 
 .tab {
@@ -437,7 +444,7 @@ onMounted(() => {
 }
 
 .transaction-list {
-  padding: 16px 24px;
+  padding: 10px 12px 14px;
 }
 
 .loading,
