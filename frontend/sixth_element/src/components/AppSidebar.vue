@@ -40,7 +40,7 @@ const isHelpCenterPage = computed(() => {
 <template>
   <div class="app-layout">
     <!-- 侧边栏 -->
-    <aside class="sidebar" :class="{ 'mobile-open': isMobileMenuOpen }">
+    <aside v-if="!isHelpCenterPage" class="sidebar" :class="{ 'mobile-open': isMobileMenuOpen }">
       <div class="sidebar-brand">
         <div class="brand-icon">📚</div>
         <div class="brand-text">
@@ -51,7 +51,7 @@ const isHelpCenterPage = computed(() => {
 
       <nav class="sidebar-menu">
         <RouterLink
-          to="/"
+          to="/task-hall"
           :class="['menu-item', { active: isActive('task-hall') }]"
           @click="closeMobileMenu"
         >
@@ -89,13 +89,15 @@ const isHelpCenterPage = computed(() => {
       </nav>
 
       <div class="sidebar-footer">
-        <RouterLink
-          to="/help"
+        <a
+          href="/help"
+          target="_blank"
+          rel="noopener noreferrer"
           :class="['help-btn', { active: isActive('help-center') }]"
           @click="closeMobileMenu"
         >
           <span class="help-icon">?</span>
-        </RouterLink>
+        </a>
         <button class="logout-btn" @click="handleLogout">
           <span class="menu-icon">🚪</span>
           <span class="menu-label">登出</span>
@@ -217,6 +219,8 @@ const isHelpCenterPage = computed(() => {
 .menu-icon {
   font-size: 18px;
   flex-shrink: 0;
+  width: 24px;
+  text-align: center;
 }
 
 .menu-label {
@@ -298,6 +302,10 @@ const isHelpCenterPage = computed(() => {
   overflow-y: auto;
   background: radial-gradient(circle at top left, #edf3ff 0%, #f7f9ff 45%, #ffffff 100%);
   transition: margin-left 0.3s ease;
+}
+
+.app-layout:has(.mobile-back-button) .main-content {
+  margin-left: 0;
 }
 
 /* ====== 移动端 ====== */

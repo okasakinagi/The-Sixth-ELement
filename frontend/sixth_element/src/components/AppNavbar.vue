@@ -26,7 +26,7 @@ function isActive(routeName) {
 
     <div class="navbar-center">
       <RouterLink
-        to="/"
+        to="/task-hall"
         :class="['navbar-link', { active: isActive('task-hall') }]"
       >
         📋 任务大厅

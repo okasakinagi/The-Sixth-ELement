@@ -23,11 +23,11 @@ const router = createRouter({
     {
       path: '/',
       name: 'home',
-      redirect: '/profile',
+      redirect: '/task-hall',
     },
     {
       path: '/profile',
-      name: 'userProfile',
+      name: 'profile',
       component: () => import('../views/UserProfileView.vue'),
     },
     {
@@ -81,6 +81,7 @@ const router = createRouter({
       component: SurveyAnalyticsView,
       meta: { requiresAuth: true },
     },
+
     {
       path: '/points',
       name: 'points-record',
