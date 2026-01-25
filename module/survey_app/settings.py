@@ -14,6 +14,7 @@ ALLOWED_HOSTS = [
 INSTALLED_APPS = [
     "django.contrib.contenttypes",
     "django.contrib.staticfiles",
+    "rest_framework",
     "corsheaders",
     "core",
 ]
@@ -55,7 +56,7 @@ DATABASES = {
         "ENGINE": "django.db.backends.mysql",
         "NAME": os.environ.get("DJANGO_DB_NAME", "sixth_element"),
         "USER": os.environ.get("DJANGO_DB_USER", "sixth_element"),
-        "PASSWORD": os.environ.get("DJANGO_DB_PASSWORD", "123456"),
+        "PASSWORD": os.environ.get("DJANGO_DB_PASSWORD", "Sixth@2026!"),
         "HOST": os.environ.get("DJANGO_DB_HOST", "localhost"),
         "PORT": os.environ.get("DJANGO_DB_PORT", "3306"),
         "OPTIONS": {"charset": "utf8mb4"},

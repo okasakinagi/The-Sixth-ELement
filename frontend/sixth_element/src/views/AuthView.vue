@@ -232,9 +232,6 @@ function switchMode(mode) {
 
 <template>
   <div class="auth-container">
-    <!-- 动画背景 -->
-    <div class="animated-bg"></div>
-
     <!-- 主要内容区 -->
     <div class="auth-content">
       <!-- Logo 区 -->
@@ -415,49 +412,22 @@ function switchMode(mode) {
 
 .auth-container {
   min-height: 100vh;
-  background: linear-gradient(135deg, #f0f5ff 0%, #ffffff 50%, #f8f9ff 100%);
+  background: #f6f8fb;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 20px;
-  position: relative;
-  overflow: hidden;
-}
-
-/* 动画背景 */
-.animated-bg {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: 
-    radial-gradient(circle at 20% 30%, rgba(30, 79, 180, 0.05) 0%, transparent 50%),
-    radial-gradient(circle at 80% 70%, rgba(13, 71, 161, 0.03) 0%, transparent 50%);
-  animation: float 20s ease-in-out infinite;
-  pointer-events: none;
-}
-
-@keyframes float {
-  0%, 100% {
-    transform: translateY(0px) translateX(0px);
-  }
-  50% {
-    transform: translateY(10px) translateX(5px);
-  }
 }
 
 /* 主要内容 */
 .auth-content {
-  position: relative;
-  z-index: 1;
-  max-width: 420px;
+  max-width: 460px;
   width: 100%;
-  background: rgba(255, 255, 255, 0.95);
-  border-radius: 20px;
-  padding: 40px 30px;
-  box-shadow: 0 20px 60px rgba(30, 79, 180, 0.08);
-  backdrop-filter: blur(10px);
+  background: #ffffff;
+  border-radius: 14px;
+  padding: 28px 26px;
+  border: 1px solid #e3e9f5;
+  box-shadow: 0 10px 26px rgba(0, 82, 217, 0.06);
 }
 
 /* Logo 区 */
@@ -467,25 +437,15 @@ function switchMode(mode) {
 }
 
 .logo {
-  font-size: 48px;
+  font-size: 42px;
   margin-bottom: 12px;
   display: inline-block;
-  animation: bounce 2s ease-in-out infinite;
-}
-
-@keyframes bounce {
-  0%, 100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-8px);
-  }
 }
 
 .app-title {
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 700;
-  color: #1a202c;
+  color: #0b2b66;
   margin: 0;
   letter-spacing: -0.5px;
 }
@@ -497,31 +457,19 @@ function switchMode(mode) {
 }
 
 .main-title {
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 600;
-  color: #1a202c;
+  color: #0b2b66;
   margin: 0 0 12px 0;
 }
 
 .dynamic-quote {
   font-size: 13px;
-  color: #7f8d9d;
+  color: #5c7599;
   margin: 0;
   line-height: 1.5;
   font-weight: 400;
   letter-spacing: 0.3px;
-  animation: fadeIn 0.8s ease-out;
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 /* 模式切换标签 */
@@ -529,9 +477,10 @@ function switchMode(mode) {
   display: flex;
   gap: 8px;
   margin-bottom: 24px;
-  background: #f5f7fa;
+  background: #f2f6ff;
   padding: 6px;
   border-radius: 10px;
+  border: 1px solid #d7e3ff;
 }
 
 .mode-tab {
@@ -539,7 +488,7 @@ function switchMode(mode) {
   padding: 10px;
   border: none;
   background: transparent;
-  color: #7f8d9d;
+  color: #5c7599;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
@@ -548,9 +497,9 @@ function switchMode(mode) {
 }
 
 .mode-tab.active {
-  background: white;
-  color: #1e4fb4;
-  box-shadow: 0 2px 8px rgba(30, 79, 180, 0.1);
+  background: #ffffff;
+  color: #0052d9;
+  box-shadow: 0 4px 12px rgba(0, 82, 217, 0.12);
 }
 
 /* 错误提示 */
@@ -559,22 +508,10 @@ function switchMode(mode) {
   align-items: center;
   gap: 8px;
   padding: 12px 14px;
-  background: #fff5f5;
+  background: #fff6f6;
   border-left: 4px solid #d32f2f;
-  border-radius: 6px;
+  border-radius: 8px;
   margin-bottom: 20px;
-  animation: slideInDown 0.3s ease-out;
-}
-
-@keyframes slideInDown {
-  from {
-    opacity: 0;
-    transform: translateY(-8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 .error-icon {
@@ -604,7 +541,7 @@ function switchMode(mode) {
 .form-label {
   font-size: 13px;
   font-weight: 600;
-  color: #1a202c;
+  color: #0b2b66;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -625,20 +562,20 @@ function switchMode(mode) {
 .form-input {
   width: 100%;
   padding: 11px 40px 11px 38px;
-  border: 2px solid #e8eef5;
-  border-radius: 8px;
+  border: 1px solid #d7e3ff;
+  border-radius: 10px;
   font-size: 14px;
   font-family: inherit;
-  color: #1a202c;
-  background: #fafbfc;
+  color: #0b2b66;
+  background: #f2f6ff;
   transition: all 0.3s ease;
   outline: none;
 }
 
 .form-input:focus {
-  background: white;
-  border-color: #1e4fb4;
-  box-shadow: 0 0 0 3px rgba(30, 79, 180, 0.1);
+  background: #ffffff;
+  border-color: #0052d9;
+  box-shadow: 0 0 0 3px rgba(0, 82, 217, 0.12);
 }
 
 .form-input.has-error {
@@ -651,7 +588,7 @@ function switchMode(mode) {
 }
 
 .form-input::placeholder {
-  color: #a8b4c1;
+  color: #8ea2bf;
 }
 
 .password-toggle {
@@ -693,7 +630,7 @@ function switchMode(mode) {
 .forgot-password-btn {
   background: none;
   border: none;
-  color: #1e4fb4;
+  color: #0052d9;
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
@@ -710,10 +647,10 @@ function switchMode(mode) {
 /* 提交按钮 */
 .submit-btn {
   padding: 12px 24px;
-  background: linear-gradient(135deg, #1e4fb4 0%, #1a3f8a 100%);
+  background: linear-gradient(135deg, #0052d9, #2f7bff);
   color: white;
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;
@@ -721,12 +658,12 @@ function switchMode(mode) {
   margin-top: 8px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  box-shadow: 0 4px 12px rgba(30, 79, 180, 0.2);
+  box-shadow: 0 8px 20px rgba(0, 82, 217, 0.18);
 }
 
 .submit-btn:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(30, 79, 180, 0.3);
+  box-shadow: 0 10px 24px rgba(0, 82, 217, 0.22);
 }
 
 .submit-btn:active:not(:disabled) {
@@ -765,7 +702,7 @@ function switchMode(mode) {
   text-align: center;
   margin-top: 20px;
   padding-top: 20px;
-  border-top: 1px solid #e8eef5;
+  border-top: 1px solid #e3e9f5;
 }
 
 .footer-links p {
@@ -777,7 +714,7 @@ function switchMode(mode) {
 .link-btn {
   background: none;
   border: none;
-  color: #1e4fb4;
+  color: #0052d9;
   font-weight: 600;
   cursor: pointer;
   text-decoration: none;
@@ -794,16 +731,16 @@ function switchMode(mode) {
 /* 响应式设计 */
 @media (max-width: 480px) {
   .auth-content {
-    padding: 30px 20px;
-    border-radius: 16px;
+    padding: 24px 18px;
+    border-radius: 14px;
   }
 
   .app-title {
-    font-size: 20px;
+    font-size: 18px;
   }
 
   .main-title {
-    font-size: 18px;
+    font-size: 17px;
   }
 
   .dynamic-quote {
