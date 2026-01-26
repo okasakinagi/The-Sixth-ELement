@@ -71,6 +71,8 @@ const state = reactive({
   settingsOpen: false,
   addMenuOpen: false,
   saveModalOpen: false,
+  showTemplateGuide: false,
+  templateInput: '',
 })
 
 const formatTime = (value) => {
@@ -251,6 +253,98 @@ const openSettings = () => {
   state.outlineOpen = false
 }
 
+const handleBack = () => {
+  const hasContent = state.questions.length > 0 || state.title !== '未命名问卷' || state.description.trim()
+  if (hasContent) {
+    const confirm = window.confirm('离开当前页面将失去未保存的内容，确认返回任务大厅吗？')
+    if (!confirm) return
+  }
+  router.push('/')
+}
+
+const toggleTemplateGuide = () => {
+  state.showTemplateGuide = !state.showTemplateGuide
+  if (state.showTemplateGuide && !state.templateInput) {
+    state.templateInput = `请按以下格式填写，系统将自动生成问卷：
+
+【问卷主题】：例如：大学生消费习惯调研
+【目标人群】：例如：本校大一至大四学生
+【问题数量】：例如：8-12道题
+【问卷类型】：例如：消费偏好/学习习惯/服务反馈/其他
+【关键问题】：例如：
+1. 每月生活费多少？
+2. 主要消费项目是什么？
+3. 是否有理财习惯？
+
+【特殊要求】（可选）：例如：需要包含多选题、填空题等`
+  }
+}
+
+const generateFromTemplate = () => {
+  const input = state.templateInput.trim()
+  if (!input) {
+    alert('请先填写模板内容')
+    return
+  }
+
+  // 提取模板信息
+  const themeMatch = input.match(/【问卷主题】[:：]\s*(.+)/)
+  const targetMatch = input.match(/【目标人群】[:：]\s*(.+)/)
+  const questionsMatch = input.match(/【关键问题】[:：]\s*([\s\S]+?)(?=【|$)/)
+
+  // 设置标题和描述
+  if (themeMatch) {
+    state.title = themeMatch[1].trim()
+  }
+  if (targetMatch) {
+    state.description = `针对${targetMatch[1].trim()}的问卷调研`
+  }
+
+  // 生成问题
+  const questions = []
+  if (questionsMatch) {
+    const keyQuestions = questionsMatch[1].trim().split('\n').filter(line => line.trim() && /^\d+\./.test(line.trim()))
+    keyQuestions.forEach((q, idx) => {
+      const questionText = q.replace(/^\d+\.\s*/, '').trim()
+      if (questionText) {
+        let type = 'single'
+        if (questionText.includes('多少') || questionText.includes('填写') || questionText.includes('简述')) {
+          type = 'text'
+        } else if (questionText.includes('多选') || questionText.includes('全部')) {
+          type = 'multi'
+        }
+
+        questions.push({
+          id: makeId(),
+          type: type,
+          title: questionText,
+          options: type === 'text' ? [] : ['选项1', '选项2', '选项3', '选项4'],
+          required: idx < 3,
+          isAi: true
+        })
+      }
+    })
+  }
+
+  if (questions.length === 0) {
+    for (let i = 0; i < 5; i++) {
+      questions.push({
+        id: makeId(),
+        type: i % 3 === 0 ? 'multi' : (i % 3 === 1 ? 'single' : 'text'),
+        title: `问题${i + 1}：请根据实际需求修改`,
+        options: i % 3 === 2 ? [] : ['选项1', '选项2', '选项3'],
+        required: i < 3,
+        isAi: true
+      })
+    }
+  }
+
+  state.questions = questions
+  state.showTemplateGuide = false
+  saveDraft()
+  alert(`已成功生成 ${questions.length} 道问题，请根据需要继续编辑`)
+}
+
 const scrollToQuestion = (id) => {
   const element = document.getElementById(id)
   if (element) {
@@ -263,7 +357,9 @@ const scrollToQuestion = (id) => {
   <div class="builder-shell">
     <header class="builder-header">
       <div>
-        <RouterLink class="back" to="/surveys">返回问卷管理</RouterLink>
+        <button class="back" type="button" @click="handleBack">
+          ← 返回任务大厅
+        </button>
         <div class="title-block">
           <button v-if="!state.titleEditing" class="title-display" type="button" @click="startTitleEdit">
             {{ state.title }}
@@ -310,6 +406,32 @@ const scrollToQuestion = (id) => {
     <main class="question-area">
       <div v-if="state.questions.length === 0" class="empty-state">
         <p>点击下方 + 号，开始你的第一道题</p>
+        <button class="template-guide-btn" type="button" @click="toggleTemplateGuide">
+          📝 或使用文字模板快速生成
+        </button>
+      </div>
+
+      <!-- 模板引导面板 -->
+      <div v-if="state.showTemplateGuide" class="template-guide-panel">
+        <div class="template-guide-header">
+          <h3>🎯 文字模板引导</h3>
+          <button class="close-btn" type="button" @click="state.showTemplateGuide = false">×</button>
+        </div>
+        <div class="template-guide-content">
+          <p class="guide-hint">
+            ✨ 请按照以下格式填写，系统将自动为您生成问卷框架
+          </p>
+          <textarea
+            v-model="state.templateInput"
+            class="template-textarea"
+            rows="18"
+            placeholder="模板将自动加载..."
+          ></textarea>
+          <div class="template-actions">
+            <button class="ghost-button" type="button" @click="state.showTemplateGuide = false">取消</button>
+            <button class="primary-button" type="button" @click="generateFromTemplate">生成问卷</button>
+          </div>
+        </div>
       </div>
 
       <div v-for="(question, index) in state.questions" :id="question.id" :key="question.id" class="question-card">
@@ -463,6 +585,21 @@ header {
 .back {
   color: #1e4fb4;
   font-weight: 600;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 15px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.back:hover {
+  background: rgba(30, 79, 180, 0.1);
+  transform: translateX(-2px);
 }
 
 .title-block {
@@ -579,6 +716,125 @@ header {
   border: 2px dashed #c8d6ee;
   color: #7b8da7;
   background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-items: center;
+}
+
+.template-guide-btn {
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #4f80f1, #2665d4);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(38, 101, 212, 0.2);
+}
+
+.template-guide-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(38, 101, 212, 0.3);
+}
+
+.template-guide-panel {
+  background: white;
+  border-radius: 20px;
+  padding: 24px;
+  box-shadow: 0 8px 24px rgba(13, 27, 55, 0.12);
+  border: 2px solid #e6effa;
+  margin-bottom: 24px;
+}
+
+.template-guide-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 2px solid #e6effa;
+}
+
+.template-guide-header h3 {
+  margin: 0;
+  font-size: 20px;
+  color: #0d1b37;
+  font-weight: 700;
+}
+
+.close-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: #f1f2f6;
+  color: #5a6579;
+  font-size: 24px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.close-btn:hover {
+  background: #ef4444;
+  color: white;
+}
+
+.template-guide-content {
+  display: grid;
+  gap: 16px;
+}
+
+.guide-hint {
+  margin: 0;
+  padding: 12px 16px;
+  background: #f0f7ff;
+  border-left: 4px solid #2665d4;
+  border-radius: 8px;
+  color: #1a3b7f;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.template-textarea {
+  width: 100%;
+  padding: 20px;
+  border: 2px solid #d8e4f4;
+  border-radius: 16px;
+  font-size: 15px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  line-height: 2;
+  color: #0d1b37;
+  background: linear-gradient(to bottom, #ffffff, #f9fbff);
+  resize: vertical;
+  min-height: 450px;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(13, 27, 55, 0.04);
+}
+
+.template-textarea:focus {
+  outline: none;
+  border-color: #2665d4;
+  box-shadow: 0 0 0 4px rgba(38, 101, 212, 0.12), 0 4px 16px rgba(13, 27, 55, 0.08);
+  background: white;
+  transform: translateY(-1px);
+}
+
+.template-textarea::placeholder {
+  color: #a0b0cc;
+  font-style: italic;
+}
+
+.template-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
 }
 
 .question-card {

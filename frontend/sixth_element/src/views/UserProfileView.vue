@@ -11,6 +11,30 @@
           <div class="user-basic-info">
             <h1 class="username">{{ userData.name || '未设置姓名' }}</h1>
             <p class="user-subtitle">{{ userData.college || '未设置学院' }} · {{ userData.major || '未设置专业' }}</p>
+            <div class="status-row">
+              <div
+                class="status-pill"
+                :class="{ empty: !userData.currentStatus }"
+                @click="startStatusEdit"
+              >
+                <span class="status-dot"></span>
+                <span class="status-text">{{ userData.currentStatus || '添加状态' }}</span>
+                <span class="status-edit">✏️</span>
+              </div>
+              <div v-if="isEditingStatus" class="status-editor">
+                <input
+                  v-model="statusInput"
+                  type="text"
+                  class="status-input"
+                  placeholder="例如：正在备战期末、度假中、找实习"
+                  @keyup.enter="saveStatus"
+                />
+                <div class="status-actions">
+                  <button class="status-save" @click="saveStatus">保存</button>
+                  <button class="status-cancel" @click="cancelStatus">取消</button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
         <div class="header-actions">
@@ -150,72 +174,51 @@
         </div>
       </div>
 
-      <!-- 当前状态卡片 -->
-      <div class="info-card status-card" v-if="userData.currentStatus">
-        <div class="card-header">
-          <h3 class="card-title">
-            <span class="card-icon">💭</span>
-            当前状态
-          </h3>
-        </div>
-        <div class="card-body">
-          <div class="status-content">
-            {{ userData.currentStatus }}
-          </div>
-        </div>
-      </div>
+    </div>
 
-      <!-- 画像完成度卡片 -->
-      <div class="info-card completion-card">
-        <div class="card-header">
-          <h3 class="card-title">
-            <span class="card-icon">📊</span>
-            个人画像完成度
-          </h3>
-        </div>
-        <div class="card-body">
-          <div class="completion-content">
-            <div class="circular-progress">
-              <svg class="progress-ring" width="120" height="120">
-                <circle
-                  class="progress-ring-circle-bg"
-                  stroke="#e3f2fd"
-                  stroke-width="8"
-                  fill="transparent"
-                  r="52"
-                  cx="60"
-                  cy="60"
-                />
-                <circle
-                  class="progress-ring-circle"
-                  stroke="url(#gradient)"
-                  stroke-width="8"
-                  fill="transparent"
-                  r="52"
-                  cx="60"
-                  cy="60"
-                  :stroke-dasharray="circumference"
-                  :stroke-dashoffset="progressOffset"
-                />
-                <defs>
-                  <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" style="stop-color:#42a5f5;stop-opacity:1" />
-                    <stop offset="100%" style="stop-color:#1976d2;stop-opacity:1" />
-                  </linearGradient>
-                </defs>
-              </svg>
-              <div class="progress-text">
-                <span class="progress-number">{{ completionRate }}%</span>
-              </div>
-            </div>
-            <div class="completion-info">
-              <p class="completion-title">{{ completionMessage }}</p>
-              <p class="completion-subtitle">完善度越高，推荐越精准</p>
-              <button class="improve-button" @click="goToEdit" v-if="completionRate < 100">
-                立即完善
-              </button>
-            </div>
+    <!-- 悬浮画像完成度 -->
+    <div class="floating-progress" :class="{ mobile: isMobile }">
+      <div class="floating-header">
+        <span class="floating-title">画像完成度</span>
+        <button class="floating-action" @click="goToEdit">去完善</button>
+      </div>
+      <div class="floating-body">
+        <div class="circular-progress small">
+          <svg class="progress-ring" width="84" height="84">
+            <circle
+              class="progress-ring-circle-bg"
+              stroke="#e3f2fd"
+              stroke-width="8"
+              fill="transparent"
+              r="34"
+              cx="42"
+              cy="42"
+            />
+            <circle
+              class="progress-ring-circle"
+              stroke="url(#gradient-floating)"
+              stroke-width="8"
+              fill="transparent"
+              r="34"
+              cx="42"
+              cy="42"
+              :stroke-dasharray="floatingCircumference"
+              :stroke-dashoffset="floatingOffset"
+            />
+            <defs>
+              <linearGradient id="gradient-floating" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:#42a5f5;stop-opacity:1" />
+                <stop offset="100%" style="stop-color:#1976d2;stop-opacity:1" />
+              </linearGradient>
+            </defs>
+          </svg>
+          <div class="progress-text small">
+            <span class="progress-number">{{ completionRate }}%</span>
           </div>
+        </div>
+        <div class="floating-info">
+          <p class="floating-sub">完善度越高，推荐越精准</p>
+          <p class="floating-tip">{{ completionMessage }}</p>
         </div>
       </div>
     </div>
@@ -223,13 +226,29 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
 
-// TODO: 从后端 API 获取用户数据
-const userData = ref({
+const STORAGE_KEY = 'sixth_element_profile'
+const defaultProfile = {
+  name: '未设置姓名',
+  gender: '',
+  age: null,
+  grade: '',
+  college: '',
+  major: '',
+  mbti: '',
+  interests: '',
+  organizations: '',
+  consumptionPreferences: [],
+  careerIntention: [],
+  skills: [],
+  currentStatus: ''
+}
+
+const sampleProfile = {
   name: '张三',
   gender: '男',
   age: 20,
@@ -243,6 +262,41 @@ const userData = ref({
   careerIntention: ['大厂', '考研'],
   skills: ['Python', 'Java', 'C++', '算法'],
   currentStatus: '正在准备期末考试，同时学习 Vue 3'
+}
+
+const userData = ref({ ...defaultProfile, ...sampleProfile })
+const statusInput = ref('')
+const isEditingStatus = ref(false)
+const isMobile = ref(window.innerWidth <= 768)
+
+const handleResize = () => {
+  isMobile.value = window.innerWidth <= 768
+}
+
+const persistProfile = () => {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(userData.value))
+}
+
+const loadProfile = () => {
+  const cached = localStorage.getItem(STORAGE_KEY)
+  if (cached) {
+    try {
+      const parsed = JSON.parse(cached)
+      userData.value = { ...defaultProfile, ...sampleProfile, ...parsed }
+    } catch (error) {
+      console.warn('Failed to parse cached profile, fallback to defaults')
+      userData.value = { ...defaultProfile, ...sampleProfile }
+    }
+  }
+}
+
+onMounted(() => {
+  loadProfile()
+  window.addEventListener('resize', handleResize)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', handleResize)
 })
 
 // 计算用户名首字母
@@ -279,11 +333,27 @@ const completionMessage = computed(() => {
   return '快来完善你的画像吧'
 })
 
-// 圆形进度条计算
-const circumference = 2 * Math.PI * 52
-const progressOffset = computed(() => {
-  return circumference - (completionRate.value / 100) * circumference
+// 圆形进度条计算（悬浮）
+const floatingCircumference = 2 * Math.PI * 34
+const floatingOffset = computed(() => {
+  return floatingCircumference - (completionRate.value / 100) * floatingCircumference
 })
+
+const startStatusEdit = () => {
+  statusInput.value = userData.value.currentStatus || ''
+  isEditingStatus.value = true
+}
+
+const saveStatus = () => {
+  userData.value.currentStatus = statusInput.value.trim()
+  persistProfile()
+  isEditingStatus.value = false
+}
+
+const cancelStatus = () => {
+  isEditingStatus.value = false
+  statusInput.value = ''
+}
 
 // 跳转到编辑页面
 const goToEdit = () => {
@@ -378,6 +448,107 @@ const goToTaskHall = () => {
   font-size: 16px;
   color: #757575;
   margin: 0;
+}
+
+.status-row {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: linear-gradient(135deg, #f8fbff, #eef4ff);
+  border: 1px solid rgba(33, 150, 243, 0.2);
+  border-radius: 999px;
+  color: #1565c0;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  box-shadow: 0 6px 14px rgba(33, 150, 243, 0.1);
+  width: fit-content;
+}
+
+.status-pill:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px rgba(33, 150, 243, 0.15);
+}
+
+.status-pill.empty {
+  color: #7a8ca8;
+  border-style: dashed;
+  background: #f7f9fb;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #4caf50;
+  box-shadow: 0 0 0 4px rgba(76, 175, 80, 0.15);
+}
+
+.status-pill.empty .status-dot {
+  background: #b0bec5;
+  box-shadow: none;
+}
+
+.status-text {
+  font-size: 14px;
+}
+
+.status-edit {
+  font-size: 13px;
+  color: #5c7599;
+}
+
+.status-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: #fff;
+  border: 1px solid #e3e9f5;
+  border-radius: 12px;
+  padding: 10px 12px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.06);
+}
+
+.status-input {
+  padding: 10px 12px;
+  border: 1px solid #cfd8e3;
+  border-radius: 8px;
+  font-size: 14px;
+  width: 100%;
+}
+
+.status-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.status-save,
+.status-cancel {
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.status-save {
+  background: linear-gradient(135deg, #42a5f5, #2196f3);
+  color: #fff;
+}
+
+.status-cancel {
+  background: #f1f5fb;
+  color: #5c7599;
+  border: 1px solid #e3e9f5;
 }
 
 .edit-button {
@@ -697,6 +868,97 @@ const goToTaskHall = () => {
 .improve-button:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(33, 150, 243, 0.3);
+}
+
+/* 悬浮画像进度 */
+.floating-progress {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  width: 260px;
+  background: #ffffff;
+  border: 1px solid #e3e9f5;
+  border-radius: 16px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.12);
+  padding: 14px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.floating-progress.mobile {
+  right: 14px;
+  bottom: 14px;
+  width: 220px;
+}
+
+.floating-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.floating-title {
+  font-weight: 700;
+  color: #0b2b66;
+  font-size: 14px;
+}
+
+.floating-action {
+  border: none;
+  background: linear-gradient(135deg, #42a5f5, #2196f3);
+  color: #fff;
+  border-radius: 10px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(33, 150, 243, 0.28);
+}
+
+.floating-body {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.circular-progress.small {
+  width: 84px;
+  height: 84px;
+}
+
+.progress-text.small .progress-number {
+  font-size: 20px;
+}
+
+.floating-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.floating-sub {
+  margin: 0;
+  font-size: 13px;
+  color: #5c7599;
+}
+
+.floating-tip {
+  margin: 0;
+  font-size: 14px;
+  color: #1565c0;
+  font-weight: 700;
+}
+
+@media (max-width: 640px) {
+  .floating-progress {
+    position: sticky;
+    width: 100%;
+    right: auto;
+    bottom: auto;
+    margin: 14px 0;
+  }
 }
 
 /* 响应式设计 */

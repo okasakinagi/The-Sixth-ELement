@@ -7,7 +7,53 @@
       </button>
     </div>
 
-    <!-- 主内容区域 -->
+    <!-- 悬浮画像完成度 -->
+    <div class="floating-progress" :class="{ mobile: isMobile }">
+      <div class="floating-header">
+        <span class="floating-title">画像完成度</span>
+        <button class="floating-action" @click="saveProfile">保存</button>
+      </div>
+      <div class="floating-body">
+        <div class="circular-progress small">
+          <svg class="progress-ring" width="84" height="84">
+            <circle
+              class="progress-ring-circle-bg"
+              stroke="#e3f2fd"
+              stroke-width="8"
+              fill="transparent"
+              r="34"
+              cx="42"
+              cy="42"
+            />
+            <circle
+              class="progress-ring-circle"
+              stroke="url(#edit-gradient)"
+              stroke-width="8"
+              fill="transparent"
+              r="34"
+              cx="42"
+              cy="42"
+              :stroke-dasharray="floatingCircumference"
+              :stroke-dashoffset="floatingOffset"
+            />
+            <defs>
+              <linearGradient id="edit-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:#42a5f5;stop-opacity:1" />
+                <stop offset="100%" style="stop-color:#1976d2;stop-opacity:1" />
+              </linearGradient>
+            </defs>
+          </svg>
+          <div class="progress-text small">
+            <span class="progress-number">{{ completionRate }}%</span>
+          </div>
+        </div>
+        <div class="floating-info">
+          <p class="floating-sub">完善度越高，推荐越精准</p>
+          <p class="floating-tip">{{ completionRate >= 80 ? '很棒，几乎完成' : '继续补充关键信息' }}</p>
+        </div>
+      </div>
+    </div>
+
     <div class="content-wrapper">
       <!-- 引导文案 -->
       <div class="guide-banner">
@@ -28,10 +74,21 @@
           <!-- 性别 -->
           <div class="form-item">
             <label class="form-label">性别</label>
-            <div class="radio-group">
-              <label class="radio-option" v-for="gender in genderOptions" :key="gender">
-                <input type="radio" :value="gender" v-model="formData.gender" />
-                <span>{{ gender }}</span>
+            <div class="gender-grid">
+              <label
+                v-for="gender in genderOptions"
+                :key="gender.value"
+                class="gender-card"
+                :class="{ active: formData.gender === gender.value }"
+              >
+                <input
+                  type="radio"
+                  :value="gender.value"
+                  v-model="formData.gender"
+                />
+                <div class="gender-icon">{{ gender.icon }}</div>
+                <div class="gender-title">{{ gender.label }}</div>
+                <div class="gender-desc">{{ gender.desc }}</div>
               </label>
             </div>
           </div>
@@ -130,76 +187,133 @@
           <!-- 消费偏好 -->
           <div class="form-item full-width">
             <label class="form-label">消费偏好</label>
-            <div class="tag-group">
-              <span
-                v-for="tag in consumptionTags"
-                :key="tag"
-                class="tag"
-                :class="{ active: formData.consumptionPreferences.includes(tag) }"
-                @click="toggleTag('consumptionPreferences', tag)"
-              >
-                {{ tag }}
-              </span>
+            <div class="tag-section">
+              <div class="tag-group">
+                <span
+                  v-for="tag in consumptionTags"
+                  :key="tag"
+                  class="tag"
+                  :class="{ active: formData.consumptionPreferences.includes(tag) }"
+                  @click="toggleTag('consumptionPreferences', tag)"
+                >
+                  {{ tag }}
+                </span>
+              </div>
+              <div class="custom-tag-input">
+                <input
+                  v-model="customConsumptionInput"
+                  type="text"
+                  placeholder="自定义添加..."
+                  class="tag-input"
+                  @keyup.enter="addCustomTag('consumptionPreferences', customConsumptionInput)"
+                />
+                <button
+                  class="add-tag-btn"
+                  @click="addCustomTag('consumptionPreferences', customConsumptionInput)"
+                >
+                  + 添加
+                </button>
+              </div>
+              <div class="selected-tags" v-if="formData.consumptionPreferences.length > 0">
+                <span class="tag-label">已选择：</span>
+                <span
+                  v-for="tag in formData.consumptionPreferences"
+                  :key="tag"
+                  class="selected-tag"
+                >
+                  {{ tag }}
+                  <span class="remove-tag" @click="removeTag('consumptionPreferences', tag)">×</span>
+                </span>
+              </div>
             </div>
           </div>
 
           <!-- 职业意向 -->
           <div class="form-item full-width">
             <label class="form-label">职业意向</label>
-            <div class="tag-group">
-              <span
-                v-for="tag in careerTags"
-                :key="tag"
-                class="tag"
-                :class="{ active: formData.careerIntention.includes(tag) }"
-                @click="toggleTag('careerIntention', tag)"
-              >
-                {{ tag }}
-              </span>
+            <div class="tag-section">
+              <div class="tag-group">
+                <span
+                  v-for="tag in careerTags"
+                  :key="tag"
+                  class="tag"
+                  :class="{ active: formData.careerIntention.includes(tag) }"
+                  @click="toggleTag('careerIntention', tag)"
+                >
+                  {{ tag }}
+                </span>
+              </div>
+              <div class="custom-tag-input">
+                <input
+                  v-model="customCareerInput"
+                  type="text"
+                  placeholder="自定义添加..."
+                  class="tag-input"
+                  @keyup.enter="addCustomTag('careerIntention', customCareerInput)"
+                />
+                <button
+                  class="add-tag-btn"
+                  @click="addCustomTag('careerIntention', customCareerInput)"
+                >
+                  + 添加
+                </button>
+              </div>
+              <div class="selected-tags" v-if="formData.careerIntention.length > 0">
+                <span class="tag-label">已选择：</span>
+                <span
+                  v-for="tag in formData.careerIntention"
+                  :key="tag"
+                  class="selected-tag"
+                >
+                  {{ tag }}
+                  <span class="remove-tag" @click="removeTag('careerIntention', tag)">×</span>
+                </span>
+              </div>
             </div>
           </div>
 
           <!-- 软硬技能 -->
           <div class="form-item full-width">
             <label class="form-label">软硬技能</label>
-            <div class="tag-group">
-              <span
-                v-for="tag in skillTags"
-                :key="tag"
-                class="tag"
-                :class="{ active: formData.skills.includes(tag) }"
-                @click="toggleTag('skills', tag)"
-              >
-                {{ tag }}
-              </span>
+            <div class="tag-section">
+              <div class="tag-group">
+                <span
+                  v-for="tag in skillTags"
+                  :key="tag"
+                  class="tag"
+                  :class="{ active: formData.skills.includes(tag) }"
+                  @click="toggleTag('skills', tag)"
+                >
+                  {{ tag }}
+                </span>
+              </div>
+              <div class="custom-tag-input">
+                <input
+                  v-model="customSkillInput"
+                  type="text"
+                  placeholder="自定义添加..."
+                  class="tag-input"
+                  @keyup.enter="addCustomTag('skills', customSkillInput)"
+                />
+                <button
+                  class="add-tag-btn"
+                  @click="addCustomTag('skills', customSkillInput)"
+                >
+                  + 添加
+                </button>
+              </div>
+              <div class="selected-tags" v-if="formData.skills.length > 0">
+                <span class="tag-label">已选择：</span>
+                <span
+                  v-for="tag in formData.skills"
+                  :key="tag"
+                  class="selected-tag"
+                >
+                  {{ tag }}
+                  <span class="remove-tag" @click="removeTag('skills', tag)">×</span>
+                </span>
+              </div>
             </div>
-          </div>
-
-          <!-- 当前状态 -->
-          <div class="form-item full-width">
-            <label class="form-label">当前状态</label>
-            <input
-              type="text"
-              v-model="formData.currentStatus"
-              placeholder="例如：正在备战期末、失恋中、找实习中"
-              class="form-input"
-            />
-          </div>
-        </div>
-      </div>
-
-      <!-- 匹配进度可视化 -->
-      <div class="progress-section">
-        <div class="progress-info">
-          <div class="progress-icon">🎯</div>
-          <div class="progress-text">
-            <div class="progress-title">个人画像完成度</div>
-            <div class="progress-subtitle">完善度越高，推荐越精准</div>
-          </div>
-        </div>
-        <div class="progress-bar-container">
-          <div class="progress-bar" :style="{ width: completionRate + '%' }">
-            <span class="progress-label">{{ completionRate }}%</span>
           </div>
         </div>
       </div>
@@ -221,13 +335,13 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
 
-// 表单数据
-const formData = ref({
+const STORAGE_KEY = 'sixth_element_profile'
+const defaultProfile = {
   gender: '',
   age: null,
   grade: '',
@@ -238,13 +352,28 @@ const formData = ref({
   organizations: '',
   consumptionPreferences: [],
   careerIntention: [],
-  skills: [],
-  currentStatus: ''
-})
+  skills: []
+}
+
+// 表单数据
+const formData = ref({ ...defaultProfile })
+const isMobile = ref(window.innerWidth <= 768)
+const handleResize = () => {
+  isMobile.value = window.innerWidth <= 768
+}
 
 // 选项配置
-const genderOptions = ['男', '女', '其他', '保密']
-const gradeOptions = ['大一', '大二', '大三', '大四', '研一', '研二', '研三', '博士']
+const genderOptions = [
+  { value: '男', label: '男', icon: '♂', desc: 'He/Him' },
+  { value: '女', label: '女', icon: '♀', desc: 'She/Her' },
+  { value: '其他', label: '其他', icon: '☆', desc: 'Non-binary' },
+  { value: '保密', label: '保密', icon: '…', desc: 'Prefer not to say' }
+]
+const gradeOptions = [
+  '大一', '大二', '大三', '大四', '大五',
+  '研一', '研二', '研三',
+  '博一', '博二', '博三', '博四', '博五'
+]
 const mbtiOptions = [
   'INTJ', 'INTP', 'ENTJ', 'ENTP',
   'INFJ', 'INFP', 'ENFJ', 'ENFP',
@@ -267,12 +396,28 @@ const consumptionTags = ['数码', '美妆', '奶茶', '户外', '运动', '阅�
 const careerTags = ['考公', '大厂', '学术', '创业', '出国', '考研', '自由职业']
 const skillTags = ['Python', 'Java', 'C++', '视频剪辑', '英语口译', 'PS', 'Excel', '写作', '演讲', '摄影']
 
+// 自定义标签输入
+const customConsumptionInput = ref('')
+const customCareerInput = ref('')
+const customSkillInput = ref('')
+
 // Toast
 const showToast = ref(false)
 const toastMessage = ref('')
 
 // 计算完成度
 const completionRate = computed(() => {
+  // 从 localStorage 获取当前状态
+  let currentStatus = ''
+  const cached = localStorage.getItem(STORAGE_KEY)
+  if (cached) {
+    try {
+      currentStatus = JSON.parse(cached).currentStatus || ''
+    } catch (error) {
+      currentStatus = ''
+    }
+  }
+
   const fields = [
     formData.value.gender,
     formData.value.age,
@@ -285,12 +430,15 @@ const completionRate = computed(() => {
     formData.value.consumptionPreferences.length > 0,
     formData.value.careerIntention.length > 0,
     formData.value.skills.length > 0,
-    formData.value.currentStatus
+    currentStatus
   ]
   
   const filledCount = fields.filter(field => field).length
   return Math.round((filledCount / fields.length) * 100)
 })
+
+const floatingCircumference = 2 * Math.PI * 34
+const floatingOffset = computed(() => floatingCircumference - (completionRate.value / 100) * floatingCircumference)
 
 // 切换标签选择
 const toggleTag = (fieldName, tag) => {
@@ -302,41 +450,95 @@ const toggleTag = (fieldName, tag) => {
   }
 }
 
+// 添加自定义标签
+const addCustomTag = (fieldName, inputRef) => {
+  const value = inputRef.value.trim()
+  if (value && !formData.value[fieldName].includes(value)) {
+    formData.value[fieldName].push(value)
+    inputRef.value = ''
+  }
+}
+
+// 移除标签
+const removeTag = (fieldName, tag) => {
+  const index = formData.value[fieldName].indexOf(tag)
+  if (index > -1) {
+    formData.value[fieldName].splice(index, 1)
+  }
+}
+
 // 保存个人信息
 const saveProfile = () => {
-  // TODO: 实现保存逻辑，调用后端 API
-  console.log('保存的数据:', formData.value)
+  let cachedStatus = ''
+  const cached = localStorage.getItem(STORAGE_KEY)
+  if (cached) {
+    try {
+      cachedStatus = JSON.parse(cached).currentStatus || ''
+    } catch (error) {
+      cachedStatus = ''
+    }
+  }
+
+  const payload = JSON.parse(JSON.stringify({ ...formData.value, currentStatus: cachedStatus }))
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
   
-  toastMessage.value = '信息已更新，已为您优化任务大厅的推荐逻辑'
+  toastMessage.value = '信息已更新，正在返回个人信息页面...'
   showToast.value = true
   
   setTimeout(() => {
     showToast.value = false
-  }, 3000)
+    router.push('/profile')
+  }, 1500)
 }
 
 // 返回个人主页
 const goBack = () => {
   router.push('/profile')
 }
+
+// 初始化时从本地存储恢复
+onMounted(() => {
+  const cached = localStorage.getItem(STORAGE_KEY)
+  if (cached) {
+    try {
+      const parsed = JSON.parse(cached)
+      // 确保数组字段是数组类型
+      formData.value = {
+        ...defaultProfile,
+        ...parsed,
+        consumptionPreferences: Array.isArray(parsed.consumptionPreferences) ? parsed.consumptionPreferences : [],
+        careerIntention: Array.isArray(parsed.careerIntention) ? parsed.careerIntention : [],
+        skills: Array.isArray(parsed.skills) ? parsed.skills : []
+      }
+    } catch (error) {
+      console.warn('Failed to parse cached profile, fallback to defaults')
+      formData.value = { ...defaultProfile }
+    }
+  }
+  window.addEventListener('resize', handleResize)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', handleResize)
+})
 </script>
 
 <style scoped>
 .user-profile-container {
   min-height: 100vh;
-  width: 100vw;
+  width: 100%;
   background: linear-gradient(135deg, #e3f2fd 0%, #f5f9ff 100%);
-  padding: 20px;
+  padding: 28px 20px 36px;
   overflow-x: hidden;
   position: relative;
 }
 
 /* 头部 */
 .header {
-  max-width: 1200px;
   width: 100%;
-  margin: 0 auto 20px;
-  padding: 0 10px;
+  max-width: 100%;
+  margin: 0 0 20px;
+  padding: 0 12px;
 }
 
 .back-button {
@@ -366,10 +568,10 @@ const goBack = () => {
 
 /* 内容区域 */
 .content-wrapper {
-  max-width: 1200px;
-  width: calc(100% - 20px);
-  margin: 0 auto;
-  padding: 0 10px;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 0 12px;
   box-sizing: border-box;
 }
 
@@ -457,7 +659,7 @@ const goBack = () => {
 /* 表单网格 */
 .form-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 20px;
 }
 
@@ -528,6 +730,60 @@ const goBack = () => {
   accent-color: #2196f3;
 }
 
+.gender-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+
+.gender-card {
+  position: relative;
+  padding: 16px 14px;
+  border: 2px solid #e0e0e0;
+  border-radius: 12px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.gender-card input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.gender-card:hover {
+  border-color: #2196f3;
+  box-shadow: 0 6px 14px rgba(33, 150, 243, 0.12);
+  transform: translateY(-2px);
+}
+
+.gender-card.active {
+  border-color: #2196f3;
+  background: linear-gradient(135deg, #e3f2fd 0%, #f5f9ff 100%);
+  box-shadow: 0 8px 16px rgba(33, 150, 243, 0.16);
+}
+
+.gender-icon {
+  font-size: 20px;
+  color: #1976d2;
+}
+
+.gender-title {
+  font-weight: 700;
+  color: #1f2b3a;
+}
+
+.gender-desc {
+  font-size: 12px;
+  color: #6b7a90;
+}
+
 /* 标签组 */
 .tag-group {
   display: flex;
@@ -559,63 +815,98 @@ const goBack = () => {
   font-weight: 600;
 }
 
-/* 进度区域 */
-.progress-section {
-  background: white;
-  border-radius: 16px;
-  padding: 25px;
-  margin-bottom: 20px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-}
-
-.progress-info {
+/* 标签区域 */
+.tag-section {
   display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* 自定义标签输入 */
+.custom-tag-input {
+  display: flex;
+  gap: 8px;
   align-items: center;
-  gap: 15px;
-  margin-bottom: 15px;
 }
 
-.progress-icon {
-  font-size: 36px;
+.tag-input {
+  flex: 1;
+  padding: 10px 14px;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 14px;
+  transition: all 0.3s ease;
 }
 
-.progress-title {
-  font-size: 18px;
-  font-weight: bold;
-  color: #1565c0;
+.tag-input:focus {
+  outline: none;
+  border-color: #2196f3;
+  box-shadow: 0 0 0 3px rgba(33, 150, 243, 0.1);
 }
 
-.progress-subtitle {
+.add-tag-btn {
+  padding: 10px 18px;
+  background: linear-gradient(135deg, #42a5f5, #2196f3);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  white-space: nowrap;
+}
+
+.add-tag-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(33, 150, 243, 0.3);
+}
+
+/* 已选择的标签 */
+.selected-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px;
+  background: #f5f9ff;
+  border-radius: 8px;
+  border: 1px solid #e3f2fd;
+  align-items: center;
+}
+
+.tag-label {
   font-size: 13px;
   color: #757575;
-  margin-top: 2px;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
-.progress-bar-container {
-  height: 30px;
-  background: #e3f2fd;
-  border-radius: 15px;
-  overflow: hidden;
-  position: relative;
-}
-
-.progress-bar {
-  height: 100%;
-  background: linear-gradient(90deg, #42a5f5 0%, #2196f3 50%, #1976d2 100%);
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  padding-right: 15px;
-  transition: width 0.5s ease;
-  border-radius: 15px;
-}
-
-.progress-label {
+.selected-tag {
+  padding: 6px 12px;
+  background: linear-gradient(135deg, #2196f3, #1976d2);
   color: white;
-  font-weight: bold;
-  font-size: 14px;
+  border-radius: 16px;
+  font-size: 13px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
+.remove-tag {
+  cursor: pointer;
+  font-size: 18px;
+  font-weight: bold;
+  line-height: 1;
+  transition: all 0.2s ease;
+}
+
+.remove-tag:hover {
+  transform: scale(1.2);
+  color: #ffeb3b;
+}
+
+/* 进度区域 */
 /* 操作栏 */
 .action-bar {
   text-align: center;
@@ -642,6 +933,115 @@ const goBack = () => {
 
 .save-button:active {
   transform: translateY(0);
+}
+
+/* 悬浮画像进度 */
+.floating-progress {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  width: 260px;
+  background: #ffffff;
+  border: 1px solid #e3e9f5;
+  border-radius: 16px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.12);
+  padding: 14px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.floating-progress.mobile {
+  right: 14px;
+  bottom: 14px;
+  width: 220px;
+}
+
+.floating-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.floating-title {
+  font-weight: 700;
+  color: #0b2b66;
+  font-size: 14px;
+}
+
+.floating-action {
+  border: none;
+  background: linear-gradient(135deg, #42a5f5, #2196f3);
+  color: #fff;
+  border-radius: 10px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(33, 150, 243, 0.28);
+  transition: all 0.25s ease;
+}
+
+.floating-action:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(33, 150, 243, 0.35);
+}
+
+.floating-body {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.circular-progress.small {
+  width: 84px;
+  height: 84px;
+  position: relative;
+}
+
+.progress-ring {
+  transform: rotate(-90deg);
+}
+
+.progress-ring-circle {
+  transition: stroke-dashoffset 0.5s ease;
+  stroke-linecap: round;
+}
+
+.progress-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.progress-text.small .progress-number {
+  font-size: 20px;
+  font-weight: 700;
+  color: #1976d2;
+}
+
+.floating-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.floating-sub {
+  margin: 0;
+  font-size: 13px;
+  color: #5c7599;
+}
+
+.floating-tip {
+  margin: 0;
+  font-size: 14px;
+  color: #1565c0;
+  font-weight: 700;
 }
 
 /* Toast 提示 */
@@ -687,15 +1087,15 @@ const goBack = () => {
 /* 响应式设计 */
 @media (max-width: 768px) {
   .user-profile-container {
-    padding: 15px 10px;
+    padding: 16px 10px 22px;
   }
 
   .header {
-    padding: 0 5px;
+    padding: 0 8px;
   }
 
   .content-wrapper {
-    padding: 0 5px;
+    padding: 0 8px;
   }
 
   .form-grid {
@@ -744,9 +1144,19 @@ const goBack = () => {
   }
 }
 
+@media (max-width: 640px) {
+  .floating-progress {
+    position: sticky;
+    width: 100%;
+    right: auto;
+    bottom: auto;
+    margin: 14px 0;
+  }
+}
+
 @media (max-width: 480px) {
   .user-profile-container {
-    padding: 10px 5px;
+    padding: 12px 6px 18px;
   }
 
   .guide-banner {
