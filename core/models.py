@@ -29,6 +29,20 @@ class AuthToken(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
 
+class PasswordResetCode(models.Model):
+    """密码重置验证码"""
+    email = models.EmailField(db_index=True)
+    code = models.CharField(max_length=6)  # 6位数字验证码
+    expires_at = models.DateTimeField()
+    is_used = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["email", "is_used", "expires_at"], name="reset_code_lookup_idx"),
+        ]
+
+
 class Role(models.Model):
     name = models.CharField(max_length=64)
     description = models.CharField(max_length=255, blank=True, null=True)

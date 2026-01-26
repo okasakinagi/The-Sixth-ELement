@@ -67,6 +67,15 @@ function toggleMobileMenu() {
         </RouterLink>
 
         <RouterLink
+          to="/help"
+          :class="['menu-item', { active: isActive('help-center') }]"
+          @click="closeMobileMenu"
+        >
+          <span class="menu-icon">❓</span>
+          <span class="menu-label">帮助中心</span>
+        </RouterLink>
+
+        <RouterLink
           to="/profile"
           :class="['menu-item', { active: isActive('profile') }]"
           @click="closeMobileMenu"
