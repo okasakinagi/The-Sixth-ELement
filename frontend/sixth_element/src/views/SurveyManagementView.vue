@@ -9,6 +9,15 @@ const hideCompleted = ref(false)
 const showDeleteModal = ref(false)
 const deleteTarget = ref(null)
 const showPublishModal = ref(false)
+const showPublishConfigModal = ref(false)
+const publishTarget = ref(null)
+const publishConfig = ref({
+  rewardPoints: 3,
+  targetCount: 100,
+  promptConstraint: '',
+  speedBoost: false,
+  estimatedMinutes: 5
+})
 
 const surveys = ref([
   {
@@ -72,7 +81,7 @@ const sections = computed(() => {
   const result = [
     { key: 'draft', title: '未发出', hint: '已创建但尚未发布', items: draft },
     { key: 'live', title: '已发出', hint: '进行中 / 暂停中', items: live },
-    { key: 'ended', title: '已结束', hint: '份数已满或手动截止', items: ended },
+    { key: 'ended', title: '已结束', hint: '份数已满的问卷', items: ended },
   ]
 
   if (hideCompleted.value) {
@@ -104,6 +113,30 @@ const closeDeleteModal = () => {
 const closePublishModal = () => {
   showPublishModal.value = false
   router.replace({ query: {} })
+}
+
+const openPublishConfig = (survey) => {
+  publishTarget.value = survey
+  publishConfig.value = {
+    rewardPoints: 3,
+    targetCount: 100,
+    promptConstraint: '',
+    speedBoost: false,
+    estimatedMinutes: 5
+  }
+  showPublishConfigModal.value = true
+}
+
+const closePublishConfig = () => {
+  showPublishConfigModal.value = false
+  publishTarget.value = null
+}
+
+const confirmPublish = () => {
+  if (!publishTarget.value) return
+  publishTarget.value.status = 'live'
+  publishTarget.value.target = publishConfig.value.targetCount
+  closePublishConfig()
 }
 
 const confirmDelete = () => {
@@ -149,11 +182,17 @@ watch(
         <h1>问卷管理</h1>
       </div>
       <div class="header-actions">
-        <div class="points">
+        <RouterLink class="points" to="/points">
           <span>积分余额</span>
           <strong>{{ pointsBalance.toLocaleString() }}</strong>
-        </div>
-        <RouterLink class="primary-button" to="/survey/new">+ 创建新问卷</RouterLink>
+        </RouterLink>
+        <RouterLink class="avatar-button" to="/profile" aria-label="个人信息">
+          <span>U</span>
+        </RouterLink>
+        <RouterLink class="primary-button" to="/survey/new">
+          <span class="button-icon">📝</span>
+          <span>创建问卷</span>
+        </RouterLink>
       </div>
     </header>
 
@@ -180,6 +219,9 @@ watch(
           </div>
 
           <div v-for="survey in section.items" :key="survey.id" class="survey-card" @contextmenu.prevent="openDeleteModal(survey)">
+            <button class="delete-btn" @click.stop="openDeleteModal(survey)" aria-label="删除问卷">
+              ×
+            </button>
             <div class="survey-meta">
               <div>
                 <p class="survey-title">{{ survey.title }}</p>
@@ -199,6 +241,14 @@ watch(
             </div>
 
             <div class="survey-actions">
+              <button
+                v-if="survey.status === 'draft'"
+                class="primary-button small"
+                type="button"
+                @click="openPublishConfig(survey)"
+              >
+                发布问卷
+              </button>
               <button
                 v-if="survey.status === 'live' || survey.status === 'paused'"
                 class="ghost-button"
@@ -231,7 +281,6 @@ watch(
               >
                 查看问卷
               </button>
-              <span class="card-hint">右键可删除</span>
             </div>
           </div>
         </div>
@@ -256,6 +305,60 @@ watch(
       <div class="modal-actions">
         <button class="ghost-button" type="button" @click="closePublishModal">稍后再说</button>
         <button class="primary-button" type="button" @click="closePublishModal">确认发布</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 发布配置模态框 -->
+  <div v-if="showPublishConfigModal" class="modal-backdrop" @click.self="closePublishConfig">
+    <div class="modal config-modal">
+      <h3>发布问卷配置</h3>
+      <div class="config-form">
+        <div class="form-group">
+          <label>奖励积分（每份）</label>
+          <input v-model.number="publishConfig.rewardPoints" type="number" min="1" max="10" />
+          <span class="hint">每份问卷给填写者的积分</span>
+        </div>
+        <div class="form-group">
+          <label>目标份数</label>
+          <input v-model.number="publishConfig.targetCount" type="number" min="10" max="1000" />
+          <span class="hint">需要收集的问卷份数</span>
+        </div>
+        <div class="form-group">
+          <label>预估时间（分钟）</label>
+          <input v-model.number="publishConfig.estimatedMinutes" type="number" min="1" max="60" />
+          <span class="hint">填写问卷需要的时间</span>
+        </div>
+        <div class="form-group">
+          <label>Prompt约束（可选）</label>
+          <textarea v-model="publishConfig.promptConstraint" rows="3" placeholder="例如：只允许本校学生填写、需要在校生等..."></textarea>
+          <span class="hint">AI将根据约束过滤不符合条件的填写</span>
+        </div>
+        <div class="form-group checkbox-group">
+          <label>
+            <input v-model="publishConfig.speedBoost" type="checkbox" />
+            <span>积分加速（额外消耗 {{ publishConfig.targetCount * 0.5 }} 积分）</span>
+          </label>
+          <span class="hint">优先展示给高活跃用户，加快收集速度</span>
+        </div>
+        <div class="cost-summary">
+          <div class="cost-row">
+            <span>基础成本</span>
+            <span>{{ publishConfig.rewardPoints * publishConfig.targetCount }} 积分</span>
+          </div>
+          <div v-if="publishConfig.speedBoost" class="cost-row">
+            <span>加速费用</span>
+            <span>{{ publishConfig.targetCount * 0.5 }} 积分</span>
+          </div>
+          <div class="cost-row total">
+            <span>总计</span>
+            <strong>{{ publishConfig.rewardPoints * publishConfig.targetCount + (publishConfig.speedBoost ? publishConfig.targetCount * 0.5 : 0) }} 积分</strong>
+          </div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="ghost-button" type="button" @click="closePublishConfig">取消</button>
+        <button class="primary-button" type="button" @click="confirmPublish">确认发布</button>
       </div>
     </div>
   </div>
@@ -304,12 +407,42 @@ watch(
   text-align: right;
   font-size: 12px;
   color: #5a7395;
+  text-decoration: none;
+  padding: 8px 16px;
+  border-radius: 12px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.points:hover {
+  background: rgba(38, 101, 212, 0.05);
 }
 
 .points strong {
   font-size: 18px;
   color: #1e4fb4;
   font-weight: 600;
+}
+
+.avatar-button {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #2665d4, #4f80f1);
+  color: white;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  font-weight: 700;
+  font-size: 16px;
+  box-shadow: 0 4px 12px rgba(38, 101, 212, 0.2);
+  transition: all 0.2s ease;
+}
+
+.avatar-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(38, 101, 212, 0.3);
 }
 
 .primary-button {
@@ -319,13 +452,29 @@ watch(
   border-radius: 14px;
   font-weight: 600;
   text-decoration: none;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   cursor: pointer;
   border: none;
+  font-size: 14px;
+  transition: all 0.2s ease;
 }
 
 .primary-button:hover {
   opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.primary-button.small {
+  padding: 8px 16px;
+  font-size: 13px;
+  border-radius: 999px;
+}
+
+.button-icon {
+  font-size: 16px;
+  line-height: 1;
 }
 
 .control-bar {
@@ -440,6 +589,34 @@ watch(
   gap: 14px;
   background: #fbfdff;
   transition: all 0.3s ease;
+  position: relative;
+}
+
+.delete-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(244, 67, 54, 0.1);
+  color: #f44336;
+  font-size: 20px;
+  font-weight: bold;
+  line-height: 1;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+.delete-btn:hover {
+  background: #f44336;
+  color: white;
+  transform: scale(1.1);
 }
 
 .survey-card:hover {
@@ -625,6 +802,97 @@ watch(
   background: #dc2626;
 }
 
+.config-modal {
+  width: min(480px, 90vw);
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.config-form {
+  display: grid;
+  gap: 20px;
+}
+
+.form-group {
+  display: grid;
+  gap: 8px;
+}
+
+.form-group label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #0d1b37;
+}
+
+.form-group input[type="number"],
+.form-group textarea {
+  padding: 10px 14px;
+  border: 1px solid #d8e4f4;
+  border-radius: 10px;
+  font-size: 14px;
+  color: #0d1b37;
+  background: #ffffff;
+  transition: all 0.2s ease;
+}
+
+.form-group input[type="number"]:focus,
+.form-group textarea:focus {
+  outline: none;
+  border-color: #2665d4;
+  box-shadow: 0 0 0 3px rgba(38, 101, 212, 0.1);
+}
+
+.form-group textarea {
+  resize: vertical;
+  font-family: inherit;
+}
+
+.form-group .hint {
+  font-size: 12px;
+  color: #6d7f9a;
+}
+
+.checkbox-group label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: normal;
+  cursor: pointer;
+}
+
+.checkbox-group input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.cost-summary {
+  background: #f2f6ff;
+  padding: 16px;
+  border-radius: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.cost-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+  color: #415673;
+}
+
+.cost-row.total {
+  padding-top: 10px;
+  border-top: 1px solid #d8e4f4;
+  font-size: 16px;
+  color: #0d1b37;
+}
+
+.cost-row.total strong {
+  color: #1e4fb4;
+  font-size: 18px;
+}
+
 @media (max-width: 768px) {
   .survey-main {
     margin-left: 0;
@@ -643,7 +911,17 @@ watch(
 
   .header-actions {
     width: 100%;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: auto auto 1fr;
+    gap: 10px;
+  }
+
+  .primary-button {
+    grid-column: 1 / -1;
+  }
+
+  .config-modal {
+    width: 95vw;
   }
 }
 

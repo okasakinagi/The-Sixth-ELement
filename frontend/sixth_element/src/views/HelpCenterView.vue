@@ -13,14 +13,15 @@
       {{ mobileSidebarOpen ? '▲' : '▼' }}
     </button>
 
-    <!-- 左侧导航 -->
-    <aside 
-      class="help-sidebar"
-      :class="{ 
-        'collapsed': sidebarCollapsed, 
-        'mobile-open': mobileSidebarOpen 
-      }"
-    >
+    <div class="help-shell">
+      <!-- 左侧导航 -->
+      <aside 
+        class="help-sidebar"
+        :class="{ 
+          'collapsed': sidebarCollapsed, 
+          'mobile-open': mobileSidebarOpen 
+        }"
+      >
       <!-- 桌面端侧边栏切换按钮 -->
       <button 
         v-if="!isMobile"
@@ -157,6 +158,7 @@
         </div>
       </div>
     </main>
+    </div>
   </div>
 </template>
 
@@ -599,29 +601,38 @@ watch(
 
 <style scoped>
 .help-center {
-  display: flex;
   min-height: 100vh;
   background: linear-gradient(135deg, #f5f7fa 0%, #e4eaf1 100%);
+  padding: 48px 20px 64px;
+}
+
+.help-shell {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 28px;
+  align-items: start;
 }
 
 /* 左侧导航 */
 .help-sidebar {
-  width: 240px;
+  width: 260px;
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(10px);
-  border-right: 1px solid rgba(0, 0, 0, 0.08);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.08);
   display: flex;
   flex-direction: column;
-  position: fixed;
-  left: 0;
-  top: 0;
-  height: 100vh;
+  position: sticky;
+  top: 32px;
+  height: auto;
+  max-height: calc(100vh - 64px);
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: none;
   -ms-overflow-style: none;
-  z-index: 999;
+  z-index: 5;
   transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -1132,16 +1143,17 @@ watch(
 
 /* 右侧内容 */
 .help-content {
-  flex: 1;
-  margin-left: 300px; /* 大幅减少margin-left值，使右侧内容向左移动 */
+  width: min(960px, 100%);
+  justify-self: center;
   padding: 40px;
   overflow-y: auto;
   background: linear-gradient(135deg, #f5f7fa 0%, #e4eaf1 100%);
-  transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 20px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
 }
 
 .help-content.expanded {
-  margin-left: 270px; /* 主应用侧边栏宽度(260px) + 收起后的帮助中心侧边栏宽度(10px) */
+  width: min(1000px, 100%);
 }
 
 .top-nav {
@@ -1340,13 +1352,20 @@ watch(
 
 /* 响应式设计 */
 @media (max-width: 1024px) {
+  .help-shell {
+    grid-template-columns: 1fr;
+    max-width: 960px;
+    gap: 20px;
+  }
+
   .help-sidebar {
-    width: 220px;
-    left: 260px;
+    position: static;
+    width: 100%;
+    max-height: none;
   }
 
   .help-content {
-    margin-left: 480px;
+    width: 100%;
     padding: 32px;
   }
 
@@ -1372,6 +1391,11 @@ watch(
 }
 
 @media (max-width: 768px) {
+  .help-shell {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
   .help-sidebar {
     width: 100%;
     height: 350px;

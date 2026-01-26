@@ -14,8 +14,19 @@
         <button class="ghost" @click="refreshBatch">换一批</button>
       </div>
 
-      <div class="nav-right">
-        <RouterLink class="nav-btn" to="/surveys">问卷管理</RouterLink>
+      <!-- 可拖动的导航菜单 -->
+      <div
+        class="nav-right draggable-menu"
+        ref="menuRef"
+        :style="{ left: menuPosition.x + 'px', top: menuPosition.y + 'px' }"
+        @mousedown="startDrag($event, 'menu')"
+        @touchstart="startDrag($event, 'menu')"
+      >
+        <div class="drag-handle">⋮⋮</div>
+        <RouterLink class="points-badge" to="/points">
+          <span class="points-icon">💰</span>
+          <span class="points-value">{{ userPoints }}</span>
+        </RouterLink>
         <RouterLink class="avatar" to="/profile" aria-label="个人信息">
           <span>U</span>
         </RouterLink>
@@ -31,13 +42,16 @@
       >
         <div class="card-top">
           <div class="card-titles">
-            <p class="sender">{{ task.sender }}</p>
+            <div class="sender-row">
+              <span class="sender-label">From:</span>
+              <span class="sender">{{ task.sender }}</span>
+            </div>
             <h3>{{ task.title }}</h3>
             <p class="subtitle">{{ task.subtitle }}</p>
           </div>
           <div class="meta">
             <span class="pill type">{{ task.type }}</span>
-            <span class="pill time">约 {{ task.estimated }} 分钟</span>
+            <span class="pill time">{{ task.estimated }}min</span>
           </div>
         </div>
 
@@ -48,29 +62,141 @@
               <span v-for="n in 5" :key="n" :class="{ active: n <= task.difficulty }">★</span>
             </div>
           </div>
-          <div class="badge">
+          <div class="badge reward-badge">
             <span class="label">奖励</span>
-            <span class="points">+{{ task.reward }} 积分</span>
+            <span class="points">+{{ task.reward }}</span>
+          </div>
+          <div class="badge participants-badge">
+            <span class="label">👥</span>
+            <span class="count">{{ task.filled }}/{{ task.total }}</span>
           </div>
         </div>
 
         <div class="card-bottom">
-          <div class="progress">
-            <div class="progress-bar" :style="{ width: progressPercent(task) + '%' }"></div>
+          <div class="progress-wrapper">
+            <div class="progress">
+              <div class="progress-bar" :style="{ width: progressPercent(task) + '%' }"></div>
+            </div>
+            <div class="progress-percent">{{ progressPercent(task) }}%</div>
           </div>
-          <div class="progress-text">{{ task.filled }} / {{ task.total }}</div>
+          <div class="match-indicator" :class="getMatchClass(task)">
+            {{ getMatchText(task) }}
+          </div>
+          <button class="delete-btn" @click.stop="handleDelete(idx)" aria-label="删除问卷">
+            ×
+          </button>
         </div>
       </article>
     </section>
 
-    <RouterLink class="fab" to="/survey/new" aria-label="新建问卷">+</RouterLink>
+    <!-- 可拖动的FAB -->
+    <RouterLink
+      class="fab"
+      ref="fabRef"
+      :style="{ right: fabPosition.x + 'px', bottom: fabPosition.y + 'px' }"
+      @mousedown.prevent="startDrag($event, 'fab')"
+      @touchstart.prevent="startDrag($event, 'fab')"
+      to="/survey/new"
+      aria-label="新建问卷"
+    >
+      <span class="fab-icon">📝</span>
+      <span class="fab-plus">+</span>
+    </RouterLink>
   </div>
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 
 const keyword = ref('')
+const userPoints = ref(0) // 用户积分
+
+// 拖拽相关
+const menuRef = ref(null)
+const fabRef = ref(null)
+const menuPosition = ref({ x: 0, y: 0 })
+const fabPosition = ref({ x: 20, y: 20 })
+const dragState = ref({ isDragging: false, type: null, startX: 0, startY: 0, initialX: 0, initialY: 0 })
+
+function startDrag(e, type) {
+  const clientX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX
+  const clientY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY
+
+  dragState.value = {
+    isDragging: true,
+    type: type,
+    startX: clientX,
+    startY: clientY,
+    initialX: type === 'menu' ? menuPosition.value.x : fabPosition.value.x,
+    initialY: type === 'menu' ? menuPosition.value.y : fabPosition.value.y
+  }
+
+  document.addEventListener('mousemove', onDrag)
+  document.addEventListener('mouseup', stopDrag)
+  document.addEventListener('touchmove', onDrag)
+  document.addEventListener('touchend', stopDrag)
+}
+
+function onDrag(e) {
+  if (!dragState.value.isDragging) return
+  
+  const clientX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX
+  const clientY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY
+
+  const deltaX = clientX - dragState.value.startX
+  const deltaY = clientY - dragState.value.startY
+
+  if (dragState.value.type === 'menu') {
+    menuPosition.value = {
+      x: dragState.value.initialX + deltaX,
+      y: dragState.value.initialY + deltaY
+    }
+  } else if (dragState.value.type === 'fab') {
+    // FAB使用right/bottom，所以拖动时需要反向计算
+    fabPosition.value = {
+      x: dragState.value.initialX - deltaX,
+      y: dragState.value.initialY - deltaY
+    }
+  }
+}
+
+function stopDrag() {
+  dragState.value.isDragging = false
+  document.removeEventListener('mousemove', onDrag)
+  document.removeEventListener('mouseup', stopDrag)
+  document.removeEventListener('touchmove', onDrag)
+  document.removeEventListener('touchend', stopDrag)
+}
+
+onMounted(() => {
+  // 初始化导航菜单位置（右上角）
+  if (menuRef.value) {
+    const headerRect = menuRef.value.closest('.header')?.getBoundingClientRect()
+    if (headerRect) {
+      // 菜单宽度约为200px（删除"问卷管理"后）
+      menuPosition.value = { x: headerRect.width - 200, y: 12 }
+    }
+  }
+
+  // 从localStorage读取用户积分
+  try {
+    const profile = localStorage.getItem('sixth_element_profile')
+    if (profile) {
+      const userData = JSON.parse(profile)
+      userPoints.value = userData.points || 0
+    }
+  } catch (error) {
+    console.error('读取用户积分失败:', error)
+    userPoints.value = 128 // 默认值
+  }
+})
+
+onUnmounted(() => {
+  document.removeEventListener('mousemove', onDrag)
+  document.removeEventListener('mouseup', stopDrag)
+  document.removeEventListener('touchmove', onDrag)
+  document.removeEventListener('touchend', stopDrag)
+})
 
 const allTasks = ref([
   { id: 't01', title: '校园生活满意度调查', subtitle: '宿舍、食堂、安保整体反馈', sender: '李同学', type: '校园调研', estimated: 6, difficulty: 2, reward: 3, filled: 54, total: 200 },
@@ -94,10 +220,12 @@ const visibleTasks = ref(pickBatch(allTasks.value))
 
 function pickBatch(pool) {
   const shuffled = [...pool].sort(() => Math.random() - 0.5)
-  return shuffled.slice(0, 10)
+  return shuffled.slice(0, 15) // 增加到15个任务
 }
 
 function refreshBatch() {
+  const confirm = window.confirm('确认要换一批问卷吗？当前页面的问卷将被替换。')
+  if (!confirm) return
   visibleTasks.value = pickBatch(allTasks.value)
 }
 
@@ -127,6 +255,21 @@ const filteredTasks = computed(() => {
 function progressPercent(task) {
   if (!task.total) return 0
   return Math.min(100, Math.round((task.filled / task.total) * 100))
+}
+
+// 根据难度和奖励匹配度
+function getMatchClass(task) {
+  const ratio = task.reward / task.difficulty
+  if (ratio >= 1.5) return 'high-match'
+  if (ratio >= 1) return 'medium-match'
+  return 'low-match'
+}
+
+function getMatchText(task) {
+  const ratio = task.reward / task.difficulty
+  if (ratio >= 1.5) return '高性价比'
+  if (ratio >= 1) return '适中匹配'
+  return '挑战任务'
 }
 </script>
 
@@ -221,6 +364,68 @@ function progressPercent(task) {
   gap: 10px;
 }
 
+/* 可拖动菜单 */
+.draggable-menu {
+  position: fixed;
+  z-index: 100;
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(12px);
+  border: 1px solid #e3e9f5;
+  border-radius: 16px;
+  padding: 8px 12px;
+  box-shadow: 0 8px 24px rgba(0, 82, 217, 0.15);
+  cursor: move;
+  touch-action: none;
+  user-select: none;
+  transition: box-shadow 0.2s ease;
+}
+
+.draggable-menu:hover {
+  box-shadow: 0 12px 32px rgba(0, 82, 217, 0.22);
+}
+
+.drag-handle {
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #a0b0cc;
+  font-size: 14px;
+  letter-spacing: -2px;
+  cursor: grab;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.points-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: linear-gradient(135deg, #ffd700, #ffb400);
+  color: #333;
+  border-radius: 12px;
+  text-decoration: none;
+  font-weight: 700;
+  font-size: 14px;
+  box-shadow: 0 4px 12px rgba(255, 180, 0, 0.3);
+  transition: transform 0.2s ease;
+}
+
+.points-badge:hover {
+  transform: scale(1.05);
+}
+
+.points-icon {
+  font-size: 16px;
+}
+
+.points-value {
+  font-family: 'Courier New', monospace;
+}
+
 .nav-btn {
   padding: 8px 14px;
   background: #0052d9;
@@ -253,8 +458,21 @@ function progressPercent(task) {
 
 .task-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 14px;
+  width: 100%;
+}
+
+@media (min-width: 1400px) {
+  .task-grid {
+    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  }
+}
+
+@media (min-width: 1800px) {
+  .task-grid {
+    grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+  }
 }
 
 .task-card {
@@ -272,6 +490,10 @@ function progressPercent(task) {
 .task-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 10px 24px rgba(0, 82, 217, 0.08);
+}
+
+.task-card:hover .delete-btn {
+  opacity: 1;
 }
 
 .card-top {
@@ -292,10 +514,26 @@ function progressPercent(task) {
   font-size: 14px;
 }
 
+.sender-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.sender-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #5c7599;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
 .sender {
   margin: 0;
   font-size: 13px;
-  color: #7a8ca6;
+  color: #0052d9;
+  font-weight: 600;
 }
 
 .meta {
@@ -313,6 +551,8 @@ function progressPercent(task) {
   color: #0b2b66;
   background: #eef3ff;
   border: 1px solid #d7e3ff;
+  white-space: nowrap;
+  min-width: fit-content;
 }
 
 .pill.time {
@@ -321,8 +561,9 @@ function progressPercent(task) {
 
 .card-middle {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .badge {
@@ -332,7 +573,24 @@ function progressPercent(task) {
   padding: 8px 10px;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.reward-badge {
+  background: linear-gradient(135deg, #fff8e1, #ffecb3);
+  border-color: #ffe082;
+}
+
+.participants-badge {
+  background: linear-gradient(135deg, #e8f5e9, #c8e6c9);
+  border-color: #a5d6a7;
+}
+
+.participants-badge .count {
+  font-weight: 700;
+  color: #2e7d32;
+  font-size: 13px;
 }
 
 .badge .label {
@@ -357,7 +615,42 @@ function progressPercent(task) {
 .card-bottom {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
+  position: relative;
+}
+
+.delete-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(244, 67, 54, 0.1);
+  color: #f44336;
+  font-size: 20px;
+  font-weight: bold;
+  line-height: 1;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  opacity: 0;
+}
+
+.delete-btn:hover {
+  background: #f44336;
+  color: white;
+  transform: scale(1.1);
+}
+
+.progress-wrapper {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
 }
 
 .progress {
@@ -371,36 +664,84 @@ function progressPercent(task) {
 .progress-bar {
   height: 100%;
   background: linear-gradient(135deg, #0052d9, #2f7bff);
+  transition: width 0.3s ease;
 }
 
-.progress-text {
-  min-width: 72px;
+.progress-percent {
+  min-width: 40px;
   text-align: right;
   font-size: 12px;
-  color: #48607f;
+  font-weight: 700;
+  color: #0052d9;
+}
+
+.match-indicator {
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.high-match {
+  background: linear-gradient(135deg, #4caf50, #66bb6a);
+  color: white;
+  box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
+}
+
+.medium-match {
+  background: linear-gradient(135deg, #ff9800, #ffb74d);
+  color: white;
+  box-shadow: 0 2px 8px rgba(255, 152, 0, 0.3);
+}
+
+.low-match {
+  background: linear-gradient(135deg, #f44336, #e57373);
+  color: white;
+  box-shadow: 0 2px 8px rgba(244, 67, 54, 0.3);
 }
 
 .fab {
   position: fixed;
-  right: 20px;
-  bottom: 20px;
-  width: 54px;
-  height: 54px;
+  width: 80px;
+  height: 80px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #0052d9, #2f7bff);
+  background: linear-gradient(135deg, #ff6b6b, #ee5a6f);
   color: #ffffff;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  font-size: 28px;
   text-decoration: none;
-  box-shadow: 0 14px 30px rgba(0, 82, 217, 0.25);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 12px 32px rgba(238, 90, 111, 0.5);
+  transition: all 0.2s ease;
+  cursor: move;
+  touch-action: none;
+  user-select: none;
+  z-index: 90;
 }
 
 .fab:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 18px 36px rgba(0, 82, 217, 0.28);
+  transform: scale(1.15);
+  box-shadow: 0 16px 40px rgba(238, 90, 111, 0.6);
+}
+
+.fab:active {
+  cursor: grabbing;
+}
+
+.fab-icon {
+  font-size: 32px;
+  line-height: 1;
+}
+
+.fab-plus {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1;
+  margin-top: -6px;
 }
 
 @media (max-width: 960px) {
@@ -421,11 +762,33 @@ function progressPercent(task) {
   .task-grid {
     grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   }
+
+  /* 移动端菜单优化 */
+  .draggable-menu {
+    padding: 6px 10px;
+    gap: 8px;
+  }
+
+  .points-badge {
+    padding: 5px 10px;
+    font-size: 13px;
+  }
+
+  .nav-btn {
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+
+  .avatar {
+    width: 32px;
+    height: 32px;
+    font-size: 14px;
+  }
 }
 
 @media (max-width: 640px) {
   .task-hall {
-    padding: 10px 8px 16px;
+    padding: 10px 8px 80px; /* 底部留出FAB空间 */
   }
 
   .header {
@@ -441,6 +804,54 @@ function progressPercent(task) {
     flex-direction: row;
     flex-wrap: wrap;
     gap: 6px;
+  }
+
+  /* 移动端FAB优化 */
+  .fab {
+    width: 64px;
+    height: 64px;
+  }
+
+  .fab-icon {
+    font-size: 24px;
+  }
+
+  .fab-plus {
+    font-size: 20px;
+  }
+
+  /* 移动端显示删除按钮 */
+  .delete-btn {
+    opacity: 1;
+  }
+
+  /* 移动端拖动菜单调整 */
+  .draggable-menu {
+    flex-wrap: wrap;
+    max-width: calc(100vw - 24px);
+  }
+
+  .drag-handle {
+    font-size: 12px;
+  }
+
+  /* 任务卡片移动端优化 */
+  .task-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .card-middle {
+    gap: 8px;
+  }
+
+  .badge {
+    padding: 6px 8px;
+    font-size: 12px;
+  }
+
+  .match-indicator {
+    font-size: 10px;
+    padding: 3px 8px;
   }
 }
 </style>

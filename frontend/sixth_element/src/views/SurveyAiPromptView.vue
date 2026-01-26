@@ -6,11 +6,11 @@ const router = useRouter()
 const prompt = ref('')
 const title = ref('')
 
-const exampleText = `请生成一份调查问卷
+const exampleText = ref(`请生成一份调查问卷
 问卷主题：员工餐厅就餐满意度调查
 题目数量：15题
 调研目的：了解员工对员工餐厅各方面的满意度情况
-更多要求：`
+更多要求：`)
 
 const loadDraft = () => {
   const raw = sessionStorage.getItem('survey-draft')
@@ -80,8 +80,15 @@ const startGenerate = () => {
 
       <aside class="case-card">
         <h2>案例引导</h2>
-        <p>可以用下面的格式来描述问卷需求：</p>
-        <pre class="case-block">{{ exampleText }}</pre>
+        <p>可以用下面的格式来描述问卷需求（可编辑）：</p>
+        <textarea
+          v-model="exampleText"
+          class="example-textarea"
+          rows="8"
+        ></textarea>
+        <button class="fill-button" type="button" @click="prompt = exampleText.value">
+          📋 使用此模板
+        </button>
         <ul class="case-tips">
           <li>说明调研目的，有助于 AI 生成更贴合的题目。</li>
           <li>题目数量可以略估，后续可在编辑器中增删。</li>
@@ -221,13 +228,43 @@ const startGenerate = () => {
   font-size: 18px;
 }
 
-.case-block {
-  white-space: pre-wrap;
-  background: #f2f6ff;
-  padding: 16px;
+.example-textarea {
+  width: 100%;
   border-radius: 14px;
+  border: 2px solid #d4e1f6;
+  padding: 16px;
   font-size: 13px;
+  line-height: 1.6;
+  resize: vertical;
+  background: #f9fbff;
   color: #1a3b7f;
+  font-family: inherit;
+  transition: all 0.2s ease;
+}
+
+.example-textarea:focus {
+  outline: none;
+  border-color: #2665d4;
+  box-shadow: 0 0 0 3px rgba(38, 101, 212, 0.1);
+  background: white;
+}
+
+.fill-button {
+  width: 100%;
+  padding: 12px;
+  background: linear-gradient(135deg, #4caf50, #66bb6a);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(76, 175, 80, 0.2);
+}
+
+.fill-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(76, 175, 80, 0.3);
 }
 
 .case-tips {
