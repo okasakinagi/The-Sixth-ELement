@@ -28,9 +28,10 @@ function handleModalClose() {
   showModal.value = false
 }
 
-// 判断是否需要显示侧边栏（登录页不显示）
+// 判断是否需要显示侧边栏（登录页和忘记密码页不显示）
 const showSidebar = computed(() => {
-  return router.currentRoute.value.name !== 'auth'
+  const routeName = router.currentRoute.value.name
+  return routeName !== 'auth' && routeName !== 'forgot-password'
 })
 </script>
 

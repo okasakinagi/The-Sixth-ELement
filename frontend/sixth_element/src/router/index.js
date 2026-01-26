@@ -9,6 +9,7 @@ import SurveyAiPromptView from '../views/SurveyAiPromptView.vue'
 import PointsRecordView from '../views/PointsRecordView.vue'
 import SurveyFillView from '../views/SurveyFillView.vue'
 import AuthView from '../views/AuthView.vue'
+import ForgotPasswordView from '../views/ForgotPasswordView.vue'
 import HelpCenterView from '../views/HelpCenterView.vue'
 
 const router = createRouter({
@@ -18,6 +19,12 @@ const router = createRouter({
       path: '/login',
       name: 'auth',
       component: AuthView,
+      meta: { requiresAuth: false },
+    },
+    {
+      path: '/forgot-password',
+      name: 'forgot-password',
+      component: ForgotPasswordView,
       meta: { requiresAuth: false },
     },
     {

@@ -1,4 +1,4 @@
-<script setup>
+﻿<script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 
@@ -228,6 +228,11 @@ function switchMode(mode) {
   clearErrors()
   error.value = ''
 }
+
+// 前往忘记密码页面
+function goToForgotPassword() {
+  router.push('/forgot-password')
+}
 </script>
 
 <template>
@@ -325,10 +330,11 @@ function switchMode(mode) {
             <button
               type="button"
               class="password-toggle"
+              :class="{ 'password-hidden': !showPassword }"
               @click="togglePasswordVisibility"
               :aria-label="showPassword ? '隐藏密码' : '显示密码'"
             >
-              {{ showPassword ? '👁️‍🗨️' : '🙈' }}
+              👁️
             </button>
           </div>
           <p v-if="passwordError" class="error-text">{{ passwordError }}</p>
@@ -347,6 +353,15 @@ function switchMode(mode) {
               :class="{ 'has-error': confirmPasswordError }"
               placeholder="请再次输入密码"
             />
+            <button
+              type="button"
+              class="password-toggle"
+              :class="{ 'password-hidden': !showPassword }"
+              @click="togglePasswordVisibility"
+              :aria-label="showPassword ? '隐藏密码' : '显示密码'"
+            >
+              👁️
+            </button>
           </div>
           <p v-if="confirmPasswordError" class="error-text">
             {{ confirmPasswordError }}
@@ -355,7 +370,7 @@ function switchMode(mode) {
 
         <!-- 登录特有的辅助链接 -->
         <div v-if="authMode === 'login'" class="form-helpers">
-          <button type="button" class="forgot-password-btn">
+          <button type="button" class="forgot-password-btn" @click="goToForgotPassword">
             忘记密码？
           </button>
         </div>
@@ -591,6 +606,19 @@ function switchMode(mode) {
   color: #8ea2bf;
 }
 
+/* 隐藏浏览器自带的密码显示按钮 */
+.form-input::-ms-reveal,
+.form-input::-ms-clear {
+  display: none;
+}
+
+.form-input::-webkit-credentials-auto-fill-button,
+.form-input::-webkit-contacts-auto-fill-button {
+  visibility: hidden;
+  pointer-events: none;
+  position: absolute;
+}
+
 .password-toggle {
   position: absolute;
   right: 12px;
@@ -603,6 +631,19 @@ function switchMode(mode) {
   align-items: center;
   justify-content: center;
   transition: opacity 0.2s;
+}
+
+.password-toggle.password-hidden::after {
+  content: '';
+  position: absolute;
+  width: 20px;
+  height: 1.5px;
+  background: currentColor;
+  transform: rotate(-45deg);
+  top: 50%;
+  left: 50%;
+  margin-left: -10px;
+  margin-top: -0.75px;
 }
 
 .password-toggle:hover {

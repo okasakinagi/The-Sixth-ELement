@@ -13,6 +13,7 @@ from .models import (
     AppUser,
     AuthCredential,
     AuthToken,
+    PasswordResetCode,
     PointsLog,
     Questionnaire,
     Report,
@@ -212,6 +213,103 @@ def login(request):
             "user": {"id": str(user.id), "nickname": user.nickname},
         }
     )
+
+
+@csrf_exempt
+def send_reset_code(request):
+    """发送密码重置验证码"""
+    if request.method != "POST":
+        return error(405, "Method not allowed")
+    
+    data = parse_json(request)
+    email = data.get("email", "").strip()
+    
+    if not email:
+        return error(422, "email required")
+    
+    # 检查用户是否存在
+    if not AppUser.objects.filter(email=email).exists():
+        return error(404, "user not found")
+    
+    # 生成6位数字验证码
+    code = "".join([str(secrets.randbelow(10)) for _ in range(6)])
+    
+    # 设置验证码过期时间（15分钟）
+    expires_at = timezone.now() + timedelta(minutes=15)
+    
+    # 使旧的验证码失效
+    PasswordResetCode.objects.filter(email=email, is_used=False).update(is_used=True)
+    
+    # 创建新验证码
+    PasswordResetCode.objects.create(
+        email=email,
+        code=code,
+        expires_at=expires_at,
+        is_used=False
+    )
+    
+    # 在实际生产环境中，这里应该发送邮件
+    # 开发环境下直接返回验证码（仅用于测试）
+    return JsonResponse({
+        "message": "verification code sent",
+        "debug_code": code,  # 生产环境应该删除这一行
+        "expires_in": 900  # 15分钟 = 900秒
+    })
+
+
+@csrf_exempt
+def verify_reset_code(request):
+    """验证重置码并重置密码"""
+    if request.method != "POST":
+        return error(405, "Method not allowed")
+    
+    data = parse_json(request)
+    email = data.get("email", "").strip()
+    code = data.get("code", "").strip()
+    new_password = data.get("new_password", "").strip()
+    
+    if not email or not code or not new_password:
+        return error(422, "email, code and new_password required")
+    
+    if len(new_password) < 6:
+        return error(422, "password must be at least 6 characters")
+    
+    # 查找有效的验证码
+    reset_code = PasswordResetCode.objects.filter(
+        email=email,
+        code=code,
+        is_used=False,
+        expires_at__gt=timezone.now()
+    ).first()
+    
+    if not reset_code:
+        return error(401, "invalid or expired verification code")
+    
+    # 获取用户
+    try:
+        user = AppUser.objects.get(email=email)
+    except AppUser.DoesNotExist:
+        return error(404, "user not found")
+    
+    # 更新密码
+    credential = AuthCredential.objects.filter(user=user).first()
+    if credential:
+        credential.password_hash = make_password(new_password)
+        credential.save()
+    else:
+        AuthCredential.objects.create(user=user, password_hash=make_password(new_password))
+    
+    # 标记验证码为已使用
+    reset_code.is_used = True
+    reset_code.save()
+    
+    # 清除所有旧的 token（强制重新登录）
+    AuthToken.objects.filter(user=user).delete()
+    
+    return JsonResponse({
+        "message": "password reset successful",
+        "user": {"id": str(user.id), "nickname": user.nickname}
+    })
 
 
 @csrf_exempt
