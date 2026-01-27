@@ -40,8 +40,10 @@
    - GET /users/me/profile - 获取用户画像
    - PATCH /users/me/profile - 更新用户画像
 
-2. **[API-任务大厅.md](API-任务大厅.md)** - 任务大厅概览（1 个接口）
-   - GET /task-hall/overview - 获取任务大厅数据
+2. **[API-任务大厅.md](API-任务大厅.md)** - 任务大厅（3 个接口）
+   - GET /task-hall/overview - 获取任务大厅概览
+   - GET /task-hall/tasks - 获取任务列表
+   - POST /task-hall/batch/refresh - 换一批/补位
 
 3. **[API-问卷管理.md](API-问卷管理.md)** - 问卷列表管理（4 个接口）
    - GET /surveys/summary - 获取问卷统计
@@ -64,7 +66,7 @@
    - GET /surveys/{id}/analytics/questions - 获取题目统计
    - POST /surveys/{id}/analytics/export - 导出数据
 
-**规划总数：16 个接口**
+**规划总数：18 个接口**
 
 ---
 
@@ -160,4 +162,3 @@ curl -X POST http://127.0.0.1:8000/api/v1/fills/f_xxx/review \
 
 **最后更新**：2026-01-21  
 **版本**：v1.0 完整文档
-

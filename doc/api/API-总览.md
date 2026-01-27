@@ -35,6 +35,8 @@
 
 - **任务大厅**：doc/api/API-任务大厅.md
   - GET /task-hall/overview - 获取任务大厅概览（待实现）
+  - GET /task-hall/tasks - 获取任务列表（待实现）
+  - POST /task-hall/batch/refresh - 换一批/补位（待实现）
 
 - **问卷管理**：doc/api/API-问卷管理.md
   - GET /surveys/summary - 获取问卷统计（待实现）
@@ -190,6 +192,7 @@
 | description | 说明/副标题 | 可选 |
 | link | 第三方问卷链接 | 必填 |
 | reward_points | 奖励积分 | 0 |
+| difficulty | 难度等级（1-5） | 3 |
 | estimated_minutes | 预计耗时 | 可选 |
 | deadline | 截止日期 | 可选 |
 | status | 状态（active/closed） | active |
@@ -272,4 +275,3 @@ A: 系统已检查唯一性约束（一个用户对一个问卷只能提交一�
 
 ### Q: 审核答卷时能否批量操作？
 A: 当前接口不支持，只能逐个审核。建议后续增加批量接口。
-

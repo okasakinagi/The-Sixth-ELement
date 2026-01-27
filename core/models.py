@@ -67,9 +67,12 @@ class Survey(models.Model):
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True, null=True)
     estimated_minutes = models.IntegerField(blank=True, null=True)
+    difficulty = models.IntegerField(default=3)
     reward_points = models.IntegerField(default=0)
     publish_cost_points = models.IntegerField(default=0)
     deadline = models.DateTimeField(blank=True, null=True)
+    target = models.IntegerField(default=1)
+    completed = models.IntegerField(default=0)
     status = models.CharField(max_length=32, default="draft")
     active_questionnaire = models.ForeignKey(
         "Questionnaire",
@@ -231,8 +234,16 @@ class Notification(models.Model):
 
 
 class Tag(models.Model):
+    TYPE_SURVEY = "survey_type"
+    TYPE_INTEREST = "interest"
+    TYPE_SCHOOL = "school"
+    TYPE_CHOICES = (
+        (TYPE_SURVEY, "Survey Type"),
+        (TYPE_INTEREST, "Interest"),
+        (TYPE_SCHOOL, "School"),
+    )
     name = models.CharField(max_length=64)
-    type = models.CharField(max_length=32)
+    type = models.CharField(max_length=32, choices=TYPE_CHOICES)
     created_at = models.DateTimeField(auto_now_add=True)
 
 
