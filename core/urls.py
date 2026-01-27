@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from .controllers import task_hall_controller
 
 urlpatterns = [
     path("auth/register", views.register),
@@ -15,4 +16,7 @@ urlpatterns = [
     path("fills/me", views.my_fills),
     path("points/logs", views.points_logs),
     path("reports", views.create_report),
+    path("task-hall/overview", task_hall_controller.task_hall_overview),
+    path("task-hall/tasks", task_hall_controller.task_hall_tasks),
+    path("task-hall/batch/refresh", task_hall_controller.task_hall_refresh_batch),
 ]
