@@ -337,6 +337,7 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
+import { getUserProfile, updateUserProfile } from '@/utils/profileApi'
 
 const router = useRouter()
 
@@ -348,16 +349,19 @@ const defaultProfile = {
   college: '',
   major: '',
   mbti: '',
-  interests: '',
-  organizations: '',
+  interests: [],
+  organizations: [],
   consumptionPreferences: [],
   careerIntention: [],
-  skills: []
+  skills: [],
+  currentStatus: ''
 }
 
 // 表单数据
 const formData = ref({ ...defaultProfile })
 const isMobile = ref(window.innerWidth <= 768)
+const isLoading = ref(false)
+const errorMessage = ref('')
 const handleResize = () => {
   isMobile.value = window.innerWidth <= 768
 }
@@ -405,36 +409,28 @@ const customSkillInput = ref('')
 const showToast = ref(false)
 const toastMessage = ref('')
 
-// 计算完成度
+// 计算完成度（与后端逻辑保持一致）
 const completionRate = computed(() => {
-  // 从 localStorage 获取当前状态
-  let currentStatus = ''
-  const cached = localStorage.getItem(STORAGE_KEY)
-  if (cached) {
-    try {
-      currentStatus = JSON.parse(cached).currentStatus || ''
-    } catch (error) {
-      currentStatus = ''
-    }
-  }
-
-  const fields = [
-    formData.value.gender,
-    formData.value.age,
-    formData.value.grade,
-    formData.value.college,
-    formData.value.major,
-    formData.value.mbti,
-    formData.value.interests,
-    formData.value.organizations,
-    formData.value.consumptionPreferences.length > 0,
-    formData.value.careerIntention.length > 0,
-    formData.value.skills.length > 0,
-    currentStatus
-  ]
+  let filledCount = 0
   
-  const filledCount = fields.filter(field => field).length
-  return Math.round((filledCount / fields.length) * 100)
+  // 单值字段（有值即算填写）
+  if (formData.value.gender) filledCount++
+  if (formData.value.age) filledCount++
+  if (formData.value.grade) filledCount++
+  if (formData.value.college) filledCount++
+  if (formData.value.major) filledCount++
+  if (formData.value.mbti) filledCount++
+  if (formData.value.currentStatus) filledCount++
+  
+  // 数组字段（数组有元素即算填写）
+  if (formData.value.interests && formData.value.interests.length > 0) filledCount++
+  if (formData.value.organizations && formData.value.organizations.length > 0) filledCount++
+  if (formData.value.consumptionPreferences && formData.value.consumptionPreferences.length > 0) filledCount++
+  if (formData.value.careerIntention && formData.value.careerIntention.length > 0) filledCount++
+  if (formData.value.skills && formData.value.skills.length > 0) filledCount++
+  
+  const totalFields = 12
+  return Math.round((filledCount / totalFields) * 100)
 })
 
 const floatingCircumference = 2 * Math.PI * 34
@@ -468,27 +464,48 @@ const removeTag = (fieldName, tag) => {
 }
 
 // 保存个人信息
-const saveProfile = () => {
-  let cachedStatus = ''
-  const cached = localStorage.getItem(STORAGE_KEY)
-  if (cached) {
-    try {
-      cachedStatus = JSON.parse(cached).currentStatus || ''
-    } catch (error) {
-      cachedStatus = ''
+const saveProfile = async () => {
+  isLoading.value = true
+  errorMessage.value = ''
+  
+  try {
+    // 准备提交数据（转换为后端API格式）
+    const payload = {
+      gender: formData.value.gender || null,
+      age: formData.value.age || null,
+      grade: formData.value.grade || null,
+      college: formData.value.college || null,
+      major: formData.value.major || null,
+      mbti: formData.value.mbti || null,
+      interests: Array.isArray(formData.value.interests) ? formData.value.interests : [],
+      organizations: Array.isArray(formData.value.organizations) ? formData.value.organizations : [],
+      consumption_preferences: Array.isArray(formData.value.consumptionPreferences) ? formData.value.consumptionPreferences : [],
+      career_intention: Array.isArray(formData.value.careerIntention) ? formData.value.careerIntention : [],
+      skills: Array.isArray(formData.value.skills) ? formData.value.skills : [],
+      current_status: formData.value.currentStatus || null
     }
+    
+    // 调用API（使用PUT完整替换）
+    await updateUserProfile(payload)
+    
+    toastMessage.value = '信息已保存，正在返回...'
+    showToast.value = true
+    
+    setTimeout(() => {
+      showToast.value = false
+      router.push('/profile')
+    }, 1500)
+  } catch (error) {
+    console.error('保存失败:', error)
+    errorMessage.value = error.message
+    toastMessage.value = '保存失败: ' + error.message
+    showToast.value = true
+    setTimeout(() => {
+      showToast.value = false
+    }, 3000)
+  } finally {
+    isLoading.value = false
   }
-
-  const payload = JSON.parse(JSON.stringify({ ...formData.value, currentStatus: cachedStatus }))
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
-  
-  toastMessage.value = '信息已更新，正在返回个人信息页面...'
-  showToast.value = true
-  
-  setTimeout(() => {
-    showToast.value = false
-    router.push('/profile')
-  }, 1500)
 }
 
 // 返回个人主页
@@ -496,25 +513,45 @@ const goBack = () => {
   router.push('/profile')
 }
 
-// 初始化时从本地存储恢复
-onMounted(() => {
-  const cached = localStorage.getItem(STORAGE_KEY)
-  if (cached) {
-    try {
-      const parsed = JSON.parse(cached)
-      // 确保数组字段是数组类型
-      formData.value = {
-        ...defaultProfile,
-        ...parsed,
-        consumptionPreferences: Array.isArray(parsed.consumptionPreferences) ? parsed.consumptionPreferences : [],
-        careerIntention: Array.isArray(parsed.careerIntention) ? parsed.careerIntention : [],
-        skills: Array.isArray(parsed.skills) ? parsed.skills : []
-      }
-    } catch (error) {
-      console.warn('Failed to parse cached profile, fallback to defaults')
-      formData.value = { ...defaultProfile }
+// 加载用户画像数据
+const loadProfile = async () => {
+  isLoading.value = true
+  try {
+    const profile = await getUserProfile()
+    
+    // 映射后端数据到表单格式
+    formData.value = {
+      gender: profile.gender || '',
+      age: profile.age || null,
+      grade: profile.grade || '',
+      college: profile.college || '',
+      major: profile.major || '',
+      mbti: profile.mbti || '',
+      interests: profile.interests || [],
+      organizations: profile.organizations || [],
+      consumptionPreferences: profile.consumption_preferences || [],
+      careerIntention: profile.career_intention || [],
+      skills: profile.skills || [],
+      currentStatus: profile.current_status || ''
     }
+  } catch (error) {
+    console.error('加载画像失败:', error)
+    errorMessage.value = error.message
+    
+    // 如果是认证错误，跳转到登录页
+    if (error.message.includes('登录')) {
+      setTimeout(() => {
+        router.push('/auth')
+      }, 2000)
+    }
+  } finally {
+    isLoading.value = false
   }
+}
+
+// 初始化时加载数据
+onMounted(() => {
+  loadProfile()
   window.addEventListener('resize', handleResize)
 })
 

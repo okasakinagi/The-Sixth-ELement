@@ -31,6 +31,7 @@ class AuthToken(models.Model):
 
 class PasswordResetCode(models.Model):
     """密码重置验证码"""
+
     email = models.EmailField(db_index=True)
     code = models.CharField(max_length=6)  # 6位数字验证码
     expires_at = models.DateTimeField()
@@ -39,7 +40,9 @@ class PasswordResetCode(models.Model):
 
     class Meta:
         indexes = [
-            models.Index(fields=["email", "is_used", "expires_at"], name="reset_code_lookup_idx"),
+            models.Index(
+                fields=["email", "is_used", "expires_at"], name="reset_code_lookup_idx"
+            ),
         ]
 
 
@@ -89,7 +92,9 @@ class Survey(models.Model):
 
     class Meta:
         indexes = [
-            models.Index(fields=["status", "deadline"], name="survey_status_deadline_idx"),
+            models.Index(
+                fields=["status", "deadline"], name="survey_status_deadline_idx"
+            ),
         ]
 
 
@@ -164,8 +169,12 @@ class Response(models.Model):
             )
         ]
         indexes = [
-            models.Index(fields=["survey", "status"], name="response_survey_status_idx"),
-            models.Index(fields=["user", "created_at"], name="response_user_created_idx"),
+            models.Index(
+                fields=["survey", "status"], name="response_survey_status_idx"
+            ),
+            models.Index(
+                fields=["user", "created_at"], name="response_user_created_idx"
+            ),
         ]
 
 
@@ -196,7 +205,9 @@ class PointsLog(models.Model):
 
     class Meta:
         indexes = [
-            models.Index(fields=["user", "created_at"], name="pointslog_user_created_idx"),
+            models.Index(
+                fields=["user", "created_at"], name="pointslog_user_created_idx"
+            ),
         ]
 
 
@@ -208,7 +219,11 @@ class Report(models.Model):
     detail = models.TextField(blank=True, null=True)
     status = models.CharField(max_length=32, default="open")
     handled_by = models.ForeignKey(
-        AppUser, on_delete=models.SET_NULL, blank=True, null=True, related_name="handled_reports"
+        AppUser,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="handled_reports",
     )
     created_at = models.DateTimeField(auto_now_add=True)
     handled_at = models.DateTimeField(blank=True, null=True)

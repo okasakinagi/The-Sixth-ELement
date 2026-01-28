@@ -9,7 +9,7 @@
             <span class="avatar-text">{{ userInitial }}</span>
           </div>
           <div class="user-basic-info">
-            <h1 class="username">{{ userData.name || '未设置姓名' }}</h1>
+            <h1 class="username">{{ userBasicInfo.nickname || '未设置姓名' }}</h1>
             <p class="user-subtitle">{{ userData.college || '未设置学院' }} · {{ userData.major || '未设置专业' }}</p>
             <div class="status-row">
               <div
@@ -93,21 +93,29 @@
         </div>
         <div class="card-body">
           <!-- 研究方向 -->
-          <div class="detail-section" v-if="userData.interests">
+          <div class="detail-section" v-if="userData.interests && userData.interests.length > 0">
             <div class="detail-label">
               <span class="label-icon">🔬</span>
               研究方向 / 兴趣课程
             </div>
-            <div class="detail-content">{{ userData.interests }}</div>
+            <div class="tag-list">
+              <span class="tag skill-tag" v-for="interest in userData.interests" :key="interest">
+                {{ interest }}
+              </span>
+            </div>
           </div>
 
           <!-- 社团经历 -->
-          <div class="detail-section" v-if="userData.organizations">
+          <div class="detail-section" v-if="userData.organizations && userData.organizations.length > 0">
             <div class="detail-label">
               <span class="label-icon">🎭</span>
               社团 / 组织经历
             </div>
-            <div class="detail-content">{{ userData.organizations }}</div>
+            <div class="tag-list">
+              <span class="tag skill-tag" v-for="org in userData.organizations" :key="org">
+                {{ org }}
+              </span>
+            </div>
           </div>
 
           <!-- 技能标签 -->
@@ -124,7 +132,7 @@
           </div>
 
           <!-- 空状态 -->
-          <div v-if="!userData.interests && !userData.organizations && (!userData.skills || userData.skills.length === 0)" class="empty-state">
+          <div v-if="(!userData.interests || userData.interests.length === 0) && (!userData.organizations || userData.organizations.length === 0) && (!userData.skills || userData.skills.length === 0)" class="empty-state">
             <p>还没有填写兴趣与特长信息</p>
             <button class="link-button" @click="goToEdit">去完善 →</button>
           </div>
@@ -228,110 +236,121 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
+import { getUserProfile, updateUserProfile, getCurrentUser } from '@/utils/profileApi'
 
 const router = useRouter()
 
-const STORAGE_KEY = 'sixth_element_profile'
 const defaultProfile = {
-  name: '未设置姓名',
+  user_id: null,
   gender: '',
   age: null,
   grade: '',
   college: '',
   major: '',
   mbti: '',
-  interests: '',
-  organizations: '',
+  interests: [],
+  organizations: [],
   consumptionPreferences: [],
   careerIntention: [],
   skills: [],
-  currentStatus: ''
+  currentStatus: '',
+  profile_completion: 0
 }
 
-const sampleProfile = {
-  name: '张三',
-  gender: '男',
-  age: 20,
-  grade: '大二',
-  college: '计算机科学学院',
-  major: '计算机科学与技术',
-  mbti: 'INTJ',
-  interests: '人工智能、机器学习、深度学习',
-  organizations: '校学生会技术部、ACM竞赛队',
-  consumptionPreferences: ['数码', '阅读', '游戏'],
-  careerIntention: ['大厂', '考研'],
-  skills: ['Python', 'Java', 'C++', '算法'],
-  currentStatus: '正在准备期末考试，同时学习 Vue 3'
-}
-
-const userData = ref({ ...defaultProfile, ...sampleProfile })
+const userData = ref({ ...defaultProfile })
+const userBasicInfo = ref({ nickname: '加载中...' })
 const statusInput = ref('')
 const isEditingStatus = ref(false)
 const isMobile = ref(window.innerWidth <= 768)
+const isLoading = ref(true)
+const errorMessage = ref('')
 
 const handleResize = () => {
   isMobile.value = window.innerWidth <= 768
 }
 
-const persistProfile = () => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(userData.value))
-}
-
-const loadProfile = () => {
-  const cached = localStorage.getItem(STORAGE_KEY)
-  if (cached) {
-    try {
-      const parsed = JSON.parse(cached)
-      userData.value = { ...defaultProfile, ...sampleProfile, ...parsed }
-    } catch (error) {
-      console.warn('Failed to parse cached profile, fallback to defaults')
-      userData.value = { ...defaultProfile, ...sampleProfile }
+/**
+ * 加载用户画像数据
+ */
+const loadProfile = async () => {
+  isLoading.value = true
+  errorMessage.value = ''
+  
+  try {
+    // 并发获取用户基本信息和画像
+    const [basicInfo, profile] = await Promise.all([
+      getCurrentUser(),
+      getUserProfile()
+    ])
+    
+    userBasicInfo.value = basicInfo
+    
+    // 映射后端数据到前端格式
+    userData.value = {
+      user_id: profile.user_id,
+      gender: profile.gender || '',
+      age: profile.age || null,
+      grade: profile.grade || '',
+      college: profile.college || '',
+      major: profile.major || '',
+      mbti: profile.mbti || '',
+      interests: profile.interests || [],
+      organizations: profile.organizations || [],
+      consumptionPreferences: profile.consumption_preferences || [],
+      careerIntention: profile.career_intention || [],
+      skills: profile.skills || [],
+      currentStatus: profile.current_status || '',
+      profile_completion: profile.profile_completion || 0
     }
+  } catch (error) {
+    console.error('加载画像失败:', error)
+    errorMessage.value = error.message
+    
+    // 如果是认证错误，跳转到登录页
+    if (error.message.includes('登录')) {
+      setTimeout(() => {
+        router.push('/auth')
+      }, 2000)
+    }
+  } finally {
+    isLoading.value = false
   }
 }
 
-onMounted(() => {
-  loadProfile()
-  window.addEventListener('resize', handleResize)
-})
-
-onBeforeUnmount(() => {
-  window.removeEventListener('resize', handleResize)
-})
-
-// 计算用户名首字母
+// 用户名首字母
 const userInitial = computed(() => {
-  return userData.value.name ? userData.value.name.charAt(0).toUpperCase() : '?'
+  const name = userBasicInfo.value.nickname || '?'
+  return name.charAt(0).toUpperCase()
 })
 
-// 计算完成度
+// 计算完成度（使用后端返回的值）
 const completionRate = computed(() => {
-  const fields = [
-    userData.value.gender,
-    userData.value.age,
-    userData.value.grade,
-    userData.value.college,
-    userData.value.major,
-    userData.value.mbti,
-    userData.value.interests,
-    userData.value.organizations,
-    userData.value.consumptionPreferences?.length > 0,
-    userData.value.careerIntention?.length > 0,
-    userData.value.skills?.length > 0,
-    userData.value.currentStatus
-  ]
-  
-  const filledCount = fields.filter(field => field).length
-  return Math.round((filledCount / fields.length) * 100)
+  return userData.value.profile_completion || 0
 })
 
 // 完成度提示信息
 const completionMessage = computed(() => {
   if (completionRate.value >= 80) return '画像非常完整！'
-  if (completionRate.value >= 60) return '画像已基本完善'
-  if (completionRate.value >= 40) return '继续完善画像'
-  return '快来完善你的画像吧'
+  if (completionRate.value >= 60) return '画像比较完整'
+  if (completionRate.value >= 40) return '继续完善可提升匹配度'
+  return '画像完成度较低，建议完善'
 })
+
+const saveStatus = async () => {
+  const newStatus = statusInput.value.trim()
+  
+  try {
+    // 调用API更新状态
+    await updateUserProfile({ current_status: newStatus })
+    
+    // 更新本地数据
+    userData.value.currentStatus = newStatus
+    isEditingStatus.value = false
+  } catch (error) {
+    console.error('保存状态失败:', error)
+    alert('保存失败: ' + error.message)
+  }
+}
 
 // 圆形进度条计算（悬浮）
 const floatingCircumference = 2 * Math.PI * 34
@@ -342,12 +361,6 @@ const floatingOffset = computed(() => {
 const startStatusEdit = () => {
   statusInput.value = userData.value.currentStatus || ''
   isEditingStatus.value = true
-}
-
-const saveStatus = () => {
-  userData.value.currentStatus = statusInput.value.trim()
-  persistProfile()
-  isEditingStatus.value = false
 }
 
 const cancelStatus = () => {
@@ -363,6 +376,26 @@ const goToEdit = () => {
 const goToTaskHall = () => {
   router.push('/task-hall')
 }
+
+// 组件挂载时加载数据
+onMounted(() => {
+  loadProfile()
+  window.addEventListener('resize', handleResize)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', handleResize)
+})
+
+// 组件挂载时加载数据
+onMounted(() => {
+  loadProfile()
+  window.addEventListener('resize', handleResize)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', handleResize)
+})
 </script>
 
 <style scoped>

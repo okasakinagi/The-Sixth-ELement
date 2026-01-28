@@ -16,6 +16,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "corsheaders",
     "core",
+    "personal_homepage",
 ]
 
 MIDDLEWARE = [
@@ -55,7 +56,7 @@ DATABASES = {
         "ENGINE": "django.db.backends.mysql",
         "NAME": os.environ.get("DJANGO_DB_NAME", "sixth_element"),
         "USER": os.environ.get("DJANGO_DB_USER", "sixth_element"),
-        "PASSWORD": os.environ.get("DJANGO_DB_PASSWORD", "Sixth@2026!"),
+        "PASSWORD": os.environ.get("DJANGO_DB_PASSWORD", "123456"),
         "HOST": os.environ.get("DJANGO_DB_HOST", "localhost"),
         "PORT": os.environ.get("DJANGO_DB_PORT", "3306"),
         "OPTIONS": {"charset": "utf8mb4"},
@@ -71,3 +72,35 @@ STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# 日志配置 - 在控制台显示详细错误
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'DEBUG',
+    },
+    'loggers': {
+        'django.request': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
+            'propagate': True,
+        },
+    },
+}
+
+# 开发环境下显示详细错误
+DEBUG_PROPAGATE_EXCEPTIONS = True
