@@ -5,6 +5,7 @@ import { useRouter, useRoute } from 'vue-router'
 const router = useRouter()
 const route = useRoute()
 const token = localStorage.getItem('access_token')
+const userId = localStorage.getItem('user_id') || 'guest'
 
 // 问卷数据
 const survey = ref(null)
@@ -15,6 +16,9 @@ const startTime = ref(null)
 // 答案存储
 const answers = ref({})
 const showSuccessModal = ref(false)
+const showErrorModal = ref(false)
+const errorMessage = ref('')
+const awardedPoints = ref(0)
 const submitting = ref(false)
 const validationErrors = ref(new Set())
 
@@ -32,13 +36,13 @@ const progress = computed(() => {
 })
 
 // 本地存储键名
-const localStorageKey = computed(() => `survey-fill-${route.params.id}`)
+const localStorageKey = computed(() => `survey-fill-${route.params.id}-${userId}`)
 
 // 加载问卷数据
 async function fetchSurvey() {
   if (!token) {
-    alert('未登录，请先登录')
-    router.push('/auth')
+    errorMessage.value = '未登录，请先登录'
+    showErrorModal.value = true
     return
   }
 
@@ -46,116 +50,35 @@ async function fetchSurvey() {
   error.value = null
 
   try {
-    const res = await fetch(`/api/v1/surveys/${route.params.id}`, {
+    const res = await fetch(`/api/v1/surveys/${route.params.id}/fill`, {
       headers: {
         Authorization: `Bearer ${token}`,
       },
     })
 
     if (!res.ok) {
-      // 开发模式：后端问卷不存在时使用模拟数据
-      console.warn('问卷不存在，使用模拟数据进行演示')
-      survey.value = {
-        id: route.params.id,
-        title: '员工餐厅就餐满意度调查（演示）',
-        description: '这是一个演示问卷，用于展示问卷填写界面的功能。实际使用时需要后端返回真实的问卷数据。',
-        reward_points: 10,
-        estimated_minutes: 5,
-        status: 'active',
-        questions: generateMockQuestions(),
-      }
-      
-      startTime.value = Date.now()
-      loadAnswersFromStorage()
-      loading.value = false
-      return
+      const errData = await res.json().catch(() => ({}))
+      throw new Error(errData.error || '问卷加载失败')
     }
 
     const data = await res.json()
-    
-    // 模拟问卷题目结构（实际应从后端获取）
-    // TODO: 后端实现 GET /api/v1/surveys/{id}/fill 接口
+
     survey.value = {
       ...data,
-      questions: data.questions || generateMockQuestions(),
+      description: data.description || data.subtitle || '',
+      questions: Array.isArray(data.questions) ? data.questions : [],
     }
-    
+
     startTime.value = Date.now()
-    
+
     // 从本地存储恢复答案
     loadAnswersFromStorage()
   } catch (err) {
     console.error('Failed to fetch survey:', err)
-    // 网络错误时也使用模拟数据
-    console.warn('网络错误，使用模拟数据进行演示')
-    survey.value = {
-      id: route.params.id,
-      title: '员工餐厅就餐满意度调查（演示）',
-      description: '这是一个演示问卷，用于展示问卷填写界面的功能。实际使用时需要后端返回真实的问卷数据。',
-      reward_points: 10,
-      estimated_minutes: 5,
-      status: 'active',
-      questions: generateMockQuestions(),
-    }
-    startTime.value = Date.now()
-    loadAnswersFromStorage()
+    error.value = err.message || '问卷加载失败'
   } finally {
     loading.value = false
   }
-}
-
-// 生成模拟题目（用于演示，实际应从后端获取）
-function generateMockQuestions() {
-  return [
-    {
-      id: 'q_1',
-      type: 'single',
-      title: '您一周大约在员工餐厅就餐几次？',
-      options: ['1-2 次', '3-4 次', '5 次以上', '从不在餐厅就餐'],
-      required: true,
-      order: 1,
-    },
-    {
-      id: 'q_2',
-      type: 'single',
-      title: '您对餐厅整体环境的满意度如何？',
-      options: ['非常满意', '满意', '一般', '不满意', '非常不满意'],
-      required: true,
-      order: 2,
-    },
-    {
-      id: 'q_3',
-      type: 'multi',
-      title: '您最常选择的菜系是？（可多选）',
-      options: ['家常菜', '轻食沙拉', '面食/汤粉', '特色窗口', '其他'],
-      required: false,
-      order: 3,
-    },
-    {
-      id: 'q_4',
-      type: 'single',
-      title: '餐厅菜品价格与品质是否匹配？',
-      options: ['非常匹配', '较匹配', '一般', '不匹配'],
-      required: true,
-      order: 4,
-    },
-    {
-      id: 'q_5',
-      type: 'text',
-      title: '您对餐厅最满意的地方是？',
-      options: [],
-      required: false,
-      order: 5,
-    },
-    {
-      id: 'q_6',
-      type: 'text',
-      title: '您希望餐厅优先改进的方面是？',
-      options: [],
-      required: true,
-      order: 6,
-    },
-  ]
 }
 
 // 从本地存储加载答案
@@ -302,15 +225,20 @@ async function handleSubmit() {
     localStorage.removeItem(localStorageKey.value)
     
     // 显示成功弹窗
+    const result = await res.json()
+    awardedPoints.value = Number(
+      result?.points_expected ?? result?.points_awarded ?? survey.value?.reward_points ?? 0,
+    )
     showSuccessModal.value = true
     
-    // 3秒后跳转
+    // 6秒后跳转
     setTimeout(() => {
       router.push('/task-hall')
-    }, 3000)
+    }, 6000)
   } catch (err) {
     console.error('Failed to submit survey:', err)
-    alert(err.message || '提交失败，请重试')
+    errorMessage.value = err.message || '提交失败，请重试'
+    showErrorModal.value = true
   } finally {
     submitting.value = false
   }
@@ -347,6 +275,17 @@ onBeforeUnmount(() => {
   }
   saveAnswersToStorage()
 })
+
+function closeErrorModal() {
+  showErrorModal.value = false
+  if (!token) {
+    router.push('/auth')
+  }
+}
+
+function handleSuccessReturn() {
+  router.push('/task-hall')
+}
 </script>
 
 <template>
@@ -516,10 +455,23 @@ onBeforeUnmount(() => {
           <h2 class="success-title">提交成功！</h2>
           <p class="success-message">感谢你的用心填答</p>
           <div class="success-reward">
-            <span class="reward-text">+{{ survey.reward_points || 0 }} 积分</span>
-            <span class="reward-sub">已存入账户</span>
+            <span class="reward-text">+{{ awardedPoints }} 积分</span>
+            <span class="reward-sub">审核中</span>
           </div>
           <p class="success-redirect">即将返回任务大厅...</p>
+          <button class="btn-secondary" @click="handleSuccessReturn">提前返回</button>
+        </div>
+      </div>
+    </transition>
+
+    <!-- 错误弹窗 -->
+    <transition name="modal">
+      <div v-if="showErrorModal" class="success-modal-overlay">
+        <div class="success-modal">
+          <div class="error-icon">⚠️</div>
+          <h2 class="success-title">操作失败</h2>
+          <p class="success-message">{{ errorMessage }}</p>
+          <button class="btn-secondary" @click="closeErrorModal">我知道了</button>
         </div>
       </div>
     </transition>

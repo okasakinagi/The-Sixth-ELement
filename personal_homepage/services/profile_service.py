@@ -31,7 +31,9 @@ class UserProfileService:
         # 添加更新时间（从UserTag获取最新时间）
         from core.models import UserTag
 
-        latest_tag = UserTag.objects.filter(user_id=user.id).order_by("-created_at").first()
+        latest_tag = (
+            UserTag.objects.filter(user_id=user.id).order_by("-created_at").first()
+        )
         profile["updated_at"] = (
             latest_tag.created_at.astimezone(timezone.UTC)
             .isoformat()
@@ -110,7 +112,18 @@ class UserProfileService:
 
         # 验证gender（支持中文和英文）
         if "gender" in data:
-            valid_genders = [None, "", "male", "female", "other", "secret", "男", "女", "其他", "保密"]
+            valid_genders = [
+                None,
+                "",
+                "male",
+                "female",
+                "other",
+                "secret",
+                "男",
+                "女",
+                "其他",
+                "保密",
+            ]
             if data["gender"] not in valid_genders:
                 errors["gender"] = "Invalid gender value"
             else:
