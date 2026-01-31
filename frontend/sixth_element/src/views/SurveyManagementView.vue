@@ -1,6 +1,13 @@
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import {
+  getSurveys,
+  deleteSurvey,
+  pauseSurvey,
+  resumeSurvey,
+  publishSurvey
+} from '@/utils/surveyManagementApi'
 
 const router = useRouter()
 const route = useRoute()
@@ -19,40 +26,9 @@ const publishConfig = ref({
   estimatedMinutes: 5
 })
 
-const surveys = ref([
-  {
-    id: 'S-1204',
-    title: '城市通勤满意度问卷',
-    status: 'draft',
-    completed: 0,
-    target: 120,
-    updatedAt: '2026-01-12',
-  },
-  {
-    id: 'S-1205',
-    title: '新品包装视觉偏好调研',
-    status: 'live',
-    completed: 64,
-    target: 102,
-    updatedAt: '2026-01-13',
-  },
-  {
-    id: 'S-1206',
-    title: '低碳出行行为追踪',
-    status: 'paused',
-    completed: 28,
-    target: 60,
-    updatedAt: '2026-01-10',
-  },
-  {
-    id: 'S-1207',
-    title: '会员服务体验反馈',
-    status: 'ended',
-    completed: 300,
-    target: 300,
-    updatedAt: '2026-01-08',
-  },
-])
+const surveys = ref([])
+const loading = ref(false)
+const error = ref('')
 
 const filteredSurveys = computed(() => {
   if (!hideCompleted.value) {
@@ -132,26 +108,67 @@ const closePublishConfig = () => {
   publishTarget.value = null
 }
 
-const confirmPublish = () => {
+const confirmPublish = async () => {
   if (!publishTarget.value) return
-  publishTarget.value.status = 'live'
-  publishTarget.value.target = publishConfig.value.targetCount
-  closePublishConfig()
-}
-
-const confirmDelete = () => {
-  if (!deleteTarget.value) return
-  surveys.value = surveys.value.filter((survey) => survey.id !== deleteTarget.value.id)
-  closeDeleteModal()
-}
-
-const togglePause = (survey) => {
-  if (survey.status === 'paused') {
-    survey.status = 'live'
-    return
+  
+  try {
+    loading.value = true
+    await publishSurvey(publishTarget.value.id, {
+      budget_points: publishConfig.value.rewardPoints * publishConfig.value.targetCount,
+      target: publishConfig.value.targetCount
+    })
+    
+    // 刷新问卷列表
+    await loadSurveys()
+    closePublishConfig()
+  } catch (err) {
+    error.value = err.message
+    setTimeout(() => {
+      error.value = ''
+    }, 3000)
+  } finally {
+    loading.value = false
   }
-  if (survey.status === 'live') {
-    survey.status = 'paused'
+}
+
+const confirmDelete = async () => {
+  if (!deleteTarget.value) return
+  
+  try {
+    loading.value = true
+    await deleteSurvey(deleteTarget.value.id)
+    
+    // 刷新问卷列表
+    await loadSurveys()
+    closeDeleteModal()
+  } catch (err) {
+    error.value = err.message
+    setTimeout(() => {
+      error.value = ''
+    }, 3000)
+  } finally {
+    loading.value = false
+  }
+}
+
+const togglePause = async (survey) => {
+  try {
+    loading.value = true
+    if (survey.status === 'paused') {
+      await resumeSurvey(survey.id)
+    } else if (survey.status === 'live') {
+      await pauseSurvey(survey.id)
+    }
+    
+    // 刷新问卷列表
+    await loadSurveys()
+  } catch (err) {
+    error.value = err.message
+    setTimeout(() => {
+      error.value = ''
+    }, 3000)
+  } finally {
+    loading.value = false
   }
 }
 
@@ -163,6 +180,21 @@ const openAnalytics = (survey) => {
   router.push({ name: 'survey-analytics', params: { id: survey.id } })
 }
 
+const loadSurveys = async () => {
+  try {
+    loading.value = true
+    const response = await getSurveys()
+    surveys.value = response.items || []
+  } catch (err) {
+    error.value = err.message
+    setTimeout(() => {
+      error.value = ''
+    }, 3000)
+  } finally {
+    loading.value = false
+  }
+}
+
 watch(
   () => route.query.publish,
   (value) => {
@@ -172,6 +204,10 @@ watch(
   },
   { immediate: true },
 )
+
+onMounted(() => {
+  loadSurveys()
+})
 </script>
 
 <template>
@@ -225,7 +261,7 @@ watch(
             <div class="survey-meta">
               <div>
                 <p class="survey-title">{{ survey.title }}</p>
-                <p class="survey-id">{{ survey.id }} · 最近更新 {{ survey.updatedAt }}</p>
+                <p class="survey-id">{{ survey.id }} · 最近更新 {{ survey.updated_at }}</p>
               </div>
               <span class="status-badge" :data-status="survey.status">{{ statusLabel(survey) }}</span>
             </div>
