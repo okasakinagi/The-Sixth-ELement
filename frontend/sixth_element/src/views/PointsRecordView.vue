@@ -1,9 +1,9 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { getPointsLogs } from '@/utils/pointsApi'
 
 const router = useRouter()
-const token = localStorage.getItem('access_token')
 
 // State
 const userBalance = ref(null)
@@ -35,28 +35,14 @@ function formatDateTime(isoString) {
 }
 
 async function fetchPointsLogs() {
-  if (!token) {
-    alert('未登录，请先登录')
-    router.push('/login')
-    return
-  }
   try {
+    loading.value = true
     const typeParam = selectedType.value === 'all' ? '' : selectedType.value
-    const url = new URL('/api/v1/points/logs', window.location.origin)
-    url.searchParams.set('page', currentPage.value)
-    url.searchParams.set('page_size', pageSize.value)
-    if (typeParam) url.searchParams.set('type', typeParam)
-
-    const res = await fetch(url.toString(), {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-      },
+    const data = await getPointsLogs({
+      type: typeParam,
+      page: currentPage.value,
+      page_size: pageSize.value
     })
-    if (!res.ok) {
-      throw new Error(`API 错误: ${res.status}`)
-    }
-
-    const data = await res.json()
 
     if (currentPage.value === 1 && data.user) {
       userBalance.value = data.user.points
@@ -65,11 +51,14 @@ async function fetchPointsLogs() {
       activityPoints.value = data.user.activity_points
       const earnedRecords = data.items.filter(item => item.delta > 0)
       totalEarned.value = earnedRecords.reduce((sum, item) => sum + item.delta, 0)
+      logs.value = data.items
+    } else if (currentPage.value > 1) {
+      logs.value = [...logs.value, ...data.items]
     }
     totalRecords.value = data.total
   } catch (err) {
     console.error('Failed to fetch points logs:', err)
-    alert('获取积分记录失败，请稍后重试')
+    alert(err.message || '获取积分记录失败，请稍后重试')
   } finally {
     loading.value = false
   }
