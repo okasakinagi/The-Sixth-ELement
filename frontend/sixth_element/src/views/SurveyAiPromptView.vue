@@ -3,14 +3,25 @@ import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
-const prompt = ref('')
 const title = ref('')
 
-const exampleText = ref(`请生成一份调查问卷
+// 左侧可编辑的需求描述（默认填好模板文案）
+const prompt = ref(`请生成一份调查问卷
 问卷主题：员工餐厅就餐满意度调查
 题目数量：15题
 调研目的：了解员工对员工餐厅各方面的满意度情况
 更多要求：`)
+
+// 右侧只读示例
+const exampleText = `请生成一份调查问卷
+问卷主题：[填写你的问卷主题]
+题目数量：[大约需要的题目数]
+调研目的：[说明调研目的]
+更多要求：[可选，如需要评分题、排序题等]`
+
+const goBack = () => {
+  router.back()
+}
 
 const loadDraft = () => {
   const raw = sessionStorage.getItem('survey-draft')
@@ -41,32 +52,33 @@ const startGenerate = () => {
 
 <template>
   <div class="ai-shell">
+    <!-- 顶部返回按钮 -->
+    <div class="top-bar">
+      <button class="back" type="button" @click="goBack">← 返回</button>
+    </div>
+
+    <!-- 居中的标题区域 -->
     <header class="ai-header">
-      <RouterLink class="back" to="/survey/new">返回标题设定</RouterLink>
-      <div>
-        <p class="kicker">AI Prompt</p>
-        <h1>用 AI 生成问卷草案</h1>
+      <p class="kicker">AI Prompt</p>
+      <h1>用 AI 生成问卷草案</h1>
+      <div class="current-title">
+        <span>当前标题</span>
+        <strong>{{ title || '未命名问卷' }}</strong>
       </div>
     </header>
 
     <main class="ai-main">
+      <!-- 左侧：可编辑的需求描述 -->
       <section class="prompt-card">
         <div class="prompt-header">
-          <div>
-            <p class="prompt-title">描述你的需求</p>
-            <p class="prompt-subtitle">AI 会根据描述生成题目草案，你可以再编辑修改。</p>
-          </div>
-          <div class="prompt-meta">
-            <span>当前标题</span>
-            <strong>{{ title || '未命名问卷' }}</strong>
-          </div>
+          <p class="prompt-title">描述你的需求</p>
+          <p class="prompt-subtitle">AI 会根据描述生成题目草案，直接修改下方文字即可。</p>
         </div>
 
         <textarea
           v-model="prompt"
-          class="prompt-input"
-          rows="12"
-          :placeholder="exampleText"
+          class="prompt-input editable"
+          rows="14"
         ></textarea>
         <div class="prompt-actions">
           <button class="ghost-button" type="button" @click="router.push({ name: 'survey-editor' })">
@@ -78,17 +90,13 @@ const startGenerate = () => {
         </div>
       </section>
 
+      <!-- 右侧：只读的案例引导 -->
       <aside class="case-card">
         <h2>案例引导</h2>
-        <p>可以用下面的格式来描述问卷需求（可编辑）：</p>
-        <textarea
-          v-model="exampleText"
-          class="example-textarea"
-          rows="8"
-        ></textarea>
-        <button class="fill-button" type="button" @click="prompt = exampleText.value">
-          📋 使用此模板
-        </button>
+        <p class="case-desc">比如：使用下面的格式来描述问卷需求</p>
+        <div class="example-box">
+          <pre class="example-text">{{ exampleText }}</pre>
+        </div>
         <ul class="case-tips">
           <li>说明调研目的，有助于 AI 生成更贴合的题目。</li>
           <li>题目数量可以略估，后续可在编辑器中增删。</li>
@@ -102,22 +110,43 @@ const startGenerate = () => {
 <style scoped>
 .ai-shell {
   min-height: 100vh;
-  padding: 40px;
+  padding: 32px 40px;
   background: radial-gradient(circle at top right, #eaf2ff 0%, #ffffff 55%);
-  display: grid;
-  gap: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
-.ai-header {
+/* 顶部返回按钮 */
+.top-bar {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
+  justify-content: flex-start;
 }
 
 .back {
   color: #1e4fb4;
   font-weight: 600;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 15px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.back:hover {
+  background: rgba(30, 79, 180, 0.1);
+  transform: translateX(-2px);
+}
+
+/* 居中标题区域 */
+.ai-header {
+  text-align: center;
+  padding: 16px 0;
 }
 
 .kicker {
@@ -125,18 +154,41 @@ const startGenerate = () => {
   letter-spacing: 0.18em;
   font-size: 11px;
   color: #5a7395;
+  margin-bottom: 6px;
 }
 
 .ai-header h1 {
   font-family: 'Newsreader', serif;
-  font-size: 30px;
-  margin-top: 6px;
+  font-size: 32px;
+  margin: 0 0 16px 0;
+  color: #1a3b7f;
 }
 
+.current-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: #f2f6ff;
+  border-radius: 14px;
+  padding: 10px 18px;
+  font-size: 13px;
+  color: #5a7395;
+}
+
+.current-title strong {
+  color: #1a3b7f;
+  font-size: 14px;
+}
+
+/* 主体双栏布局 */
 .ai-main {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  grid-template-columns: 1.6fr 1fr;
   gap: 24px;
+  flex: 1;
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
 }
 
 .prompt-card,
@@ -145,41 +197,27 @@ const startGenerate = () => {
   border-radius: 24px;
   padding: 28px;
   box-shadow: var(--color-shadow);
-  display: grid;
-  gap: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
+/* 左侧：描述需求 */
 .prompt-header {
   display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .prompt-title {
   font-weight: 600;
   color: #1a3b7f;
+  font-size: 16px;
 }
 
 .prompt-subtitle {
   font-size: 13px;
   color: #6d7f9a;
-  margin-top: 4px;
-}
-
-.prompt-meta {
-  background: #f2f6ff;
-  border-radius: 14px;
-  padding: 10px 14px;
-  font-size: 12px;
-  color: #5a7395;
-  display: grid;
-  gap: 4px;
-}
-
-.prompt-meta strong {
-  color: #1a3b7f;
-  font-size: 14px;
 }
 
 .prompt-input {
@@ -188,13 +226,27 @@ const startGenerate = () => {
   border: 1px solid #d4e1f6;
   padding: 16px;
   font-size: 14px;
-  line-height: 1.6;
+  line-height: 1.7;
   resize: vertical;
   background: #fbfdff;
+  flex: 1;
+  min-height: 200px;
+  font-family: inherit;
+}
+
+.prompt-input.editable {
+  background: #fffef8;
+  border: 2px solid #e8d8a0;
 }
 
 .prompt-input:focus {
   outline: 2px solid rgba(38, 101, 212, 0.25);
+  border-color: #2665d4;
+}
+
+.prompt-input.editable:focus {
+  border-color: #c9a932;
+  outline: 2px solid rgba(201, 169, 50, 0.2);
 }
 
 .prompt-actions {
@@ -202,6 +254,7 @@ const startGenerate = () => {
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
+  margin-top: auto;
 }
 
 .ghost-button,
@@ -219,52 +272,48 @@ const startGenerate = () => {
   border: 1px solid rgba(38, 101, 212, 0.2);
 }
 
+.ghost-button:hover {
+  background: #e8f0ff;
+}
+
 .primary-button {
   background: linear-gradient(135deg, #2665d4, #4f80f1);
   color: #ffffff;
 }
 
+.primary-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(38, 101, 212, 0.3);
+}
+
+/* 右侧：案例引导 */
 .case-card h2 {
   font-size: 18px;
-}
-
-.example-textarea {
-  width: 100%;
-  border-radius: 14px;
-  border: 2px solid #d4e1f6;
-  padding: 16px;
-  font-size: 13px;
-  line-height: 1.6;
-  resize: vertical;
-  background: #f9fbff;
   color: #1a3b7f;
+  margin: 0;
+}
+
+.case-desc {
+  font-size: 13px;
+  color: #6d7f9a;
+  margin: 0;
+}
+
+.example-box {
+  background: #f5f8fc;
+  border: 1px dashed #c5d4e8;
+  border-radius: 14px;
+  padding: 16px;
+  opacity: 0.85;
+}
+
+.example-text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #5a7395;
   font-family: inherit;
-  transition: all 0.2s ease;
-}
-
-.example-textarea:focus {
-  outline: none;
-  border-color: #2665d4;
-  box-shadow: 0 0 0 3px rgba(38, 101, 212, 0.1);
-  background: white;
-}
-
-.fill-button {
-  width: 100%;
-  padding: 12px;
-  background: linear-gradient(135deg, #4caf50, #66bb6a);
-  color: white;
-  border: none;
-  border-radius: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: 0 4px 12px rgba(76, 175, 80, 0.2);
-}
-
-.fill-button:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(76, 175, 80, 0.3);
+  white-space: pre-wrap;
 }
 
 .case-tips {
@@ -272,24 +321,47 @@ const startGenerate = () => {
   padding-left: 18px;
   font-size: 13px;
   color: #6d7f9a;
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 8px;
+  margin-top: auto;
 }
 
+/* 响应式：平板及以下 */
 @media (max-width: 960px) {
   .ai-main {
     grid-template-columns: 1fr;
   }
 }
 
+/* 响应式：手机端保持良好 */
 @media (max-width: 720px) {
   .ai-shell {
-    padding: 24px;
+    padding: 20px;
   }
 
-  .ai-header {
+  .ai-header h1 {
+    font-size: 24px;
+  }
+
+  .current-title {
     flex-direction: column;
-    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .prompt-card,
+  .case-card {
+    padding: 20px;
+  }
+
+  .prompt-actions {
+    flex-direction: column;
+  }
+
+  .ghost-button,
+  .primary-button {
+    width: 100%;
+    text-align: center;
   }
 }
 </style>

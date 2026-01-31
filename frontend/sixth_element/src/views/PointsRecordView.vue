@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { handleTokenExpired } from '@/utils/authHelper'
 import { getPointsLogs } from '@/utils/pointsApi'
 
 const router = useRouter()
@@ -58,6 +59,13 @@ async function fetchPointsLogs() {
     totalRecords.value = data.total
   } catch (err) {
     console.error('Failed to fetch points logs:', err)
+    
+    // 检查是否是登录过期
+    if (err.message.includes('登录已过期')) {
+      handleTokenExpired(router)
+      return
+    }
+    
     alert(err.message || '获取积分记录失败，请稍后重试')
   } finally {
     loading.value = false

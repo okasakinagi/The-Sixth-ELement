@@ -1,11 +1,18 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 const router = useRouter()
 const route = useRoute()
 
 const makeId = () => `q-${Date.now()}-${Math.floor(Math.random() * 10000)}`
+
+// 拖拽排序相关
+const dragState = ref({
+  dragging: false,
+  dragIndex: null,
+  dropIndex: null
+})
 
 const AI_TEMPLATES = [
   {
@@ -60,6 +67,31 @@ const AI_TEMPLATES = [
   },
 ]
 
+// 默认模板内容
+const DEFAULT_TEMPLATE = `【问卷主题】：
+【目标人群】：
+【问题数量】：
+【问卷类型】：
+【关键问题】：
+1. 
+2. 
+3. 
+
+【特殊要求】：`
+
+// 示例内容
+const DEFAULT_EXAMPLE = `【问卷主题】：大学生消费习惯调研
+【目标人群】：本校大一至大四学生
+【问题数量】：8-12道题
+【问卷类型】：消费偏好
+【关键问题】：
+1. 每月生活费多少？
+2. 主要消费项目是什么？
+3. 是否有理财习惯？
+4. 最常用的支付方式？
+
+【特殊要求】：需要包含多选题、填空题`
+
 const state = reactive({
   title: '未命名问卷',
   description: '',
@@ -72,7 +104,8 @@ const state = reactive({
   addMenuOpen: false,
   saveModalOpen: false,
   showTemplateGuide: false,
-  templateInput: '',
+  templateInput: DEFAULT_TEMPLATE,
+  exampleInput: DEFAULT_EXAMPLE,
 })
 
 const formatTime = (value) => {
@@ -256,28 +289,83 @@ const openSettings = () => {
 const handleBack = () => {
   const hasContent = state.questions.length > 0 || state.title !== '未命名问卷' || state.description.trim()
   if (hasContent) {
-    const confirm = window.confirm('离开当前页面将失去未保存的内容，确认返回任务大厅吗？')
+    const confirm = window.confirm('离开当前页面将失去未保存的内容，确认返回吗？')
     if (!confirm) return
   }
-  router.push('/')
+  router.back()
 }
 
 const toggleTemplateGuide = () => {
   state.showTemplateGuide = !state.showTemplateGuide
-  if (state.showTemplateGuide && !state.templateInput) {
-    state.templateInput = `请按以下格式填写，系统将自动生成问卷：
+}
 
-【问卷主题】：例如：大学生消费习惯调研
-【目标人群】：例如：本校大一至大四学生
-【问题数量】：例如：8-12道题
-【问卷类型】：例如：消费偏好/学习习惯/服务反馈/其他
-【关键问题】：例如：
-1. 每月生活费多少？
-2. 主要消费项目是什么？
-3. 是否有理财习惯？
+// 拖拽排序相关函数
+const handleDragStart = (index) => {
+  dragState.value.dragging = true
+  dragState.value.dragIndex = index
+}
 
-【特殊要求】（可选）：例如：需要包含多选题、填空题等`
+const handleDragOver = (e, index) => {
+  e.preventDefault()
+  dragState.value.dropIndex = index
+}
+
+const handleDragEnd = () => {
+  if (dragState.value.dragIndex !== null && dragState.value.dropIndex !== null && dragState.value.dragIndex !== dragState.value.dropIndex) {
+    const questions = [...state.questions]
+    const [removed] = questions.splice(dragState.value.dragIndex, 1)
+    questions.splice(dragState.value.dropIndex, 0, removed)
+    state.questions = questions
+    saveDraft()
   }
+  dragState.value.dragging = false
+  dragState.value.dragIndex = null
+  dragState.value.dropIndex = null
+}
+
+// 移动端触摸拖拽
+let touchStartY = 0
+let touchElement = null
+let touchIndex = null
+
+const handleTouchStart = (e, index) => {
+  touchStartY = e.touches[0].clientY
+  touchElement = e.target.closest('.question-card')
+  touchIndex = index
+  if (touchElement) {
+    touchElement.classList.add('dragging-touch')
+  }
+}
+
+const handleTouchMove = (e) => {
+  if (touchElement && touchIndex !== null) {
+    const touch = e.touches[0]
+    const cards = document.querySelectorAll('.question-card')
+    cards.forEach((card, i) => {
+      if (i !== touchIndex) {
+        const rect = card.getBoundingClientRect()
+        if (touch.clientY > rect.top && touch.clientY < rect.bottom) {
+          dragState.value.dropIndex = i
+        }
+      }
+    })
+  }
+}
+
+const handleTouchEnd = () => {
+  if (touchElement) {
+    touchElement.classList.remove('dragging-touch')
+  }
+  if (touchIndex !== null && dragState.value.dropIndex !== null && touchIndex !== dragState.value.dropIndex) {
+    const questions = [...state.questions]
+    const [removed] = questions.splice(touchIndex, 1)
+    questions.splice(dragState.value.dropIndex, 0, removed)
+    state.questions = questions
+    saveDraft()
+  }
+  touchElement = null
+  touchIndex = null
+  dragState.value.dropIndex = null
 }
 
 const generateFromTemplate = () => {
@@ -351,16 +439,28 @@ const scrollToQuestion = (id) => {
     element.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 }
+
+// 重置模板内容
+const resetTemplate = () => {
+  state.templateInput = DEFAULT_TEMPLATE
+}
 </script>
 
 <template>
   <div class="builder-shell">
+    <!-- 返回按钮 - 单独在左上角 -->
+    <div class="back-btn-container">
+      <button class="back-btn" type="button" @click="handleBack">
+        ← 返回
+      </button>
+    </div>
+
+    <!-- 问卷制作 设定标题区域 -->
     <header class="builder-header">
-      <div>
-        <button class="back" type="button" @click="handleBack">
-          ← 返回任务大厅
-        </button>
+      <div class="header-main">
+        <h1 class="page-title">问卷制作</h1>
         <div class="title-block">
+          <span class="title-label">问卷标题：</span>
           <button v-if="!state.titleEditing" class="title-display" type="button" @click="startTitleEdit">
             {{ state.title }}
           </button>
@@ -374,11 +474,53 @@ const scrollToQuestion = (id) => {
           <span class="status-pill">自动保存</span>
         </div>
       </div>
-      <div class="header-actions">
-        <button class="ghost-button" type="button">预览</button>
-        <button class="primary-button" type="button" @click="openSaveModal">保存</button>
-      </div>
     </header>
+
+    <!-- AI生成模板区域 - 移到页面中上方 -->
+    <section v-if="state.questions.length === 0" class="ai-template-section">
+      <div class="ai-template-header">
+        <h2>🎯 用 AI 生成问卷草案</h2>
+        <p class="ai-hint">在左侧描述需求，或参考右侧示例进行修改</p>
+      </div>
+      
+      <div class="ai-template-content">
+        <!-- 左侧: 可编辑的需求描述 -->
+        <div class="template-edit-area">
+          <h3>📝 描述你的需求</h3>
+          <textarea
+            v-model="state.templateInput"
+            class="template-textarea"
+            rows="16"
+            placeholder="在这里填写你的问卷需求..."
+          ></textarea>
+          <div class="template-actions">
+            <button class="ghost-button small" type="button" @click="resetTemplate">
+              🔄 重置
+            </button>
+            <button class="primary-button" type="button" @click="generateFromTemplate">
+              ✨ 生成问卷
+            </button>
+          </div>
+        </div>
+
+        <!-- 右侧: 只读的案例引导 -->
+        <div class="template-example-area">
+          <h3>📖 案例引导</h3>
+          <textarea
+            v-model="state.exampleInput"
+            class="template-textarea"
+            rows="8"
+            placeholder="参考示例，可直接修改..."
+            readonly
+          ></textarea>
+          <div class="template-actions">
+            <button class="ghost-button small" type="button" @click="state.templateInput = state.exampleInput">
+              ← 复制到左侧
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
 
     <section class="description-area">
       <p class="section-title">问卷说明</p>
@@ -404,38 +546,30 @@ const scrollToQuestion = (id) => {
     </section>
 
     <main class="question-area">
-      <div v-if="state.questions.length === 0" class="empty-state">
-        <p>点击下方 + 号，开始你的第一道题</p>
-        <button class="template-guide-btn" type="button" @click="toggleTemplateGuide">
-          📝 或使用文字模板快速生成
-        </button>
+      <div v-if="state.questions.length === 0 && !state.showTemplateGuide" class="empty-state">
+        <p>点击下方 + 号，手动添加题目</p>
+        <p class="empty-hint">或使用上方 AI 功能快速生成问卷</p>
       </div>
 
-      <!-- 模板引导面板 -->
-      <div v-if="state.showTemplateGuide" class="template-guide-panel">
-        <div class="template-guide-header">
-          <h3>🎯 文字模板引导</h3>
-          <button class="close-btn" type="button" @click="state.showTemplateGuide = false">×</button>
-        </div>
-        <div class="template-guide-content">
-          <p class="guide-hint">
-            ✨ 请按照以下格式填写，系统将自动为您生成问卷框架
-          </p>
-          <textarea
-            v-model="state.templateInput"
-            class="template-textarea"
-            rows="18"
-            placeholder="模板将自动加载..."
-          ></textarea>
-          <div class="template-actions">
-            <button class="ghost-button" type="button" @click="state.showTemplateGuide = false">取消</button>
-            <button class="primary-button" type="button" @click="generateFromTemplate">生成问卷</button>
-          </div>
-        </div>
-      </div>
-
-      <div v-for="(question, index) in state.questions" :id="question.id" :key="question.id" class="question-card">
+      <div 
+        v-for="(question, index) in state.questions" 
+        :id="question.id" 
+        :key="question.id" 
+        class="question-card"
+        :class="{ 
+          'dragging': dragState.dragIndex === index,
+          'drop-target': dragState.dropIndex === index && dragState.dragIndex !== index
+        }"
+        draggable="true"
+        @dragstart="handleDragStart(index)"
+        @dragover="handleDragOver($event, index)"
+        @dragend="handleDragEnd"
+        @touchstart="handleTouchStart($event, index)"
+        @touchmove="handleTouchMove"
+        @touchend="handleTouchEnd"
+      >
         <header class="question-header">
+          <div class="drag-handle" title="拖拽排序">⋮⋮</div>
           <div class="question-index">Q{{ index + 1 }}</div>
           <div class="question-meta">
             <span v-if="question.isAi" class="ai-tag">AI 生成</span>
@@ -492,13 +626,16 @@ const scrollToQuestion = (id) => {
       </div>
     </main>
 
+    <!-- 底部控制台 -->
     <div class="toolbar">
       <div class="toolbar-left">
-        <button class="ghost-button small" type="button" @click="openOutline">大纲</button>
-        <button class="ghost-button small" type="button" @click="openSettings">设置</button>
+        <button class="ghost-button small" type="button" @click="openOutline">📋 大纲</button>
+        <button class="ghost-button small" type="button" @click="openSettings">⚙️ 设置</button>
         <span class="autosave-text">{{ lastSavedText }}</span>
       </div>
       <div class="toolbar-right">
+        <button class="ghost-button" type="button">预览</button>
+        <button class="primary-button" type="button" @click="openSaveModal">保存</button>
         <div class="add-menu">
           <button class="add-button" type="button" @click="state.addMenuOpen = !state.addMenuOpen">+</button>
           <div v-if="state.addMenuOpen" class="add-panel">
@@ -565,67 +702,111 @@ const scrollToQuestion = (id) => {
 <style scoped>
 .builder-shell {
   min-height: 100vh;
-  padding: 48px;
+  padding: 32px 48px 120px 80px;
   background: radial-gradient(circle at top left, #edf3ff 0%, #f7f9ff 45%, #ffffff 100%);
+}
+
+.builder-header {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px 0;
+  margin-top: 0;
+}
+
+/* 返回按钮容器 */
+.back-btn-container {
+  display: flex;
+  padding: 12px 0;
+  margin-bottom: 12px;
+}
+
+.back-btn {
+  color: #1e4fb4;
+  font-weight: 600;
+  background: #ffffff;
+  border: 2px solid #1e4fb4;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  box-shadow: 0 2px 8px rgba(16, 35, 63, 0.1);
+  white-space: nowrap;
+}
+
+.back-btn:hover {
+  background: #f2f6ff;
+  transform: translateX(-2px);
+  box-shadow: 0 4px 12px rgba(16, 35, 63, 0.15);
 }
 
 header {
   display: grid;
-  gap: 28px;
+  gap: 20px;
   position: relative;
 }
 
 .builder-header {
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
   align-items: center;
-  gap: 16px;
+  padding: 20px 0;
+  margin-top: 40px;
 }
 
-.back {
-  color: #1e4fb4;
-  font-weight: 600;
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 15px;
-  padding: 8px 12px;
-  border-radius: 8px;
-  transition: all 0.2s ease;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+.header-main {
+  text-align: center;
 }
 
-.back:hover {
-  background: rgba(30, 79, 180, 0.1);
-  transform: translateX(-2px);
+.page-title {
+  font-size: 32px;
+  font-weight: 700;
+  color: #0d1b37;
+  margin: 0 0 16px 0;
+  font-family: 'Newsreader', serif;
 }
 
 .title-block {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 12px;
-  margin-top: 10px;
   flex-wrap: wrap;
+}
+
+.title-label {
+  font-size: 16px;
+  color: #5a7395;
+  font-weight: 500;
 }
 
 .title-display {
   font-family: 'Newsreader', serif;
-  font-size: 28px;
-  color: #0e2a55;
+  font-size: 24px;
+  color: #1e4fb4;
   background: none;
   border: none;
   cursor: pointer;
-  padding: 0;
+  padding: 4px 8px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.title-display:hover {
+  background: rgba(30, 79, 180, 0.1);
 }
 
 .title-input {
   font-family: 'Newsreader', serif;
-  font-size: 26px;
-  padding: 6px 10px;
+  font-size: 22px;
+  padding: 8px 12px;
   border-radius: 12px;
-  border: 1px solid #d4e1f6;
+  border: 2px solid #2665d4;
+  min-width: 280px;
 }
 
 .status-pill {
@@ -637,8 +818,102 @@ header {
   font-weight: 600;
 }
 
-.header-actions {
+/* AI模板区域 */
+.ai-template-section {
+  background: linear-gradient(135deg, #ffffff, #f8faff);
+  border-radius: 24px;
+  padding: 32px;
+  box-shadow: 0 8px 32px rgba(13, 27, 55, 0.08);
+  border: 2px solid #e6effa;
+  margin-bottom: 24px;
+}
+
+.ai-template-header {
+  text-align: center;
+  margin-bottom: 28px;
+}
+
+.ai-template-header h2 {
+  font-size: 24px;
+  font-weight: 700;
+  color: #0d1b37;
+  margin: 0 0 8px 0;
+}
+
+.ai-hint {
+  color: #5a7395;
+  font-size: 14px;
+  margin: 0;
+}
+
+.ai-template-content {
+  display: grid;
+  grid-template-columns: 2fr 0.7fr;
+  gap: 24px;
+}
+
+.template-edit-area,
+.template-example-area {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 20px;
+  border: 1px solid #e6effa;
+}
+
+.template-example-area {
+  padding: 16px;
+}
+
+.template-edit-area h3,
+.template-example-area h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1a3b7f;
+  margin: 0 0 16px 0;
+}
+
+.template-example-area h3 {
+  font-size: 14px;
+  margin: 0 0 12px 0;
+}
+
+.template-textarea {
+  width: 100%;
+  padding: 16px;
+  border: 2px solid #2665d4;
+  border-radius: 12px;
+  font-size: 14px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  line-height: 1.8;
+  color: #0d1b37;
+  background: #ffffff;
+  resize: vertical;
+  min-height: 320px;
+  transition: all 0.3s ease;
+  cursor: text;
+}
+
+.template-example-area .template-textarea {
+  min-height: 400px;
+  border: 1px dashed #d4e1f6;
+  background: #f5f8fc;
+  opacity: 0.8;
+  cursor: default;
+  resize: none;
+  overflow: auto;
+}
+
+.template-textarea:focus {
+  outline: none;
+  border-color: #1e4fb4;
+  box-shadow: 0 0 0 4px rgba(38, 101, 212, 0.15);
+  background: #ffffff;
+}
+
+.template-actions {
+  margin-top: 16px;
   display: flex;
+  justify-content: flex-end;
   gap: 12px;
 }
 
@@ -667,6 +942,11 @@ header {
   color: #ffffff;
 }
 
+.primary-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(38, 101, 212, 0.3);
+}
+
 .description-area {
   background: #ffffff;
   border-radius: 20px;
@@ -674,6 +954,7 @@ header {
   box-shadow: var(--color-shadow);
   display: grid;
   gap: 12px;
+  margin-bottom: 24px;
 }
 
 .section-title {
@@ -710,7 +991,7 @@ header {
 }
 
 .empty-state {
-  padding: 50px;
+  padding: 40px;
   text-align: center;
   border-radius: 20px;
   border: 2px dashed #c8d6ee;
@@ -718,125 +999,16 @@ header {
   background: #ffffff;
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  align-items: center;
-}
-
-.template-guide-btn {
-  padding: 12px 24px;
-  background: linear-gradient(135deg, #4f80f1, #2665d4);
-  color: white;
-  border: none;
-  border-radius: 12px;
-  font-size: 15px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: 0 4px 12px rgba(38, 101, 212, 0.2);
-}
-
-.template-guide-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(38, 101, 212, 0.3);
-}
-
-.template-guide-panel {
-  background: white;
-  border-radius: 20px;
-  padding: 24px;
-  box-shadow: 0 8px 24px rgba(13, 27, 55, 0.12);
-  border: 2px solid #e6effa;
-  margin-bottom: 24px;
-}
-
-.template-guide-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-  padding-bottom: 16px;
-  border-bottom: 2px solid #e6effa;
-}
-
-.template-guide-header h3 {
-  margin: 0;
-  font-size: 20px;
-  color: #0d1b37;
-  font-weight: 700;
-}
-
-.close-btn {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  border: none;
-  background: #f1f2f6;
-  color: #5a6579;
-  font-size: 24px;
-  font-weight: bold;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.close-btn:hover {
-  background: #ef4444;
-  color: white;
-}
-
-.template-guide-content {
-  display: grid;
-  gap: 16px;
-}
-
-.guide-hint {
-  margin: 0;
-  padding: 12px 16px;
-  background: #f0f7ff;
-  border-left: 4px solid #2665d4;
-  border-radius: 8px;
-  color: #1a3b7f;
-  font-size: 14px;
-  line-height: 1.6;
-}
-
-.template-textarea {
-  width: 100%;
-  padding: 20px;
-  border: 2px solid #d8e4f4;
-  border-radius: 16px;
-  font-size: 15px;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
-  line-height: 2;
-  color: #0d1b37;
-  background: linear-gradient(to bottom, #ffffff, #f9fbff);
-  resize: vertical;
-  min-height: 450px;
-  transition: all 0.3s ease;
-  box-shadow: 0 2px 8px rgba(13, 27, 55, 0.04);
-}
-
-.template-textarea:focus {
-  outline: none;
-  border-color: #2665d4;
-  box-shadow: 0 0 0 4px rgba(38, 101, 212, 0.12), 0 4px 16px rgba(13, 27, 55, 0.08);
-  background: white;
-  transform: translateY(-1px);
-}
-
-.template-textarea::placeholder {
-  color: #a0b0cc;
-  font-style: italic;
-}
-
-.template-actions {
-  display: flex;
-  justify-content: flex-end;
   gap: 12px;
+  align-items: center;
 }
 
+.empty-hint {
+  font-size: 14px;
+  color: #a0b0cc;
+}
+
+/* 题目卡片 */
 .question-card {
   background: #ffffff;
   border-radius: 22px;
@@ -845,13 +1017,53 @@ header {
   display: grid;
   gap: 14px;
   animation: fadeIn 0.4s ease;
+  transition: all 0.2s ease;
+  cursor: grab;
+}
+
+.question-card:active {
+  cursor: grabbing;
+}
+
+.question-card.dragging {
+  opacity: 0.6;
+  transform: scale(0.98);
+  box-shadow: 0 8px 24px rgba(16, 35, 63, 0.15);
+}
+
+.question-card.drop-target {
+  border: 2px dashed #2665d4;
+  background: #f8faff;
+}
+
+.question-card.dragging-touch {
+  opacity: 0.7;
+  transform: scale(0.98);
 }
 
 .question-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
   gap: 12px;
+}
+
+.drag-handle {
+  color: #a0b0cc;
+  font-size: 18px;
+  cursor: grab;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.drag-handle:hover {
+  background: #f0f4ff;
+  color: #2665d4;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
 }
 
 .question-index {
@@ -991,22 +1203,33 @@ header {
   color: #5a7395;
 }
 
+/* 底部工具栏 */
 .toolbar {
   position: fixed;
-  left: 40px;
-  right: 40px;
-  bottom: 24px;
+  left: 0;
+  right: 0;
+  bottom: 0;
   background: #ffffff;
-  border-radius: 18px;
-  box-shadow: 0 20px 40px rgba(16, 35, 63, 0.12);
-  padding: 12px 18px;
+  border-radius: 0;
+  border-top: 1px solid #e6effa;
+  box-shadow: 0 -4px 12px rgba(16, 35, 63, 0.08);
+  padding: 12px 48px 12px 80px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  z-index: 20;
+  z-index: 50;
+  flex-wrap: wrap;
+  gap: 12px;
+  box-sizing: border-box;
 }
 
 .toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.toolbar-right {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -1030,6 +1253,11 @@ header {
   color: #ffffff;
   font-size: 24px;
   cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.add-button:hover {
+  transform: scale(1.05);
 }
 
 .add-panel {
@@ -1053,6 +1281,12 @@ header {
   color: #1a3b7f;
   font-size: 12px;
   cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.add-item:hover:not(.disabled) {
+  background: #eef4ff;
+  border-color: #2665d4;
 }
 
 .add-item.disabled {
@@ -1095,6 +1329,12 @@ header {
   text-align: left;
   cursor: pointer;
   font-size: 12px;
+  transition: all 0.2s ease;
+}
+
+.outline-item:hover {
+  background: #eef4ff;
+  border-color: #2665d4;
 }
 
 .settings {
@@ -1170,36 +1410,148 @@ header {
   }
 }
 
+/* 平板适配 */
 @media (max-width: 960px) {
   .builder-shell {
-    padding: 24px 24px 120px;
+    padding: 24px 24px 100px 70px;
   }
 
   .toolbar {
-    left: 20px;
-    right: 20px;
+    padding: 12px 24px 12px 70px;
+  }
+
+  .ai-template-content {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .template-edit-area {
+    order: 1;
+  }
+
+  .template-example-area {
+    order: 2;
   }
 }
 
+/* 移动端适配 */
 @media (max-width: 720px) {
-  .builder-header {
-    flex-direction: column;
-    align-items: flex-start;
+  .builder-shell {
+    padding: 16px 16px 100px 16px;
   }
 
+  /* 移动端返回按钮调整 */
+  .back-btn {
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+
+  .back-btn-container {
+    padding: 8px 0;
+    margin-bottom: 8px;
+  }
+
+  .builder-header {
+    margin-top: 0;
+    padding: 16px 0;
+  }
+
+  .page-title {
+    font-size: 24px;
+  }
+
+  .title-display {
+    font-size: 18px;
+  }
+
+  .title-input {
+    font-size: 16px;
+    min-width: 200px;
+  }
+
+  .ai-template-section {
+    padding: 20px 16px;
+    border-radius: 16px;
+  }
+
+  .ai-template-header h2 {
+    font-size: 18px;
+  }
+
+  .ai-template-content {
+    grid-template-columns: 1fr;
+  }
+
+  .template-textarea {
+    min-height: 200px;
+    font-size: 13px;
+  }
+
+  .example-content {
+    min-height: 150px;
+  }
+
+  .example-text {
+    font-size: 12px;
+  }
+
+  /* 移动端工具栏 */
   .toolbar {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 12px;
+    padding: 10px 16px 10px 16px;
+  }
+
+  .toolbar-left {
+    width: 100%;
+    justify-content: flex-start;
+    gap: 8px;
+  }
+
+  .toolbar-right {
+    width: 100%;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .ghost-button {
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+
+  .primary-button {
+    padding: 8px 14px;
+    font-size: 13px;
+  }
+
+  .add-button {
+    width: 40px;
+    height: 40px;
+    font-size: 20px;
   }
 
   .add-panel {
-    right: auto;
-    left: 0;
+    right: 0;
+    left: auto;
+    grid-template-columns: 1fr 1fr;
+    min-width: 240px;
   }
 
   .side-panel {
-    left: 20px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    bottom: 100px;
+  }
+
+  /* 拖拽手柄在移动端更明显 */
+  .drag-handle {
+    padding: 8px 10px;
+    font-size: 20px;
+    background: #f5f8ff;
+    border-radius: 8px;
+  }
+
+  .question-card {
+    padding: 16px;
   }
 }
 </style>

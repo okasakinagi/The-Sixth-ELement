@@ -3,6 +3,34 @@
     <!-- 遮罩层 -->
     <div v-if="mobileSidebarOpen" class="sidebar-overlay" @click="toggleSidebar"></div>
 
+    <!-- PC端可拖动头像积分小窗口 -->
+    <div
+      v-if="!isMobile"
+      class="draggable-menu"
+      ref="menuRef"
+      :style="{ left: menuPosition.x + 'px', top: menuPosition.y + 'px' }"
+      @mousedown="startDrag"
+      @touchstart="startDrag"
+    >
+      <div class="drag-handle">⋮⋮</div>
+      <RouterLink class="points-badge" to="/points">
+        <span class="points-icon">💰</span>
+        <span class="points-value">{{ userPoints }}</span>
+      </RouterLink>
+      <RouterLink class="avatar" to="/profile" aria-label="个人信息">
+        <span>U</span>
+      </RouterLink>
+    </div>
+
+    <!-- 移动端常见问题快捷跳转 -->
+    <button 
+      v-if="isMobile"
+      class="mobile-faq-btn"
+      @click="goToFaq"
+    >
+      ❓ 常见问题
+    </button>
+
     <!-- 移动端侧边栏切换按钮 -->
     <button 
       v-if="isMobile"
@@ -129,17 +157,24 @@
           <div class="feedback-buttons">
             <button 
               class="feedback-btn helpful"
+              :class="{ 'disabled': isFeedbackDisabled(activeItemId) }"
+              :disabled="isFeedbackDisabled(activeItemId)"
               @click="submitFeedback(true)"
             >
               👍 有帮助
             </button>
             <button 
               class="feedback-btn not-helpful"
+              :class="{ 'disabled': isFeedbackDisabled(activeItemId) }"
+              :disabled="isFeedbackDisabled(activeItemId)"
               @click="submitFeedback(false)"
             >
               👎 没帮助
             </button>
           </div>
+          <p v-if="isFeedbackDisabled(activeItemId)" class="feedback-submitted-hint">
+            ✓ 已提交反馈
+          </p>
         </div>
 
         <!-- 相关推荐 -->
@@ -179,6 +214,110 @@ const searchResults = ref([])
 const sidebarCollapsed = ref(false) // 控制帮助中心侧边栏的收起/展开状态
 const mobileSidebarOpen = ref(false) // 控制移动端侧边栏的打开/关闭状态
 const isMobile = ref(window.innerWidth <= 768) // 检测是否为移动端
+const userPoints = ref(0) // 用户积分
+
+// 反馈状态管理（localStorage存储，一周过期）
+const FEEDBACK_STORAGE_KEY = 'help_center_feedback'
+const FEEDBACK_EXPIRY_DAYS = 7
+
+// 响应式反馈记录（用于立即更新UI）
+const feedbackRecords = ref({})
+
+// 获取已提交反馈的记录
+const getFeedbackRecords = () => {
+  try {
+    const data = localStorage.getItem(FEEDBACK_STORAGE_KEY)
+    if (!data) return {}
+    const records = JSON.parse(data)
+    const now = Date.now()
+    // 清理过期记录
+    Object.keys(records).forEach(key => {
+      if (now - records[key].timestamp > FEEDBACK_EXPIRY_DAYS * 24 * 60 * 60 * 1000) {
+        delete records[key]
+      }
+    })
+    localStorage.setItem(FEEDBACK_STORAGE_KEY, JSON.stringify(records))
+    return records
+  } catch {
+    return {}
+  }
+}
+
+// 初始化响应式反馈记录
+const initFeedbackRecords = () => {
+  feedbackRecords.value = getFeedbackRecords()
+}
+
+// 检查某条目是否已提交反馈
+const isFeedbackDisabled = (itemId) => {
+  return !!feedbackRecords.value[itemId]
+}
+
+// 保存反馈记录
+const saveFeedbackRecord = (itemId, isHelpful) => {
+  const records = getFeedbackRecords()
+  records[itemId] = { isHelpful, timestamp: Date.now() }
+  localStorage.setItem(FEEDBACK_STORAGE_KEY, JSON.stringify(records))
+  // 立即更新响应式状态
+  feedbackRecords.value = { ...records }
+}
+
+// 拖拽相关
+const menuRef = ref(null)
+const menuPosition = ref({ x: 0, y: 0 })
+const dragState = ref({ isDragging: false, startX: 0, startY: 0, initialX: 0, initialY: 0 })
+
+function startDrag(e) {
+  const clientX = e.type.includes('touch') ? e.touches[0]?.clientX : e.clientX
+  const clientY = e.type.includes('touch') ? e.touches[0]?.clientY : e.clientY
+
+  if (!clientX || !clientY) return
+
+  dragState.value = {
+    isDragging: true,
+    startX: clientX,
+    startY: clientY,
+    initialX: menuPosition.value.x,
+    initialY: menuPosition.value.y
+  }
+
+  document.addEventListener('mousemove', onDrag)
+  document.addEventListener('mouseup', stopDrag)
+  document.addEventListener('touchmove', onDrag)
+  document.addEventListener('touchend', stopDrag)
+}
+
+function onDrag(e) {
+  if (!dragState.value.isDragging) return
+  
+  const clientX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX
+  const clientY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY
+
+  const deltaX = clientX - dragState.value.startX
+  const deltaY = clientY - dragState.value.startY
+
+  menuPosition.value = {
+    x: dragState.value.initialX + deltaX,
+    y: dragState.value.initialY + deltaY
+  }
+}
+
+function stopDrag() {
+  dragState.value.isDragging = false
+  document.removeEventListener('mousemove', onDrag)
+  document.removeEventListener('mouseup', stopDrag)
+  document.removeEventListener('touchmove', onDrag)
+  document.removeEventListener('touchend', stopDrag)
+}
+
+// 移动端跳转到常见问题
+const goToFaq = () => {
+  expandedCategories.value = ['faq']
+  const faqCategory = categories.value.find(c => c.id === 'faq')
+  if (faqCategory && faqCategory.items.length > 0) {
+    selectItem(faqCategory.items[0].id)
+  }
+}
 
 // 监听窗口大小变化
 function handleResize() {
@@ -554,13 +693,26 @@ const toggleSidebar = () => {
 }
 
 const submitFeedback = (isHelpful) => {
-  console.log('反馈:', isHelpful ? '有帮助' : '没帮助')
-  // 这里可以添加反馈提交逻辑
+  if (isFeedbackDisabled(activeItemId.value)) return
+  
+  // 保存反馈记录
+  saveFeedbackRecord(activeItemId.value, isHelpful)
+  
+  console.log('反馈:', isHelpful ? '有帮助' : '没帮助', '条目:', activeItemId.value)
+  // 这里可以添加反馈提交到后端的逻辑
   alert(isHelpful ? '感谢您的反馈！' : '我们会努力改进，感谢您的反馈！')
 }
 
 // 生命周期
 onMounted(() => {
+  // 初始化反馈记录
+  initFeedbackRecords()
+  
+  // 初始化导航菜单位置（右上角）
+  if (!isMobile.value) {
+    menuPosition.value = { x: window.innerWidth - 220, y: 60 }
+  }
+  
   // 从路由参数初始化
   if (initialCategory.value) {
     expandedCategories.value.push(initialCategory.value)
@@ -604,6 +756,112 @@ watch(
   min-height: 100vh;
   background: linear-gradient(135deg, #f5f7fa 0%, #e4eaf1 100%);
   padding: 48px 20px 64px;
+  position: relative;
+}
+
+/* PC端可拖动头像积分小窗口 */
+.draggable-menu {
+  position: fixed;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.98);
+  border: 1px solid rgba(33, 150, 243, 0.15);
+  border-radius: 28px;
+  padding: 8px 16px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  z-index: 1000;
+  cursor: move;
+  user-select: none;
+  transition: box-shadow 0.2s ease;
+}
+
+.draggable-menu:hover {
+  box-shadow: 0 12px 32px rgba(33, 150, 243, 0.2);
+}
+
+.drag-handle {
+  color: #90a4ae;
+  font-size: 14px;
+  letter-spacing: 2px;
+  cursor: grab;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.points-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: linear-gradient(135deg, #fff3e0, #ffe0b2);
+  border-radius: 16px;
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.points-badge:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(255, 152, 0, 0.3);
+}
+
+.points-icon {
+  font-size: 16px;
+}
+
+.points-value {
+  font-size: 14px;
+  font-weight: 700;
+  color: #e65100;
+}
+
+.avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #42a5f5, #1976d2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(33, 150, 243, 0.3);
+}
+
+.avatar:hover {
+  transform: scale(1.1);
+  box-shadow: 0 4px 12px rgba(33, 150, 243, 0.4);
+}
+
+.avatar span {
+  color: white;
+  font-weight: 700;
+  font-size: 16px;
+}
+
+/* 移动端常见问题快捷按钮 */
+.mobile-faq-btn {
+  position: fixed;
+  bottom: 80px;
+  right: 16px;
+  padding: 12px 20px;
+  background: linear-gradient(135deg, #42a5f5, #1976d2);
+  color: white;
+  border: none;
+  border-radius: 24px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(33, 150, 243, 0.4);
+  z-index: 999;
+  transition: all 0.2s ease;
+}
+
+.mobile-faq-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(33, 150, 243, 0.5);
 }
 
 .help-shell {
@@ -1303,6 +1561,28 @@ watch(
   background: linear-gradient(135deg, #c62828 0%, #b71c1c 100%);
   transform: translateY(-2px);
   box-shadow: 0 6px 16px rgba(244, 67, 54, 0.3);
+}
+
+/* 反馈按钮禁用状态 */
+.feedback-btn.disabled {
+  background: #e0e0e0 !important;
+  color: #9e9e9e !important;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+  opacity: 0.7;
+}
+
+.feedback-btn.disabled:hover {
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.feedback-submitted-hint {
+  margin-top: 12px;
+  font-size: 13px;
+  color: #4caf50;
+  font-weight: 500;
 }
 
 .related-section {

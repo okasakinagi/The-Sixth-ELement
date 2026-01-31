@@ -165,23 +165,89 @@
           <!-- 研究方向/兴趣课程 -->
           <div class="form-item full-width">
             <label class="form-label">研究方向 / 兴趣课程</label>
-            <input
-              type="text"
-              v-model="formData.interests"
-              placeholder="例如：人工智能、德语初级"
-              class="form-input"
-            />
+            <div class="tag-section">
+              <div class="tag-group">
+                <span
+                  v-for="tag in interestTags"
+                  :key="tag"
+                  class="tag"
+                  :class="{ active: formData.interests.includes(tag) }"
+                  @click="toggleTag('interests', tag)"
+                >
+                  {{ tag }}
+                </span>
+              </div>
+              <div class="custom-tag-input">
+                <input
+                  v-model="customInterestInput"
+                  type="text"
+                  placeholder="自定义添加..."
+                  class="tag-input"
+                  @keyup.enter="addCustomTag('interests', customInterestInput)"
+                />
+                <button
+                  class="add-tag-btn"
+                  @click="addCustomTag('interests', customInterestInput)"
+                >
+                  + 添加
+                </button>
+              </div>
+              <div class="selected-tags" v-if="formData.interests.length > 0">
+                <span class="tag-label">已选择：</span>
+                <span
+                  v-for="tag in formData.interests"
+                  :key="tag"
+                  class="selected-tag"
+                >
+                  {{ tag }}
+                  <span class="remove-tag" @click="removeTag('interests', tag)">×</span>
+                </span>
+              </div>
+            </div>
           </div>
 
           <!-- 社团/组织经历 -->
           <div class="form-item full-width">
             <label class="form-label">社团 / 组织经历</label>
-            <input
-              type="text"
-              v-model="formData.organizations"
-              placeholder="例如：校学生会、摄影社"
-              class="form-input"
-            />
+            <div class="tag-section">
+              <div class="tag-group">
+                <span
+                  v-for="tag in organizationTags"
+                  :key="tag"
+                  class="tag"
+                  :class="{ active: formData.organizations.includes(tag) }"
+                  @click="toggleTag('organizations', tag)"
+                >
+                  {{ tag }}
+                </span>
+              </div>
+              <div class="custom-tag-input">
+                <input
+                  v-model="customOrganizationInput"
+                  type="text"
+                  placeholder="自定义添加..."
+                  class="tag-input"
+                  @keyup.enter="addCustomTag('organizations', customOrganizationInput)"
+                />
+                <button
+                  class="add-tag-btn"
+                  @click="addCustomTag('organizations', customOrganizationInput)"
+                >
+                  + 添加
+                </button>
+              </div>
+              <div class="selected-tags" v-if="formData.organizations.length > 0">
+                <span class="tag-label">已选择：</span>
+                <span
+                  v-for="tag in formData.organizations"
+                  :key="tag"
+                  class="selected-tag"
+                >
+                  {{ tag }}
+                  <span class="remove-tag" @click="removeTag('organizations', tag)">×</span>
+                </span>
+              </div>
+            </div>
           </div>
 
           <!-- 消费偏好 -->
@@ -337,6 +403,7 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
+import { handleTokenExpired } from '@/utils/authHelper'
 import { getUserProfile, updateUserProfile } from '@/utils/profileApi'
 
 const router = useRouter()
@@ -400,10 +467,16 @@ const consumptionTags = ['数码', '美妆', '奶茶', '户外', '运动', '阅�
 const careerTags = ['考公', '大厂', '学术', '创业', '出国', '考研', '自由职业']
 const skillTags = ['Python', 'Java', 'C++', '视频剪辑', '英语口译', 'PS', 'Excel', '写作', '演讲', '摄影']
 
+// 新增预置标签
+const interestTags = ['人工智能', '机器学习', '数据分析', '心理学', '经济学', '法学', '文学', '艺术设计', '新媒体', '外语学习']
+const organizationTags = ['校学生会', '院学生会', '社团联合会', '志愿者协会', '辩论队', '摄影社', '音乐社', '篮球队', '足球队', '创业团队']
+
 // 自定义标签输入
 const customConsumptionInput = ref('')
 const customCareerInput = ref('')
 const customSkillInput = ref('')
+const customInterestInput = ref('')
+const customOrganizationInput = ref('')
 
 // Toast
 const showToast = ref(false)
@@ -497,6 +570,13 @@ const saveProfile = async () => {
     }, 1500)
   } catch (error) {
     console.error('保存失败:', error)
+    
+    // 检查是否是登录过期
+    if (error.message.includes('登录已过期')) {
+      handleTokenExpired(router)
+      return
+    }
+    
     errorMessage.value = error.message
     toastMessage.value = '保存失败: ' + error.message
     showToast.value = true
@@ -538,7 +618,13 @@ const loadProfile = async () => {
     console.error('加载画像失败:', error)
     errorMessage.value = error.message
     
-    // 如果是认证错误，跳转到登录页
+    // 检查是否是登录过期
+    if (error.message.includes('登录已过期')) {
+      handleTokenExpired(router)
+      return
+    }
+    
+    // 其他认证错误，跳转到登录页
     if (error.message.includes('登录')) {
       setTimeout(() => {
         router.push('/auth')

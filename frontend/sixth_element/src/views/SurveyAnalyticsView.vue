@@ -1,15 +1,20 @@
 <script setup>
 import { computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 const route = useRoute()
+const router = useRouter()
 const surveyId = computed(() => route.params.id)
+
+const goBack = () => {
+  router.back()
+}
 </script>
 
 <template>
   <div class="analytics">
     <header>
-      <RouterLink class="back" to="/surveys">返回问卷管理</RouterLink>
+      <button class="back" type="button" @click="goBack">← 返回</button>
       <h1>数据分析</h1>
       <p>问卷 {{ surveyId }} 的概览数据</p>
     </header>
@@ -54,6 +59,21 @@ h1 {
 .back {
   color: #1e4fb4;
   font-weight: 600;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 15px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.back:hover {
+  background: rgba(30, 79, 180, 0.1);
+  transform: translateX(-2px);
 }
 
 .grid {
