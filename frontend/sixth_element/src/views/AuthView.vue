@@ -155,9 +155,14 @@ async function handleLogin() {
     localStorage.setItem('user_id', data.user?.id || '')
     localStorage.setItem('user_nickname', data.user?.nickname || '')
 
-    // 延迟导航，让用户感受到反馈
+    // 判断是否首次登录（后端可返回 is_first_login 字段，暂用 user.profile_completion 判断）
+    const isFirstLogin = data.user && (data.user.profile_completion === 0 || data.user.is_first_login)
     setTimeout(() => {
-      router.push('/surveys?justLoggedIn=true')
+      if (isFirstLogin) {
+        router.push({ path: '/profile/edit', query: { first: '1' } })
+      } else {
+        router.push('/surveys?justLoggedIn=true')
+      }
     }, 500)
   } catch (err) {
     console.error('Login error:', err)
@@ -199,9 +204,9 @@ async function handleRegister() {
     localStorage.setItem('user_id', data.user?.id || '')
     localStorage.setItem('user_nickname', data.user?.nickname || '')
 
-    // 延迟导航
+    // 注册后一定跳转到个人资料编辑页
     setTimeout(() => {
-      router.push('/surveys?justLoggedIn=true')
+      router.push({ path: '/profile/edit', query: { first: '1' } })
     }, 500)
   } catch (err) {
     console.error('Register error:', err)

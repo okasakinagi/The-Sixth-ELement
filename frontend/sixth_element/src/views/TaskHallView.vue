@@ -42,10 +42,6 @@
       >
         <div class="card-top">
           <div class="card-titles">
-            <div class="sender-row">
-              <span class="sender-label">From:</span>
-              <span class="sender">{{ task.sender }}</span>
-            </div>
             <h3>{{ task.title }}</h3>
             <p class="subtitle">{{ task.subtitle }}</p>
           </div>
@@ -94,8 +90,7 @@
       class="fab"
       ref="fabRef"
       :style="{ right: fabPosition.x + 'px', bottom: fabPosition.y + 'px' }"
-      @mousedown.prevent="startDrag($event, 'fab')"
-      @touchstart.prevent="startDrag($event, 'fab')"
+      @mousedown.stop="startDrag($event, 'fab')"
       to="/survey/new"
       aria-label="新建问卷"
     >
@@ -117,10 +112,30 @@ const fabRef = ref(null)
 const menuPosition = ref({ x: 0, y: 0 })
 const fabPosition = ref({ x: 20, y: 20 })
 const dragState = ref({ isDragging: false, type: null, startX: 0, startY: 0, initialX: 0, initialY: 0 })
+const fabDragTimer = ref(null)
+const fabTouchStarted = ref(false)
 
 function startDrag(e, type) {
-  const clientX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX
-  const clientY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY
+  // FAB使用长按才能拖拽，防止误触
+  if (type === 'fab') {
+    fabTouchStarted.value = true
+    fabDragTimer.value = setTimeout(() => {
+      if (fabTouchStarted.value) {
+        activateFabDrag(e, type)
+      }
+    }, 500) // 长按500ms才能拖拽
+    return
+  }
+
+  // 菜单可以直接拖拽
+  activateFabDrag(e, type)
+}
+
+function activateFabDrag(e, type) {
+  const clientX = e.type.includes('touch') ? e.touches[0]?.clientX : e.clientX
+  const clientY = e.type.includes('touch') ? e.touches[0]?.clientY : e.clientY
+
+  if (!clientX || !clientY) return
 
   dragState.value = {
     isDragging: true,
@@ -161,6 +176,13 @@ function onDrag(e) {
 }
 
 function stopDrag() {
+  // 清除FAB长按定时器
+  if (fabDragTimer.value) {
+    clearTimeout(fabDragTimer.value)
+    fabDragTimer.value = null
+  }
+  fabTouchStarted.value = false
+
   dragState.value.isDragging = false
   document.removeEventListener('mousemove', onDrag)
   document.removeEventListener('mouseup', stopDrag)
@@ -192,6 +214,10 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  // 清除FAB长按定时器
+  if (fabDragTimer.value) {
+    clearTimeout(fabDragTimer.value)
+  }
   document.removeEventListener('mousemove', onDrag)
   document.removeEventListener('mouseup', stopDrag)
   document.removeEventListener('touchmove', onDrag)
@@ -199,21 +225,21 @@ onUnmounted(() => {
 })
 
 const allTasks = ref([
-  { id: 't01', title: '校园生活满意度调查', subtitle: '宿舍、食堂、安保整体反馈', sender: '李同学', type: '校园调研', estimated: 6, difficulty: 2, reward: 3, filled: 54, total: 200 },
-  { id: 't02', title: '课程体验回访', subtitle: '这学期的主要课程体验', sender: '张老师', type: '教学反馈', estimated: 8, difficulty: 3, reward: 4, filled: 120, total: 260 },
-  { id: 't03', title: '食堂新品口味投票', subtitle: '为春季菜单挑选新品', sender: '后勤部', type: '投票', estimated: 3, difficulty: 1, reward: 2, filled: 82, total: 150 },
-  { id: 't04', title: '社团活动偏好', subtitle: '选出你想参加的活动', sender: '学生会', type: '兴趣画像', estimated: 5, difficulty: 2, reward: 3, filled: 33, total: 100 },
-  { id: 't05', title: '实习就业意向', subtitle: '求职方向、城市与行业偏好', sender: '就业中心', type: '就业调研', estimated: 7, difficulty: 3, reward: 4, filled: 45, total: 120 },
-  { id: 't06', title: '心理健康与压力', subtitle: '期末周的压力与缓解方式', sender: '心理中心', type: '健康问卷', estimated: 9, difficulty: 4, reward: 5, filled: 18, total: 80 },
-  { id: 't07', title: '图书馆使用体验', subtitle: '空间、座位、设备反馈', sender: '图书馆', type: '服务反馈', estimated: 4, difficulty: 2, reward: 3, filled: 210, total: 400 },
-  { id: 't08', title: '校园出行与班车', subtitle: '线路、班次与满意度调查', sender: '后勤部', type: '交通', estimated: 4, difficulty: 2, reward: 3, filled: 60, total: 180 },
-  { id: 't09', title: '新生入学指南优化', subtitle: '帮我们改进 2026 新生手册', sender: '教务处', type: '文案优化', estimated: 10, difficulty: 4, reward: 5, filled: 12, total: 60 },
-  { id: 't10', title: '赛事观众调研', subtitle: '校运动会观众体验反馈', sender: '体育部', type: '活动复盘', estimated: 6, difficulty: 2, reward: 3, filled: 140, total: 260 },
-  { id: 't11', title: '校友访谈邀约', subtitle: '愿意参加校友访谈的时间', sender: '校友办', type: '访谈邀约', estimated: 5, difficulty: 3, reward: 4, filled: 28, total: 90 },
+  { id: 't01', title: '校园生活满意度调查', subtitle: '宿舍、食堂、安保整体反馈', sender: '李同学', type: '校园调研', estimated: 6, difficulty: 2, reward: 2, filled: 54, total: 200 },
+  { id: 't02', title: '课程体验回访', subtitle: '这学期的主要课程体验', sender: '张老师', type: '教学反馈', estimated: 8, difficulty: 4, reward: 4, filled: 120, total: 260 },
+  { id: 't03', title: '食堂新品口味投票', subtitle: '为春季菜单挑选新品', sender: '后勤部', type: '投票', estimated: 3, difficulty: 1, reward: 1, filled: 82, total: 150 },
+  { id: 't04', title: '社团活动偏好', subtitle: '选出你想参加的活动', sender: '学生会', type: '兴趣画像', estimated: 5, difficulty: 2, reward: 2, filled: 33, total: 100 },
+  { id: 't05', title: '实习就业意向', subtitle: '求职方向、城市与行业偏好', sender: '就业中心', type: '就业调研', estimated: 7, difficulty: 4, reward: 4, filled: 45, total: 120 },
+  { id: 't06', title: '心理健康与压力', subtitle: '期末周的压力与缓解方式', sender: '心理中心', type: '健康问卷', estimated: 9, difficulty: 5, reward: 5, filled: 18, total: 80 },
+  { id: 't07', title: '图书馆使用体验', subtitle: '空间、座位、设备反馈', sender: '图书馆', type: '服务反馈', estimated: 4, difficulty: 2, reward: 2, filled: 210, total: 400 },
+  { id: 't08', title: '校园出行与班车', subtitle: '线路、班次与满意度调查', sender: '后勤部', type: '交通', estimated: 4, difficulty: 2, reward: 2, filled: 60, total: 180 },
+  { id: 't09', title: '新生入学指南优化', subtitle: '帮我们改进 2026 新生手册', sender: '教务处', type: '文案优化', estimated: 10, difficulty: 4, reward: 4, filled: 12, total: 60 },
+  { id: 't10', title: '赛事观众调研', subtitle: '校运动会观众体验反馈', sender: '体育部', type: '活动复盘', estimated: 6, difficulty: 2, reward: 2, filled: 140, total: 260 },
+  { id: 't11', title: '校友访谈邀约', subtitle: '愿意参加校友访谈的时间', sender: '校友办', type: '访谈邀约', estimated: 5, difficulty: 3, reward: 3, filled: 28, total: 90 },
   { id: 't12', title: '科研助理机会', subtitle: '可接受的课题与工作量', sender: '科研办', type: '科研匹配', estimated: 12, difficulty: 5, reward: 5, filled: 8, total: 50 },
-  { id: 't13', title: '寝室卫生公约共识', subtitle: '共建寝室卫生标准', sender: '宿管部', type: '共识投票', estimated: 3, difficulty: 1, reward: 2, filled: 76, total: 120 },
-  { id: 't14', title: '艺术节节目征集', subtitle: '报名你想展示的节目', sender: '文艺部', type: '活动报名', estimated: 5, difficulty: 2, reward: 3, filled: 34, total: 100 },
-  { id: 't15', title: '志愿服务档期收集', subtitle: '收集可出勤的志愿时段', sender: '团委', type: '志愿服务', estimated: 4, difficulty: 2, reward: 3, filled: 95, total: 180 },
+  { id: 't13', title: '寝室卫生公约共识', subtitle: '共建寝室卫生标准', sender: '宿管部', type: '共识投票', estimated: 3, difficulty: 1, reward: 1, filled: 76, total: 120 },
+  { id: 't14', title: '艺术节节目征集', subtitle: '报名你想展示的节目', sender: '文艺部', type: '活动报名', estimated: 5, difficulty: 2, reward: 2, filled: 34, total: 100 },
+  { id: 't15', title: '志愿服务档期收集', subtitle: '收集可出勤的志愿时段', sender: '团委', type: '志愿服务', estimated: 4, difficulty: 2, reward: 2, filled: 95, total: 180 },
 ])
 
 const visibleTasks = ref(pickBatch(allTasks.value))
@@ -233,8 +259,13 @@ function handleDelete(index) {
   const ok = window.confirm('确认删除该问卷吗？将自动补位新的问卷。')
   if (!ok) return
 
+  // 获取当前显示的所有问卷ID
   const usedIds = new Set(visibleTasks.value.map((t) => t.id))
+  // 移除被删除的问卷
+  usedIds.delete(visibleTasks.value[index].id)
+  // 从所有问卷中找出还未显示的问卷
   const candidates = allTasks.value.filter((t) => !usedIds.has(t.id))
+  // 随机选择一份未显示的问卷作为补位
   const replacement = candidates.length ? candidates[Math.floor(Math.random() * candidates.length)] : null
 
   if (replacement) {
@@ -257,18 +288,14 @@ function progressPercent(task) {
   return Math.min(100, Math.round((task.filled / task.total) * 100))
 }
 
-// 根据难度和奖励匹配度
+// 根据难度显示分类（只有高性价比和挑战任务两种）
 function getMatchClass(task) {
-  const ratio = task.reward / task.difficulty
-  if (ratio >= 1.5) return 'high-match'
-  if (ratio >= 1) return 'medium-match'
+  if (task.difficulty <= 2) return 'high-match'
   return 'low-match'
 }
 
 function getMatchText(task) {
-  const ratio = task.reward / task.difficulty
-  if (ratio >= 1.5) return '高性价比'
-  if (ratio >= 1) return '适中匹配'
+  if (task.difficulty <= 2) return '高性价比'
   return '挑战任务'
 }
 </script>
@@ -514,28 +541,6 @@ function getMatchText(task) {
   font-size: 14px;
 }
 
-.sender-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 4px;
-}
-
-.sender-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: #5c7599;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-
-.sender {
-  margin: 0;
-  font-size: 13px;
-  color: #0052d9;
-  font-weight: 600;
-}
-
 .meta {
   display: flex;
   flex-direction: column;
@@ -691,12 +696,6 @@ function getMatchText(task) {
   box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
 }
 
-.medium-match {
-  background: linear-gradient(135deg, #ff9800, #ffb74d);
-  color: white;
-  box-shadow: 0 2px 8px rgba(255, 152, 0, 0.3);
-}
-
 .low-match {
   background: linear-gradient(135deg, #f44336, #e57373);
   color: white;
@@ -806,6 +805,61 @@ function getMatchText(task) {
     gap: 6px;
   }
 
+  /* 移动端任务卡片更紧凑 */
+  .task-card {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  .card-titles h3 {
+    margin: 0 0 2px;
+    font-size: 15px;
+  }
+
+  .card-titles .subtitle {
+    font-size: 12px;
+    margin: 0;
+  }
+
+  .card-middle {
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .badge {
+    padding: 5px 8px;
+    font-size: 11px;
+  }
+
+  .badge .label {
+    font-size: 11px;
+  }
+
+  .match-indicator {
+    font-size: 10px;
+    padding: 3px 8px;
+  }
+
+  .delete-btn {
+    width: 24px;
+    height: 24px;
+    font-size: 18px;
+    opacity: 1;
+  }
+
+  .progress-wrapper {
+    gap: 8px;
+  }
+
+  .progress {
+    height: 6px;
+  }
+
+  .progress-percent {
+    font-size: 11px;
+    min-width: 36px;
+  }
+
   /* 移动端FAB优化 */
   .fab {
     width: 64px;
@@ -818,11 +872,6 @@ function getMatchText(task) {
 
   .fab-plus {
     font-size: 20px;
-  }
-
-  /* 移动端显示删除按钮 */
-  .delete-btn {
-    opacity: 1;
   }
 
   /* 移动端拖动菜单调整 */
@@ -838,20 +887,6 @@ function getMatchText(task) {
   /* 任务卡片移动端优化 */
   .task-grid {
     grid-template-columns: 1fr;
-  }
-
-  .card-middle {
-    gap: 8px;
-  }
-
-  .badge {
-    padding: 6px 8px;
-    font-size: 12px;
-  }
-
-  .match-indicator {
-    font-size: 10px;
-    padding: 3px 8px;
   }
 }
 </style>

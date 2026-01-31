@@ -1,6 +1,7 @@
 <script setup>
-import { computed, ref, watch, onMounted } from 'vue'
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { handleTokenExpired } from '@/utils/authHelper'
 import {
   getSurveys,
   deleteSurvey,
@@ -12,6 +13,54 @@ import {
 const router = useRouter()
 const route = useRoute()
 const pointsBalance = ref(1240)
+
+// 拖拽相关
+const menuRef = ref(null)
+const menuPosition = ref({ x: 0, y: 0 })
+const dragState = ref({ isDragging: false, startX: 0, startY: 0, initialX: 0, initialY: 0 })
+
+function startDrag(e) {
+  const clientX = e.type.includes('touch') ? e.touches[0]?.clientX : e.clientX
+  const clientY = e.type.includes('touch') ? e.touches[0]?.clientY : e.clientY
+
+  if (!clientX || !clientY) return
+
+  dragState.value = {
+    isDragging: true,
+    startX: clientX,
+    startY: clientY,
+    initialX: menuPosition.value.x,
+    initialY: menuPosition.value.y
+  }
+
+  document.addEventListener('mousemove', onDrag)
+  document.addEventListener('mouseup', stopDrag)
+  document.addEventListener('touchmove', onDrag)
+  document.addEventListener('touchend', stopDrag)
+}
+
+function onDrag(e) {
+  if (!dragState.value.isDragging) return
+  
+  const clientX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX
+  const clientY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY
+
+  const deltaX = clientX - dragState.value.startX
+  const deltaY = clientY - dragState.value.startY
+
+  menuPosition.value = {
+    x: dragState.value.initialX + deltaX,
+    y: dragState.value.initialY + deltaY
+  }
+}
+
+function stopDrag() {
+  dragState.value.isDragging = false
+  document.removeEventListener('mousemove', onDrag)
+  document.removeEventListener('mouseup', stopDrag)
+  document.removeEventListener('touchmove', onDrag)
+  document.removeEventListener('touchend', stopDrag)
+}
 const hideCompleted = ref(false)
 const showDeleteModal = ref(false)
 const deleteTarget = ref(null)
@@ -20,10 +69,16 @@ const showPublishConfigModal = ref(false)
 const publishTarget = ref(null)
 const publishConfig = ref({
   rewardPoints: 3,
-  targetCount: 100,
+  targetCount: 30,
   promptConstraint: '',
-  speedBoost: false,
+  speedBoostPoints: 0,
   estimatedMinutes: 5
+})
+
+// 计算建议的加速积分（20%）
+const suggestedBoostPoints = computed(() => {
+  const total = publishConfig.value.rewardPoints * publishConfig.value.targetCount
+  return Math.ceil(total * 0.2)
 })
 
 const surveys = ref([])
@@ -67,13 +122,6 @@ const sections = computed(() => {
   return result
 })
 
-const statusLabel = (survey) => {
-  if (survey.status === 'draft') return '未发出'
-  if (survey.status === 'paused') return '已发出 · 暂停中'
-  if (survey.status === 'ended') return '已结束'
-  return '已发出 · 进行中'
-}
-
 const progressText = (survey) => `${survey.completed}/${survey.target}`
 
 const openDeleteModal = (survey) => {
@@ -95,9 +143,9 @@ const openPublishConfig = (survey) => {
   publishTarget.value = survey
   publishConfig.value = {
     rewardPoints: 3,
-    targetCount: 100,
+    targetCount: 30,
     promptConstraint: '',
-    speedBoost: false,
+    speedBoostPoints: 0,
     estimatedMinutes: 5
   }
   showPublishConfigModal.value = true
@@ -113,8 +161,9 @@ const confirmPublish = async () => {
   
   try {
     loading.value = true
+    const boostPoints = publishConfig.value.speedBoostPoints || 0
     await publishSurvey(publishTarget.value.id, {
-      budget_points: publishConfig.value.rewardPoints * publishConfig.value.targetCount,
+      budget_points: publishConfig.value.rewardPoints * publishConfig.value.targetCount + boostPoints,
       target: publishConfig.value.targetCount
     })
     
@@ -122,6 +171,11 @@ const confirmPublish = async () => {
     await loadSurveys()
     closePublishConfig()
   } catch (err) {
+    // 检查是否是登录过期
+    if (err.message.includes('登录已过期')) {
+      handleTokenExpired(router)
+      return
+    }
     error.value = err.message
     setTimeout(() => {
       error.value = ''
@@ -142,6 +196,11 @@ const confirmDelete = async () => {
     await loadSurveys()
     closeDeleteModal()
   } catch (err) {
+    // 检查是否是登录过期
+    if (err.message.includes('登录已过期')) {
+      handleTokenExpired(router)
+      return
+    }
     error.value = err.message
     setTimeout(() => {
       error.value = ''
@@ -163,6 +222,11 @@ const togglePause = async (survey) => {
     // 刷新问卷列表
     await loadSurveys()
   } catch (err) {
+    // 检查是否是登录过期
+    if (err.message.includes('登录已过期')) {
+      handleTokenExpired(router)
+      return
+    }
     error.value = err.message
     setTimeout(() => {
       error.value = ''
@@ -186,6 +250,11 @@ const loadSurveys = async () => {
     const response = await getSurveys()
     surveys.value = response.items || []
   } catch (err) {
+    // 检查是否是登录过期
+    if (err.message.includes('登录已过期')) {
+      handleTokenExpired(router)
+      return
+    }
     error.value = err.message
     setTimeout(() => {
       error.value = ''
@@ -207,6 +276,30 @@ watch(
 
 onMounted(() => {
   loadSurveys()
+  // 初始化导航菜单位置（右上角）
+  if (menuRef.value) {
+    const headerRect = menuRef.value.closest('.survey-header')?.getBoundingClientRect()
+    if (headerRect) {
+      menuPosition.value = { x: headerRect.width - 200, y: 12 }
+    }
+  }
+  // 从localStorage读取用户积分
+  try {
+    const profile = localStorage.getItem('sixth_element_profile')
+    if (profile) {
+      const userData = JSON.parse(profile)
+      pointsBalance.value = userData.points || 0
+    }
+  } catch (error) {
+    console.error('读取用户积分失败:', error)
+  }
+})
+
+onUnmounted(() => {
+  document.removeEventListener('mousemove', onDrag)
+  document.removeEventListener('mouseup', stopDrag)
+  document.removeEventListener('touchmove', onDrag)
+  document.removeEventListener('touchend', stopDrag)
 })
 </script>
 
@@ -217,17 +310,28 @@ onMounted(() => {
         <p class="header-kicker">Survey Management</p>
         <h1>问卷管理</h1>
       </div>
-      <div class="header-actions">
-        <RouterLink class="points" to="/points">
-          <span>积分余额</span>
-          <strong>{{ pointsBalance.toLocaleString() }}</strong>
+      
+      <!-- 创建问卷按钮 -->
+      <RouterLink class="primary-button create-btn" to="/survey/new">
+        <span class="button-icon">📝</span>
+        <span>创建问卷</span>
+      </RouterLink>
+
+      <!-- 可拖动的导航菜单 -->
+      <div
+        class="nav-right draggable-menu"
+        ref="menuRef"
+        :style="{ left: menuPosition.x + 'px', top: menuPosition.y + 'px' }"
+        @mousedown="startDrag($event)"
+        @touchstart="startDrag($event)"
+      >
+        <div class="drag-handle">⋮⋮</div>
+        <RouterLink class="points-badge" to="/points">
+          <span class="points-icon">💰</span>
+          <span class="points-value">{{ pointsBalance }}</span>
         </RouterLink>
-        <RouterLink class="avatar-button" to="/profile" aria-label="个人信息">
+        <RouterLink class="avatar" to="/profile" aria-label="个人信息">
           <span>U</span>
-        </RouterLink>
-        <RouterLink class="primary-button" to="/survey/new">
-          <span class="button-icon">📝</span>
-          <span>创建问卷</span>
         </RouterLink>
       </div>
     </header>
@@ -263,7 +367,6 @@ onMounted(() => {
                 <p class="survey-title">{{ survey.title }}</p>
                 <p class="survey-id">{{ survey.id }} · 最近更新 {{ survey.updated_at }}</p>
               </div>
-              <span class="status-badge" :data-status="survey.status">{{ statusLabel(survey) }}</span>
             </div>
 
             <div class="survey-progress">
@@ -287,7 +390,8 @@ onMounted(() => {
               </button>
               <button
                 v-if="survey.status === 'live' || survey.status === 'paused'"
-                class="ghost-button"
+                class="primary-button small"
+                :class="{ 'pause-btn': survey.status === 'live', 'resume-btn': survey.status === 'paused' }"
                 type="button"
                 @click="togglePause(survey)"
               >
@@ -295,11 +399,11 @@ onMounted(() => {
               </button>
               <button
                 v-if="survey.status === 'ended'"
-                class="ghost-button"
+                class="primary-button small"
                 type="button"
                 @click="openAnalytics(survey)"
               >
-                数据分析/查看问卷
+                数据分析
               </button>
               <button
                 v-if="survey.status !== 'ended'"
@@ -357,7 +461,7 @@ onMounted(() => {
         </div>
         <div class="form-group">
           <label>目标份数</label>
-          <input v-model.number="publishConfig.targetCount" type="number" min="10" max="1000" />
+          <input v-model.number="publishConfig.targetCount" type="number" min="10" max="1000" placeholder="30" />
           <span class="hint">需要收集的问卷份数</span>
         </div>
         <div class="form-group">
@@ -366,29 +470,30 @@ onMounted(() => {
           <span class="hint">填写问卷需要的时间</span>
         </div>
         <div class="form-group">
-          <label>Prompt约束（可选）</label>
-          <textarea v-model="publishConfig.promptConstraint" rows="3" placeholder="例如：只允许本校学生填写、需要在校生等..."></textarea>
-          <span class="hint">AI将根据约束过滤不符合条件的填写</span>
+          <label>人群锁定（可选）</label>
+          <textarea v-model="publishConfig.promptConstraint" rows="3" placeholder="例如：只想要大一到大三女生的数据、不需要研究生和博士生的数据等..."></textarea>
+          <span class="hint">我们的AI助手会根据您的需求智能投放问卷</span>
         </div>
-        <div class="form-group checkbox-group">
-          <label>
-            <input v-model="publishConfig.speedBoost" type="checkbox" />
-            <span>积分加速（额外消耗 {{ publishConfig.targetCount * 0.5 }} 积分）</span>
-          </label>
-          <span class="hint">优先展示给高活跃用户，加快收集速度</span>
+        <div class="form-group">
+          <label>积分加速（可选）</label>
+          <div class="boost-input-wrapper">
+            <input v-model.number="publishConfig.speedBoostPoints" type="number" min="0" :placeholder="`建议 ${suggestedBoostPoints} 积分`" />
+            <span class="boost-suggest">建议：{{ suggestedBoostPoints }} 积分</span>
+          </div>
+          <span class="hint">使用积分进行额外曝光，更高效地收集您问卷的结果，使用的积分越多效果越显著噢~</span>
         </div>
         <div class="cost-summary">
           <div class="cost-row">
             <span>基础成本</span>
             <span>{{ publishConfig.rewardPoints * publishConfig.targetCount }} 积分</span>
           </div>
-          <div v-if="publishConfig.speedBoost" class="cost-row">
+          <div v-if="publishConfig.speedBoostPoints > 0" class="cost-row">
             <span>加速费用</span>
-            <span>{{ publishConfig.targetCount * 0.5 }} 积分</span>
+            <span>{{ publishConfig.speedBoostPoints }} 积分</span>
           </div>
           <div class="cost-row total">
             <span>总计</span>
-            <strong>{{ publishConfig.rewardPoints * publishConfig.targetCount + (publishConfig.speedBoost ? publishConfig.targetCount * 0.5 : 0) }} 积分</strong>
+            <strong>{{ publishConfig.rewardPoints * publishConfig.targetCount + (publishConfig.speedBoostPoints || 0) }} 积分</strong>
           </div>
         </div>
       </div>
@@ -415,6 +520,7 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   gap: 20px;
+  position: relative;
 }
 
 .survey-header h1 {
@@ -432,53 +538,85 @@ onMounted(() => {
   margin: 0;
 }
 
-.header-actions {
+/* 可拖动导航菜单 */
+.draggable-menu {
+  position: fixed;
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
+  padding: 8px 14px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(12px);
+  border-radius: 999px;
+  box-shadow: 0 4px 16px rgba(13, 27, 55, 0.12);
+  z-index: 100;
+  cursor: grab;
+  user-select: none;
+  transition: box-shadow 0.2s ease;
 }
 
-.points {
-  display: grid;
-  text-align: right;
-  font-size: 12px;
-  color: #5a7395;
+.draggable-menu:hover {
+  box-shadow: 0 6px 20px rgba(13, 27, 55, 0.18);
+}
+
+.draggable-menu:active {
+  cursor: grabbing;
+}
+
+.drag-handle {
+  font-size: 14px;
+  color: #a0afc7;
+  letter-spacing: 2px;
+  opacity: 0.6;
+}
+
+.points-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: linear-gradient(135deg, #fff4dc 0%, #ffe8b8 100%);
+  border-radius: 999px;
   text-decoration: none;
-  padding: 8px 16px;
-  border-radius: 12px;
-  transition: all 0.2s ease;
-  cursor: pointer;
+  transition: transform 0.2s ease;
 }
 
-.points:hover {
-  background: rgba(38, 101, 212, 0.05);
+.points-badge:hover {
+  transform: scale(1.05);
 }
 
-.points strong {
-  font-size: 18px;
-  color: #1e4fb4;
-  font-weight: 600;
+.points-icon {
+  font-size: 16px;
 }
 
-.avatar-button {
-  width: 40px;
-  height: 40px;
+.points-value {
+  font-weight: 700;
+  font-size: 14px;
+  color: #b16112;
+}
+
+.avatar {
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   background: linear-gradient(135deg, #2665d4, #4f80f1);
   color: white;
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
   text-decoration: none;
   font-weight: 700;
-  font-size: 16px;
-  box-shadow: 0 4px 12px rgba(38, 101, 212, 0.2);
-  transition: all 0.2s ease;
+  font-size: 14px;
+  box-shadow: 0 2px 8px rgba(38, 101, 212, 0.3);
+  transition: transform 0.2s ease;
 }
 
-.avatar-button:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(38, 101, 212, 0.3);
+.avatar:hover {
+  transform: scale(1.1);
+}
+
+.create-btn {
+  margin-left: auto;
 }
 
 .primary-button {
@@ -506,6 +644,16 @@ onMounted(() => {
   padding: 8px 16px;
   font-size: 13px;
   border-radius: 999px;
+}
+
+/* 暂停发布按钮 - 橙色 */
+.primary-button.pause-btn {
+  background: linear-gradient(135deg, #f59e0b, #fbbf24);
+}
+
+/* 继续发布按钮 - 绿色 */
+.primary-button.resume-btn {
+  background: linear-gradient(135deg, #10b981, #34d399);
 }
 
 .button-icon {
@@ -665,6 +813,7 @@ onMounted(() => {
   justify-content: space-between;
   align-items: flex-start;
   gap: 16px;
+  padding-right: 40px; /* 给删除按钮留空间 */
 }
 
 .survey-title {
@@ -677,35 +826,6 @@ onMounted(() => {
 .survey-id {
   font-size: 12px;
   color: #7b8da7;
-}
-
-.status-badge {
-  padding: 6px 12px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 600;
-  align-self: flex-start;
-  white-space: nowrap;
-}
-
-.status-badge[data-status='draft'] {
-  background: #eaf2ff;
-  color: #1e4fb4;
-}
-
-.status-badge[data-status='live'] {
-  background: #e7f7ee;
-  color: #1a7f4d;
-}
-
-.status-badge[data-status='paused'] {
-  background: #fff4df;
-  color: #b16112;
-}
-
-.status-badge[data-status='ended'] {
-  background: #f1f2f6;
-  color: #5a6579;
 }
 
 .survey-progress {
@@ -888,18 +1008,24 @@ onMounted(() => {
   color: #6d7f9a;
 }
 
-.checkbox-group label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: normal;
-  cursor: pointer;
+/* 积分加速输入样式 */
+.boost-input-wrapper {
+  position: relative;
 }
 
-.checkbox-group input[type="checkbox"] {
-  width: 18px;
-  height: 18px;
-  cursor: pointer;
+.boost-input-wrapper input {
+  width: 100%;
+  padding-right: 120px;
+}
+
+.boost-suggest {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 12px;
+  color: #10b981;
+  font-weight: 500;
 }
 
 .cost-summary {
@@ -933,11 +1059,13 @@ onMounted(() => {
   .survey-main {
     margin-left: 0;
     padding: 24px;
+    padding-top: 80px; /* 给可拖动菜单留空间 */
   }
 
   .survey-header {
     flex-direction: column;
     align-items: flex-start;
+    gap: 16px;
   }
 
   .control-bar {
@@ -945,33 +1073,79 @@ onMounted(() => {
     align-items: flex-start;
   }
 
-  .header-actions {
+  .create-btn {
     width: 100%;
-    display: grid;
-    grid-template-columns: auto auto 1fr;
-    gap: 10px;
+    justify-content: center;
   }
 
-  .primary-button {
-    grid-column: 1 / -1;
+  /* 移动端可拖动菜单位置 */
+  .draggable-menu {
+    top: 16px !important;
+    left: auto !important;
+    right: 16px;
+    padding: 6px 12px;
   }
 
   .config-modal {
     width: 95vw;
+  }
+
+  /* 减小卡片间距 */
+  .survey-card {
+    padding: 14px 16px;
+    gap: 10px;
+  }
+
+  .survey-actions {
+    gap: 8px;
+  }
+
+  .primary-button.small,
+  .ghost-button {
+    padding: 6px 12px;
+    font-size: 12px;
   }
 }
 
 @media (max-width: 480px) {
   .survey-main {
     padding: 16px;
+    padding-top: 70px;
   }
 
   .survey-card {
-    padding: 14px 16px;
+    padding: 12px 14px;
   }
 
   .survey-header h1 {
     font-size: 24px;
+  }
+
+  .survey-title {
+    font-size: 14px;
+  }
+
+  .survey-id {
+    font-size: 11px;
+  }
+
+  .draggable-menu {
+    gap: 8px;
+    padding: 5px 10px;
+  }
+
+  .points-badge {
+    padding: 4px 8px;
+  }
+
+  .points-value {
+    font-size: 12px;
+  }
+
+  .avatar {
+    width: 30px;
+    height: 30px;
+    font-size: 12px;
   }
 
   .survey-meta {

@@ -1,3 +1,13 @@
+<script setup>
+import { useRouter } from 'vue-router'
+
+const router = useRouter()
+
+const goBack = () => {
+  router.back()
+}
+</script>
+
 <template>
   <div class="profile">
     <div class="profile-shell">
@@ -7,7 +17,7 @@
           <h1>个人信息</h1>
         </div>
         <div class="actions">
-          <RouterLink class="ghost" to="/surveys">返回问卷管理</RouterLink>
+          <button class="ghost" type="button" @click="goBack">← 返回</button>
         </div>
       </header>
       <section class="profile-grid">
@@ -81,20 +91,24 @@
 }
 
 .ghost {
-  border: 1px solid #0052d9;
   color: #0052d9;
-  background: #ffffff;
+  background: none;
+  border: none;
   padding: 8px 14px;
   border-radius: 10px;
   font-weight: 600;
+  font-size: 15px;
   cursor: pointer;
   transition: all 0.2s ease;
   text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .ghost:hover {
-  background: #0052d9;
-  color: #ffffff;
+  background: rgba(0, 82, 217, 0.1);
+  transform: translateX(-2px);
 }
 
 .profile-grid {

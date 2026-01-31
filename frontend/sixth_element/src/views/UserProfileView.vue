@@ -1,5 +1,13 @@
 <template>
   <div class="profile-container">
+    <!-- 左上角返回按钮 -->
+    <div class="top-back-btn-container">
+      <button class="top-back-btn" @click="goBack">
+        <span class="back-arrow">←</span>
+        <span class="back-text">返回</span>
+      </button>
+    </div>
+
     <!-- 个人主页头部 -->
     <div class="profile-header">
       <div class="header-bg"></div>
@@ -14,36 +22,131 @@
             <div class="status-row">
               <div
                 class="status-pill"
-                :class="{ empty: !userData.currentStatus }"
-                @click="startStatusEdit"
+                :class="{ empty: !currentStatusDisplay }"
+                @click="openStatusModal"
               >
-                <span class="status-dot"></span>
-                <span class="status-text">{{ userData.currentStatus || '添加状态' }}</span>
+                <span class="status-dot" :class="{ active: currentStatusDisplay }"></span>
+                <span class="status-text">{{ currentStatusDisplay || '设置状态' }}</span>
                 <span class="status-edit">✏️</span>
-              </div>
-              <div v-if="isEditingStatus" class="status-editor">
-                <input
-                  v-model="statusInput"
-                  type="text"
-                  class="status-input"
-                  placeholder="例如：正在备战期末、度假中、找实习"
-                  @keyup.enter="saveStatus"
-                />
-                <div class="status-actions">
-                  <button class="status-save" @click="saveStatus">保存</button>
-                  <button class="status-cancel" @click="cancelStatus">取消</button>
-                </div>
               </div>
             </div>
           </div>
         </div>
         <div class="header-actions">
-          <button class="ghost-button" @click="goToTaskHall">
-            返回任务大厅
-          </button>
           <button class="edit-button" @click="goToEdit">
             <span class="edit-icon">✏️</span>
             编辑资料
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 状态设置弹窗（仿微信） -->
+    <div v-if="showStatusModal" class="status-modal-overlay" @click.self="closeStatusModal">
+      <div class="status-modal">
+        <div class="modal-header">
+          <h3>设置状态</h3>
+          <button class="modal-close" @click="closeStatusModal">×</button>
+        </div>
+        
+        <!-- 状态分类列表 -->
+        <div class="status-categories">
+          <!-- 情绪 / 生活状态类 -->
+          <div class="category-section">
+            <div class="category-title">😊 情绪 / 生活状态</div>
+            <div class="status-options">
+              <div 
+                v-for="status in moodStatuses" 
+                :key="status.value"
+                class="status-option"
+                :class="{ selected: selectedStatus === status.value }"
+                @click="selectStatus(status.value)"
+              >
+                <span class="option-emoji">{{ status.emoji }}</span>
+                <span class="option-text">{{ status.label }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 时间 / 精力状态类 -->
+          <div class="category-section">
+            <div class="category-title">⏰ 时间 / 精力状态</div>
+            <div class="status-options">
+              <div 
+                v-for="status in timeStatuses" 
+                :key="status.value"
+                class="status-option"
+                :class="{ selected: selectedStatus === status.value }"
+                @click="selectStatus(status.value)"
+              >
+                <span class="option-emoji">{{ status.emoji }}</span>
+                <span class="option-text">{{ status.label }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 关系 / 生活阶段类 -->
+          <div class="category-section">
+            <div class="category-title">💕 关系 / 生活阶段</div>
+            <div class="status-options">
+              <div 
+                v-for="status in relationStatuses" 
+                :key="status.value"
+                class="status-option"
+                :class="{ selected: selectedStatus === status.value }"
+                @click="selectStatus(status.value)"
+              >
+                <span class="option-emoji">{{ status.emoji }}</span>
+                <span class="option-text">{{ status.label }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 学习 / 校园场景类 -->
+          <div class="category-section">
+            <div class="category-title">📚 学习 / 校园场景</div>
+            <div class="status-options">
+              <div 
+                v-for="status in studyStatuses" 
+                :key="status.value"
+                class="status-option"
+                :class="{ selected: selectedStatus === status.value }"
+                @click="selectStatus(status.value)"
+              >
+                <span class="option-emoji">{{ status.emoji }}</span>
+                <span class="option-text">{{ status.label }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 补充描述 -->
+        <div class="status-description-section" v-if="selectedStatus">
+          <label class="desc-label">补充描述（可选）</label>
+          <textarea 
+            v-model="statusDescription"
+            class="desc-input"
+            placeholder="说点什么来描述你的状态..."
+            maxlength="50"
+            rows="2"
+          ></textarea>
+          <div class="desc-counter">{{ statusDescription.length }}/50</div>
+        </div>
+
+        <!-- 状态时效提示 -->
+        <div class="status-validity-hint">
+          <span class="hint-icon">⏱️</span>
+          <span>状态将在 24 小时后自动失效，你可以随时修改或关闭</span>
+        </div>
+
+        <!-- 操作按钮 -->
+        <div class="modal-actions">
+          <button class="clear-status-btn" @click="clearStatus" v-if="userData.currentStatus">
+            清除状态
+          </button>
+          <button class="cancel-btn" @click="closeStatusModal">取消</button>
+          <button class="confirm-btn" @click="confirmStatus" :disabled="!selectedStatus">
+            确认
           </button>
         </div>
       </div>
@@ -236,6 +339,7 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
+import { handleTokenExpired } from '@/utils/authHelper'
 import { getUserProfile, updateUserProfile, getCurrentUser } from '@/utils/profileApi'
 
 const router = useRouter()
@@ -259,11 +363,57 @@ const defaultProfile = {
 
 const userData = ref({ ...defaultProfile })
 const userBasicInfo = ref({ nickname: '加载中...' })
-const statusInput = ref('')
-const isEditingStatus = ref(false)
 const isMobile = ref(window.innerWidth <= 768)
 const isLoading = ref(true)
 const errorMessage = ref('')
+
+// 状态弹窗相关
+const showStatusModal = ref(false)
+const selectedStatus = ref('')
+const statusDescription = ref('')
+
+// 预置状态配置
+const moodStatuses = [
+  { value: '心情不错', label: '心情不错', emoji: '😊' },
+  { value: '有点emo', label: '有点emo', emoji: '😔' },
+  { value: '累了', label: '累了', emoji: '😴' },
+  { value: '美滋滋', label: '美滋滋', emoji: '🥰' },
+  { value: '平静中', label: '平静中', emoji: '😌' }
+]
+
+const timeStatuses = [
+  { value: '有空', label: '有空', emoji: '🆓' },
+  { value: '有点忙', label: '有点忙', emoji: '🏃' },
+  { value: '很忙', label: '很忙', emoji: '🔥' },
+  { value: '碎片时间', label: '碎片时间', emoji: '⏱️' },
+  { value: '摸鱼中', label: '摸鱼中', emoji: '🐟' }
+]
+
+const relationStatuses = [
+  { value: '恋爱中', label: '恋爱中', emoji: '💑' },
+  { value: '单身', label: '单身', emoji: '🙋' },
+  { value: '暗恋中', label: '暗恋中', emoji: '💭' },
+  { value: '室友矛盾中', label: '室友矛盾中', emoji: '😤' }
+]
+
+const studyStatuses = [
+  { value: '学习中', label: '学习中', emoji: '📖' },
+  { value: '赶ddl', label: '赶ddl', emoji: '⏰' },
+  { value: '在实习', label: '在实习', emoji: '💼' },
+  { value: '备考中', label: '备考中', emoji: '✍️' },
+  { value: '刚下课', label: '刚下课', emoji: '🎒' }
+]
+
+// 当前显示的状态（主状态 + 描述）
+const currentStatusDisplay = computed(() => {
+  if (!userData.value.currentStatus) return ''
+  // 解析存储的状态格式: "主状态|描述" 或 纯主状态
+  const parts = userData.value.currentStatus.split('|')
+  if (parts.length > 1 && parts[1]) {
+    return `${parts[0]} · ${parts[1]}`
+  }
+  return parts[0]
+})
 
 const handleResize = () => {
   isMobile.value = window.innerWidth <= 768
@@ -306,7 +456,13 @@ const loadProfile = async () => {
     console.error('加载画像失败:', error)
     errorMessage.value = error.message
     
-    // 如果是认证错误，跳转到登录页
+    // 检查是否是登录过期
+    if (error.message.includes('登录已过期')) {
+      handleTokenExpired(router)
+      return
+    }
+    
+    // 其他认证错误，3秒后跳转到登录页
     if (error.message.includes('登录')) {
       setTimeout(() => {
         router.push('/auth')
@@ -336,19 +492,72 @@ const completionMessage = computed(() => {
   return '画像完成度较低，建议完善'
 })
 
-const saveStatus = async () => {
-  const newStatus = statusInput.value.trim()
+// 打开状态弹窗
+const openStatusModal = () => {
+  // 解析当前状态
+  if (userData.value.currentStatus) {
+    const parts = userData.value.currentStatus.split('|')
+    selectedStatus.value = parts[0] || ''
+    statusDescription.value = parts[1] || ''
+  } else {
+    selectedStatus.value = ''
+    statusDescription.value = ''
+  }
+  showStatusModal.value = true
+}
+
+// 关闭状态弹窗
+const closeStatusModal = () => {
+  showStatusModal.value = false
+  selectedStatus.value = ''
+  statusDescription.value = ''
+}
+
+// 选择状态
+const selectStatus = (status) => {
+  selectedStatus.value = status
+}
+
+// 确认状态
+const confirmStatus = async () => {
+  if (!selectedStatus.value) return
+  
+  // 组合状态字符串: "主状态|描述"
+  const statusValue = statusDescription.value.trim() 
+    ? `${selectedStatus.value}|${statusDescription.value.trim()}`
+    : selectedStatus.value
   
   try {
-    // 调用API更新状态
-    await updateUserProfile({ current_status: newStatus })
-    
-    // 更新本地数据
-    userData.value.currentStatus = newStatus
-    isEditingStatus.value = false
+    await updateUserProfile({ current_status: statusValue })
+    userData.value.currentStatus = statusValue
+    closeStatusModal()
   } catch (error) {
     console.error('保存状态失败:', error)
+    
+    if (error.message.includes('登录已过期')) {
+      handleTokenExpired(router)
+      return
+    }
+    
     alert('保存失败: ' + error.message)
+  }
+}
+
+// 清除状态
+const clearStatus = async () => {
+  try {
+    await updateUserProfile({ current_status: '' })
+    userData.value.currentStatus = ''
+    closeStatusModal()
+  } catch (error) {
+    console.error('清除状态失败:', error)
+    
+    if (error.message.includes('登录已过期')) {
+      handleTokenExpired(router)
+      return
+    }
+    
+    alert('清除失败: ' + error.message)
   }
 }
 
@@ -358,16 +567,6 @@ const floatingOffset = computed(() => {
   return floatingCircumference - (completionRate.value / 100) * floatingCircumference
 })
 
-const startStatusEdit = () => {
-  statusInput.value = userData.value.currentStatus || ''
-  isEditingStatus.value = true
-}
-
-const cancelStatus = () => {
-  isEditingStatus.value = false
-  statusInput.value = ''
-}
-
 // 跳转到编辑页面
 const goToEdit = () => {
   router.push('/profile/edit')
@@ -375,6 +574,15 @@ const goToEdit = () => {
 
 const goToTaskHall = () => {
   router.push('/task-hall')
+}
+
+// 返回上一页
+const goBack = () => {
+  if (window.history.length > 1) {
+    router.back()
+  } else {
+    router.push('/task-hall')
+  }
 }
 
 // 组件挂载时加载数据
@@ -406,6 +614,42 @@ onBeforeUnmount(() => {
   padding-bottom: 40px;
   overflow-x: hidden;
   position: relative;
+}
+
+/* 左上角返回按钮 */
+.top-back-btn-container {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  z-index: 100;
+}
+
+.top-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 18px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(33, 150, 243, 0.2);
+  border-radius: 22px;
+  color: #1565c0;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(8px);
+}
+
+.top-back-btn:hover {
+  background: #ffffff;
+  transform: translateX(-4px);
+  box-shadow: 0 6px 16px rgba(33, 150, 243, 0.2);
+}
+
+.back-arrow {
+  font-size: 18px;
+  font-weight: bold;
 }
 
 /* 头部区域 */
@@ -473,7 +717,8 @@ onBeforeUnmount(() => {
 .username {
   font-size: 28px;
   font-weight: bold;
-  color: #1565c0;
+  color: #ffffff;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3), 0 0 8px rgba(0, 0, 0, 0.15);
   margin: 0 0 5px 0;
 }
 
@@ -494,7 +739,7 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
+  padding: 8px 14px;
   background: linear-gradient(135deg, #f8fbff, #eef4ff);
   border: 1px solid rgba(33, 150, 243, 0.2);
   border-radius: 999px;
@@ -504,6 +749,7 @@ onBeforeUnmount(() => {
   transition: all 0.25s ease;
   box-shadow: 0 6px 14px rgba(33, 150, 243, 0.1);
   width: fit-content;
+  max-width: 300px;
 }
 
 .status-pill:hover {
@@ -521,67 +767,266 @@ onBeforeUnmount(() => {
   width: 10px;
   height: 10px;
   border-radius: 50%;
+  background: #b0bec5;
+  flex-shrink: 0;
+}
+
+.status-dot.active {
   background: #4caf50;
   box-shadow: 0 0 0 4px rgba(76, 175, 80, 0.15);
 }
 
-.status-pill.empty .status-dot {
-  background: #b0bec5;
-  box-shadow: none;
-}
-
 .status-text {
   font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .status-edit {
   font-size: 13px;
   color: #5c7599;
+  flex-shrink: 0;
 }
 
-.status-editor {
+/* 状态弹窗样式 */
+.status-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  background: #fff;
-  border: 1px solid #e3e9f5;
-  border-radius: 12px;
-  padding: 10px 12px;
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.06);
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
 }
 
-.status-input {
-  padding: 10px 12px;
-  border: 1px solid #cfd8e3;
-  border-radius: 8px;
-  font-size: 14px;
+.status-modal {
+  background: white;
+  border-radius: 20px;
   width: 100%;
+  max-width: 480px;
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
 }
 
-.status-actions {
+.modal-header {
   display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid #f0f0f0;
+  position: sticky;
+  top: 0;
+  background: white;
+  z-index: 10;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #1f2b3a;
+}
+
+.modal-close {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: #f5f7fa;
+  border-radius: 50%;
+  font-size: 20px;
+  color: #666;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.modal-close:hover {
+  background: #e8ecf0;
+  color: #333;
+}
+
+.status-categories {
+  padding: 16px 24px;
+}
+
+.category-section {
+  margin-bottom: 20px;
+}
+
+.category-section:last-child {
+  margin-bottom: 0;
+}
+
+.category-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #8a94a6;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.status-options {
+  display: flex;
+  flex-wrap: wrap;
   gap: 10px;
 }
 
-.status-save,
-.status-cancel {
-  padding: 8px 14px;
-  border-radius: 8px;
-  border: none;
+.status-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  background: #f5f7fa;
+  border: 2px solid transparent;
+  border-radius: 24px;
   cursor: pointer;
-  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.status-option:hover {
+  background: #e8f4fd;
+  transform: translateY(-2px);
+}
+
+.status-option.selected {
+  background: linear-gradient(135deg, #e3f2fd, #bbdefb);
+  border-color: #2196f3;
+  box-shadow: 0 4px 12px rgba(33, 150, 243, 0.2);
+}
+
+.option-emoji {
+  font-size: 18px;
+}
+
+.option-text {
+  font-size: 14px;
+  font-weight: 500;
+  color: #1f2b3a;
+}
+
+.status-description-section {
+  padding: 0 24px 16px;
+}
+
+.desc-label {
+  display: block;
   font-size: 13px;
+  font-weight: 600;
+  color: #5c6b82;
+  margin-bottom: 8px;
 }
 
-.status-save {
+.desc-input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 2px solid #e8ecf0;
+  border-radius: 12px;
+  font-size: 14px;
+  resize: none;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+
+.desc-input:focus {
+  outline: none;
+  border-color: #2196f3;
+  box-shadow: 0 0 0 3px rgba(33, 150, 243, 0.1);
+}
+
+.desc-counter {
+  text-align: right;
+  font-size: 12px;
+  color: #9ca3af;
+  margin-top: 4px;
+}
+
+.status-validity-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  background: #fffbeb;
+  font-size: 12px;
+  color: #92400e;
+}
+
+.hint-icon {
+  font-size: 14px;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 12px;
+  padding: 16px 24px 24px;
+  justify-content: flex-end;
+}
+
+.clear-status-btn {
+  padding: 10px 20px;
+  background: #fef2f2;
+  color: #ef4444;
+  border: none;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-right: auto;
+}
+
+.clear-status-btn:hover {
+  background: #fee2e2;
+}
+
+.cancel-btn {
+  padding: 10px 20px;
+  background: #f5f7fa;
+  color: #5c6b82;
+  border: none;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.cancel-btn:hover {
+  background: #e8ecf0;
+}
+
+.confirm-btn {
+  padding: 10px 24px;
   background: linear-gradient(135deg, #42a5f5, #2196f3);
-  color: #fff;
+  color: white;
+  border: none;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 4px 12px rgba(33, 150, 243, 0.3);
 }
 
-.status-cancel {
-  background: #f1f5fb;
-  color: #5c7599;
-  border: 1px solid #e3e9f5;
+.confirm-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(33, 150, 243, 0.4);
+}
+
+.confirm-btn:disabled {
+  background: #e0e0e0;
+  color: #9e9e9e;
+  cursor: not-allowed;
+  box-shadow: none;
 }
 
 .edit-button {
@@ -984,13 +1429,51 @@ onBeforeUnmount(() => {
   font-weight: 700;
 }
 
+/* 手机端悬浮画像进度 - 与PC端同步，固定在右下角 */
 @media (max-width: 640px) {
   .floating-progress {
-    position: sticky;
-    width: 100%;
-    right: auto;
-    bottom: auto;
-    margin: 14px 0;
+    position: fixed;
+    right: 12px;
+    bottom: 12px;
+    width: 200px;
+    padding: 12px;
+  }
+  
+  .floating-progress.mobile {
+    right: 12px;
+    bottom: 12px;
+    width: 200px;
+  }
+  
+  .floating-body {
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .circular-progress.small {
+    width: 70px;
+    height: 70px;
+  }
+  
+  .circular-progress.small svg {
+    width: 70px;
+    height: 70px;
+  }
+  
+  .progress-text.small .progress-number {
+    font-size: 16px;
+  }
+  
+  .floating-info {
+    text-align: center;
+  }
+  
+  .floating-sub {
+    font-size: 11px;
+  }
+  
+  .floating-tip {
+    font-size: 12px;
   }
 }
 
@@ -998,6 +1481,16 @@ onBeforeUnmount(() => {
 @media (max-width: 768px) {
   .profile-container {
     padding-bottom: 20px;
+  }
+  
+  .top-back-btn-container {
+    top: 12px;
+    left: 12px;
+  }
+  
+  .top-back-btn {
+    padding: 8px 14px;
+    font-size: 13px;
   }
 
   .profile-content {
@@ -1040,6 +1533,10 @@ onBeforeUnmount(() => {
   .user-subtitle {
     font-size: 14px;
   }
+  
+  .status-pill {
+    max-width: 220px;
+  }
 
   .edit-button {
     margin-bottom: 0;
@@ -1077,6 +1574,32 @@ onBeforeUnmount(() => {
 
   .circular-progress {
     transform: scale(0.9);
+  }
+  
+  /* 状态弹窗响应式 */
+  .status-modal {
+    max-width: 100%;
+    max-height: 90vh;
+    border-radius: 16px 16px 0 0;
+    margin-top: auto;
+  }
+  
+  .status-modal-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+  
+  .status-options {
+    gap: 8px;
+  }
+  
+  .status-option {
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+  
+  .modal-actions {
+    flex-wrap: wrap;
   }
 }
 

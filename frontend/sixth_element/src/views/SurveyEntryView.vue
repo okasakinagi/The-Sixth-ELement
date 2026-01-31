@@ -7,6 +7,10 @@ const title = ref('')
 
 const canProceed = computed(() => title.value.trim().length > 0)
 
+const goBack = () => {
+  router.back()
+}
+
 const goDirect = () => {
   if (!canProceed.value) return
   sessionStorage.setItem(
@@ -39,7 +43,7 @@ const goAi = () => {
 <template>
   <div class="entry-shell">
     <header class="entry-header">
-      <RouterLink class="back" to="/surveys">返回问卷管理</RouterLink>
+      <button class="back" type="button" @click="goBack">← 返回</button>
       <div>
         <p class="kicker">Survey Creation</p>
         <h1>问卷制作 · 设定标题</h1>
@@ -93,6 +97,21 @@ const goAi = () => {
 .back {
   color: #1e4fb4;
   font-weight: 600;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 15px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.back:hover {
+  background: rgba(30, 79, 180, 0.1);
+  transform: translateX(-2px);
 }
 
 .kicker {

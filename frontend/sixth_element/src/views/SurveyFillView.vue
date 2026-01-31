@@ -247,13 +247,22 @@ async function handleSubmit() {
 // 放弃填写
 function handleAbandon() {
   if (Object.keys(answers.value).length === 0) {
-    router.back()
+    goBack()
     return
   }
   
   if (confirm('退出后进度将不被保存，确定离开吗？')) {
     localStorage.removeItem(localStorageKey.value)
+    goBack()
+  }
+}
+
+// 返回上一页
+function goBack() {
+  if (window.history.length > 1) {
     router.back()
+  } else {
+    router.push('/task-hall')
   }
 }
 
@@ -305,6 +314,12 @@ function handleSuccessReturn() {
 
     <!-- 主内容区 -->
     <div v-else-if="survey" class="fill-container">
+      <!-- 左上角返回按钮 -->
+      <button class="back-btn" @click="handleAbandon">
+        <span class="back-arrow">←</span>
+        <span class="back-text">返回</span>
+      </button>
+
       <!-- 顶部进度条 -->
       <div class="progress-bar-container">
         <div class="progress-bar">
@@ -544,6 +559,40 @@ function handleSuccessReturn() {
   max-width: 720px;
   margin: 0 auto;
   padding: 0 0 120px 0;
+  position: relative;
+}
+
+/* 左上角返回按钮 */
+.back-btn {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 18px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(33, 150, 243, 0.2);
+  border-radius: 22px;
+  color: #1565c0;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(8px);
+  z-index: 200;
+}
+
+.back-btn:hover {
+  background: #ffffff;
+  transform: translateX(-4px);
+  box-shadow: 0 6px 16px rgba(33, 150, 243, 0.2);
+}
+
+.back-arrow {
+  font-size: 18px;
+  font-weight: bold;
 }
 
 /* 顶部进度条 */
@@ -1109,12 +1158,19 @@ function handleSuccessReturn() {
 
 /* 响应式设计 */
 @media (max-width: 768px) {
+  .back-btn {
+    top: 12px;
+    left: 12px;
+    padding: 8px 14px;
+    font-size: 13px;
+  }
+
   .fill-container {
     padding: 0 0 100px 0;
   }
 
   .survey-header {
-    padding: 32px 20px 24px;
+    padding: 48px 20px 24px;
   }
 
   .survey-title {
