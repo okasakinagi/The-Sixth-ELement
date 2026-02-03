@@ -1,6 +1,6 @@
 import json
 import secrets
-from datetime import datetime, time, timedelta
+from datetime import datetime, time, timedelta, timezone as dt_timezone
 
 from django.contrib.auth.hashers import check_password, make_password
 from django.http import HttpResponse
@@ -26,7 +26,7 @@ from .models import (
 
 def now_iso(dt=None):
     value = dt or timezone.now()
-    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+    return value.astimezone(dt_timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def parse_json(request):
@@ -74,7 +74,7 @@ def parse_deadline(value):
         if date_value:
             dt = datetime.combine(date_value, time.min)
     if dt and timezone.is_naive(dt):
-        dt = timezone.make_aware(dt, timezone=timezone.utc)
+        dt = timezone.make_aware(dt, timezone=dt_timezone.utc)
     return dt
 
 

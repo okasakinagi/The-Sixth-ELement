@@ -78,6 +78,7 @@
           <div class="match-indicator" :class="getMatchClass(task)">
             {{ getMatchText(task) }}
           </div>
+          <button class="fill-btn" @click.stop="goFill(task)">填写问卷</button>
           <button class="delete-btn" @click.stop="handleDelete(idx)" aria-label="删除问卷">
             ×
           </button>
@@ -101,10 +102,22 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
+import { useRouter } from 'vue-router'
+import {
+  getTaskHallOverview,
+  getTaskHallTasks,
+  refreshTaskHallBatch
+} from '@/utils/taskHallApi'
+
+const router = useRouter()
 
 const keyword = ref('')
 const userPoints = ref(0) // 用户积分
+const tasks = ref([])
+const loading = ref(false)
+const error = ref('')
+const searchTimer = ref(null)
 
 // 拖拽相关
 const menuRef = ref(null)
@@ -190,6 +203,38 @@ function stopDrag() {
   document.removeEventListener('touchend', stopDrag)
 }
 
+async function loadOverview() {
+  try {
+    const data = await getTaskHallOverview(router)
+    userPoints.value = data?.user?.points ?? 0
+  } catch (err) {
+    console.error('加载任务大厅概览失败:', err)
+    error.value = err.message || '加载任务大厅失败'
+  }
+}
+
+async function loadTasks(params = {}) {
+  loading.value = true
+  error.value = ''
+  try {
+    const data = await getTaskHallTasks(
+      {
+        keyword: keyword.value.trim() || undefined,
+        page: 1,
+        page_size: 20,
+        ...params,
+      },
+      router
+    )
+    tasks.value = Array.isArray(data?.items) ? data.items : []
+  } catch (err) {
+    console.error('加载任务列表失败:', err)
+    error.value = err.message || '加载任务列表失败'
+  } finally {
+    loading.value = false
+  }
+}
+
 onMounted(() => {
   // 初始化导航菜单位置（右上角）
   if (menuRef.value) {
@@ -200,17 +245,8 @@ onMounted(() => {
     }
   }
 
-  // 从localStorage读取用户积分
-  try {
-    const profile = localStorage.getItem('sixth_element_profile')
-    if (profile) {
-      const userData = JSON.parse(profile)
-      userPoints.value = userData.points || 0
-    }
-  } catch (error) {
-    console.error('读取用户积分失败:', error)
-    userPoints.value = 128 // 默认值
-  }
+  loadOverview()
+  loadTasks()
 })
 
 onUnmounted(() => {
@@ -218,70 +254,54 @@ onUnmounted(() => {
   if (fabDragTimer.value) {
     clearTimeout(fabDragTimer.value)
   }
+  if (searchTimer.value) {
+    clearTimeout(searchTimer.value)
+  }
   document.removeEventListener('mousemove', onDrag)
   document.removeEventListener('mouseup', stopDrag)
   document.removeEventListener('touchmove', onDrag)
   document.removeEventListener('touchend', stopDrag)
 })
 
-const allTasks = ref([
-  { id: 't01', title: '校园生活满意度调查', subtitle: '宿舍、食堂、安保整体反馈', sender: '李同学', type: '校园调研', estimated: 6, difficulty: 2, reward: 2, filled: 54, total: 200 },
-  { id: 't02', title: '课程体验回访', subtitle: '这学期的主要课程体验', sender: '张老师', type: '教学反馈', estimated: 8, difficulty: 4, reward: 4, filled: 120, total: 260 },
-  { id: 't03', title: '食堂新品口味投票', subtitle: '为春季菜单挑选新品', sender: '后勤部', type: '投票', estimated: 3, difficulty: 1, reward: 1, filled: 82, total: 150 },
-  { id: 't04', title: '社团活动偏好', subtitle: '选出你想参加的活动', sender: '学生会', type: '兴趣画像', estimated: 5, difficulty: 2, reward: 2, filled: 33, total: 100 },
-  { id: 't05', title: '实习就业意向', subtitle: '求职方向、城市与行业偏好', sender: '就业中心', type: '就业调研', estimated: 7, difficulty: 4, reward: 4, filled: 45, total: 120 },
-  { id: 't06', title: '心理健康与压力', subtitle: '期末周的压力与缓解方式', sender: '心理中心', type: '健康问卷', estimated: 9, difficulty: 5, reward: 5, filled: 18, total: 80 },
-  { id: 't07', title: '图书馆使用体验', subtitle: '空间、座位、设备反馈', sender: '图书馆', type: '服务反馈', estimated: 4, difficulty: 2, reward: 2, filled: 210, total: 400 },
-  { id: 't08', title: '校园出行与班车', subtitle: '线路、班次与满意度调查', sender: '后勤部', type: '交通', estimated: 4, difficulty: 2, reward: 2, filled: 60, total: 180 },
-  { id: 't09', title: '新生入学指南优化', subtitle: '帮我们改进 2026 新生手册', sender: '教务处', type: '文案优化', estimated: 10, difficulty: 4, reward: 4, filled: 12, total: 60 },
-  { id: 't10', title: '赛事观众调研', subtitle: '校运动会观众体验反馈', sender: '体育部', type: '活动复盘', estimated: 6, difficulty: 2, reward: 2, filled: 140, total: 260 },
-  { id: 't11', title: '校友访谈邀约', subtitle: '愿意参加校友访谈的时间', sender: '校友办', type: '访谈邀约', estimated: 5, difficulty: 3, reward: 3, filled: 28, total: 90 },
-  { id: 't12', title: '科研助理机会', subtitle: '可接受的课题与工作量', sender: '科研办', type: '科研匹配', estimated: 12, difficulty: 5, reward: 5, filled: 8, total: 50 },
-  { id: 't13', title: '寝室卫生公约共识', subtitle: '共建寝室卫生标准', sender: '宿管部', type: '共识投票', estimated: 3, difficulty: 1, reward: 1, filled: 76, total: 120 },
-  { id: 't14', title: '艺术节节目征集', subtitle: '报名你想展示的节目', sender: '文艺部', type: '活动报名', estimated: 5, difficulty: 2, reward: 2, filled: 34, total: 100 },
-  { id: 't15', title: '志愿服务档期收集', subtitle: '收集可出勤的志愿时段', sender: '团委', type: '志愿服务', estimated: 4, difficulty: 2, reward: 2, filled: 95, total: 180 },
-])
-
-const visibleTasks = ref(pickBatch(allTasks.value))
-
-function pickBatch(pool) {
-  const shuffled = [...pool].sort(() => Math.random() - 0.5)
-  return shuffled.slice(0, 15) // 增加到15个任务
-}
-
-function refreshBatch() {
+async function refreshBatch() {
   const confirm = window.confirm('确认要换一批问卷吗？当前页面的问卷将被替换。')
   if (!confirm) return
-  visibleTasks.value = pickBatch(allTasks.value)
-}
-
-function handleDelete(index) {
-  const ok = window.confirm('确认删除该问卷吗？将自动补位新的问卷。')
-  if (!ok) return
-
-  // 获取当前显示的所有问卷ID
-  const usedIds = new Set(visibleTasks.value.map((t) => t.id))
-  // 移除被删除的问卷
-  usedIds.delete(visibleTasks.value[index].id)
-  // 从所有问卷中找出还未显示的问卷
-  const candidates = allTasks.value.filter((t) => !usedIds.has(t.id))
-  // 随机选择一份未显示的问卷作为补位
-  const replacement = candidates.length ? candidates[Math.floor(Math.random() * candidates.length)] : null
-
-  if (replacement) {
-    visibleTasks.value.splice(index, 1, replacement)
-  } else {
-    visibleTasks.value.splice(index, 1)
+  try {
+    loading.value = true
+    const excludeIds = tasks.value.map((t) => t.id)
+    const data = await refreshTaskHallBatch(excludeIds, 15, router)
+    tasks.value = Array.isArray(data?.items) ? data.items : []
+  } catch (err) {
+    console.error('换一批失败:', err)
+    error.value = err.message || '换一批失败'
+  } finally {
+    loading.value = false
   }
 }
 
-const filteredTasks = computed(() => {
-  if (!keyword.value.trim()) return visibleTasks.value
-  const q = keyword.value.trim().toLowerCase()
-  return visibleTasks.value.filter((task) =>
-    [task.title, task.subtitle, task.sender, task.type].some((field) => field.toLowerCase().includes(q))
-  )
-})
+async function handleDelete(index) {
+  const ok = window.confirm('确认删除该问卷吗？将自动补位新的问卷。')
+  if (!ok) return
+
+  const current = tasks.value[index]
+  tasks.value.splice(index, 1)
+
+  try {
+    const excludeIds = tasks.value.map((t) => t.id)
+    if (current?.id) {
+      excludeIds.push(current.id)
+    }
+    const data = await refreshTaskHallBatch(excludeIds, 1, router)
+    const replacement = Array.isArray(data?.items) ? data.items[0] : null
+    if (replacement) {
+      tasks.value.splice(index, 0, replacement)
+    }
+  } catch (err) {
+    console.error('补位失败:', err)
+  }
+}
+
+const filteredTasks = computed(() => tasks.value)
 
 function progressPercent(task) {
   if (!task.total) return 0
@@ -290,14 +310,44 @@ function progressPercent(task) {
 
 // 根据难度显示分类（只有高性价比和挑战任务两种）
 function getMatchClass(task) {
+  if (task.match_level === 'high') return 'high-match'
+  if (task.match_level === 'medium') return 'high-match'
   if (task.difficulty <= 2) return 'high-match'
   return 'low-match'
 }
 
 function getMatchText(task) {
+  if (task.match_level === 'high') return '高性价比'
+  if (task.match_level === 'medium') return '中性价比'
+  if (task.match_level === 'low') return '挑战任务'
   if (task.difficulty <= 2) return '高性价比'
   return '挑战任务'
 }
+
+function extractSurveyId(taskId) {
+  if (!taskId) return null
+  const raw = String(taskId)
+  const match = raw.match(/\d+/)
+  return match ? match[0] : null
+}
+
+function goFill(task) {
+  const surveyId = extractSurveyId(task?.id)
+  if (!surveyId) {
+    alert('问卷ID无效，无法进入填写页面')
+    return
+  }
+  router.push(`/survey/${surveyId}/fill`)
+}
+
+watch(keyword, () => {
+  if (searchTimer.value) {
+    clearTimeout(searchTimer.value)
+  }
+  searchTimer.value = setTimeout(() => {
+    loadTasks()
+  }, 400)
+})
 </script>
 
 <style scoped>
@@ -512,6 +562,22 @@ function getMatchText(task) {
   gap: 10px;
   box-shadow: 0 8px 20px rgba(0, 82, 217, 0.05);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.fill-btn {
+  border: none;
+  background: #0052d9;
+  color: #ffffff;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.fill-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 16px rgba(0, 82, 217, 0.18);
 }
 
 .task-card:hover {
