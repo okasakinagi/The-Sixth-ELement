@@ -1,3 +1,4 @@
+from datetime import timezone as dt_timezone
 from django.utils import timezone
 
 from task_hall.mapper.task_hall_mapper import TaskHallMapper
@@ -169,4 +170,4 @@ class TaskHallService:
     def _iso_str(self, dt):
         if not dt:
             return None
-        return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+        return dt.astimezone(dt_timezone.utc).isoformat().replace("+00:00", "Z")

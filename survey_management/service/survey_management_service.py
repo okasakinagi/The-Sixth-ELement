@@ -1,3 +1,4 @@
+from datetime import timezone as dt_timezone
 from django.utils import timezone
 
 from survey_management.mapper.survey_management_mapper import SurveyManagementMapper
@@ -141,7 +142,7 @@ class SurveyManagementService:
         return {
             "id": self._public_survey_id(survey.id),
             "status": "live",
-            "published_at": timezone.now().astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "published_at": timezone.now().astimezone(dt_timezone.utc).isoformat().replace("+00:00", "Z"),
         }
 
     def create_survey(self, user, data):
@@ -250,4 +251,4 @@ class SurveyManagementService:
     def _iso_str(self, dt):
         if not dt:
             return None
-        return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+        return dt.astimezone(dt_timezone.utc).isoformat().replace("+00:00", "Z")
