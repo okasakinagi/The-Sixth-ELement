@@ -5,4 +5,6 @@ urlpatterns = [
     path("", views.index),
     path("api/v1/", include("core.urls")),
     path("api/v1/", include("personal_homepage.urls")),
+    path("api/v1/", include("survey_management.urls")),
+    path("api/v1/", include("task_hall.urls")),
 ]

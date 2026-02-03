@@ -17,6 +17,8 @@ INSTALLED_APPS = [
     "corsheaders",
     "core",
     "personal_homepage",
+    "survey_management",
+    "task_hall",
 ]
 
 MIDDLEWARE = [
