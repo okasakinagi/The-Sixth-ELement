@@ -1,8 +1,9 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { handleTokenExpired } from '@/utils/authHelper'
 import { getPointsLogs } from '@/utils/pointsApi'
+import { updateUserPoints } from '@/utils/userPointsHelper'
 
 const router = useRouter()
 
@@ -53,6 +54,9 @@ async function fetchPointsLogs() {
       const earnedRecords = data.items.filter(item => item.delta > 0)
       totalEarned.value = earnedRecords.reduce((sum, item) => sum + item.delta, 0)
       logs.value = data.items
+      
+      // 同步更新localStorage
+      updateUserPoints(data.user.points)
     } else if (currentPage.value > 1) {
       logs.value = [...logs.value, ...data.items]
     }
@@ -108,6 +112,10 @@ function goBack() {
 
 onMounted(() => {
   fetchPointsLogs()
+})
+
+onUnmounted(() => {
+  // cleanup if needed
 })
 </script>
 
@@ -208,6 +216,94 @@ onMounted(() => {
 </template>
 
 <style scoped>
+/* 可拖动悬浮菜单 */
+.draggable-menu {
+  position: fixed;
+  z-index: 100;
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(12px);
+  border: 1px solid #e3e9f5;
+  border-radius: 16px;
+  padding: 8px 12px;
+  box-shadow: 0 8px 24px rgba(0, 82, 217, 0.15);
+  cursor: move;
+  touch-action: none;
+  user-select: none;
+  transition: box-shadow 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.draggable-menu:hover {
+  box-shadow: 0 12px 32px rgba(0, 82, 217, 0.22);
+}
+
+.drag-handle {
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #a0b0cc;
+  font-size: 14px;
+  letter-spacing: -2px;
+  cursor: grab;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.points-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: linear-gradient(135deg, #ffd700, #ffb400);
+  color: #333;
+  border-radius: 12px;
+  text-decoration: none;
+  font-weight: 700;
+  font-size: 14px;
+  box-shadow: 0 4px 12px rgba(255, 180, 0, 0.3);
+  transition: transform 0.2s ease;
+}
+
+.points-badge:hover {
+  transform: scale(1.05);
+}
+
+.points-icon {
+  font-size: 16px;
+}
+
+.points-value {
+  font-family: 'Courier New', monospace;
+}
+
+.avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #0052d9, #2f7bff);
+  color: white;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  font-weight: 700;
+  box-shadow: 0 6px 12px rgba(0, 82, 217, 0.16);
+  transition: transform 0.2s ease;
+}
+
+.avatar:hover {
+  transform: scale(1.1);
+}
+
+.avatar span {
+  font-size: 16px;
+}
+
 .points-record {
   min-height: 100vh;
   background: radial-gradient(circle at top left, #edf3ff 0%, #f7f9ff 45%, #ffffff 100%);
@@ -540,6 +636,227 @@ onMounted(() => {
 @media (max-width: 768px) {
   .points-record {
     margin-left: 0;
+    padding: 4px 0 12px;
+  }
+
+  .page-shell {
+    padding: 0 8px;
+  }
+
+  .header {
+    padding: 10px 12px;
+  }
+
+  .header h1 {
+    font-size: 18px;
+  }
+
+  .back-btn,
+  .shop-btn {
+    font-size: 14px;
+    padding: 6px 10px;
+  }
+
+  .honor-card {
+    padding: 18px;
+  }
+
+  .card-content {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+
+  .balance-section {
+    width: 100%;
+  }
+
+  .balance-value {
+    font-size: 32px;
+  }
+
+  .earned-value {
+    font-size: 16px;
+  }
+
+  .honor-badge {
+    width: 100%;
+    justify-content: center;
+    padding: 8px 12px;
+  }
+
+  .badge-text {
+    font-size: 13px;
+  }
+
+  .filter-tabs {
+    padding: 0 8px 10px;
+  }
+
+  .tab {
+    font-size: 13px;
+  }
+
+  .transaction-list {
+    padding: 8px;
+  }
+
+  .list-item {
+    padding: 14px 10px;
+  }
+
+  .item-reason {
+    font-size: 13px;
+  }
+
+  .item-time {
+    font-size: 11px;
+  }
+
+  .item-right {
+    font-size: 15px;
+    width: 55px;
+  }
+
+  .load-more-btn {
+    padding: 10px 28px;
+    font-size: 13px;
+  }
+
+  /* 移动端悬浮菜单优化 */
+  .draggable-menu {
+    top: 16px !important;
+    left: auto !important;
+    right: 16px;
+    padding: 6px 10px;
+    gap: 8px;
+  }
+
+  .points-badge {
+    padding: 5px 10px;
+    font-size: 13px;
+  }
+
+  .avatar {
+    width: 32px;
+    height: 32px;
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 480px) {
+  .points-record {
+    padding: 2px 0 10px;
+  }
+
+  .page-shell {
+    padding: 0 6px;
+    gap: 10px;
+  }
+
+  .header {
+    padding: 8px 10px;
+  }
+
+  .header h1 {
+    font-size: 16px;
+  }
+
+  .back-btn,
+  .shop-btn {
+    font-size: 13px;
+    padding: 5px 8px;
+  }
+
+  .honor-card {
+    padding: 16px;
+  }
+
+  .balance-value {
+    font-size: 28px;
+  }
+
+  .earned-value {
+    font-size: 14px;
+  }
+
+  .badge-icon {
+    font-size: 18px;
+  }
+
+  .badge-text {
+    font-size: 12px;
+  }
+
+  .filter-tabs {
+    padding: 0 6px 8px;
+    gap: 8px;
+  }
+
+  .tab {
+    font-size: 12px;
+    padding: 6px 0;
+  }
+
+  .transaction-list {
+    padding: 6px;
+  }
+
+  .list-item {
+    padding: 12px 8px;
+  }
+
+  .item-reason {
+    font-size: 12px;
+  }
+
+  .item-time {
+    font-size: 10px;
+  }
+
+  .item-right {
+    font-size: 14px;
+    width: 50px;
+  }
+
+  .load-more-btn {
+    padding: 8px 24px;
+    font-size: 12px;
+  }
+
+  .tooltip-content {
+    font-size: 11px;
+    padding: 6px 10px;
+    white-space: normal;
+    max-width: 200px;
+  }
+
+  /* 移动端悬浮菜单进一步优化 */
+  .draggable-menu {
+    gap: 6px;
+    padding: 5px 8px;
+  }
+
+  .points-badge {
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+
+  .points-icon {
+    font-size: 14px;
+  }
+
+  .avatar {
+    width: 30px;
+    height: 30px;
+  }
+
+  .avatar span {
+    font-size: 14px;
+  }
+
+  .drag-handle {
+    font-size: 12px;
   }
 }
 </style>
