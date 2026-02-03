@@ -609,11 +609,18 @@ onBeforeUnmount(() => {
 <style scoped>
 .profile-container {
   min-height: 100vh;
-  width: 100vw;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   background: linear-gradient(135deg, #e3f2fd 0%, #f5f9ff 100%);
-  padding-bottom: 40px;
+  padding: 0 0 40px;
   overflow-x: hidden;
   position: relative;
+}
+
+:global(.main-content) {
+  padding: 0;
+  background: transparent;
 }
 
 /* 左上角返回按钮 */
@@ -659,6 +666,7 @@ onBeforeUnmount(() => {
   margin-bottom: 30px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   width: 100%;
+  box-sizing: border-box;
 }
 
 .header-bg {
@@ -1080,7 +1088,7 @@ onBeforeUnmount(() => {
 /* 内容区域 */
 .profile-content {
   max-width: 1200px;
-  width: calc(100% - 40px);
+  width: 100%;
   margin: 0 auto;
   padding: 0 20px;
   display: grid;
@@ -1092,7 +1100,7 @@ onBeforeUnmount(() => {
 @media (max-width: 900px) {
   .profile-content {
     grid-template-columns: 1fr;
-    width: calc(100% - 30px);
+    width: 100%;
     padding: 0 15px;
   }
 }
