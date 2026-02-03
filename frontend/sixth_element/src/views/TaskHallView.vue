@@ -13,24 +13,6 @@
         </div>
         <button class="ghost" @click="refreshBatch">换一批</button>
       </div>
-
-      <!-- 可拖动的导航菜单 -->
-      <div
-        class="nav-right draggable-menu"
-        ref="menuRef"
-        :style="{ left: menuPosition.x + 'px', top: menuPosition.y + 'px' }"
-        @mousedown="startDrag($event, 'menu')"
-        @touchstart="startDrag($event, 'menu')"
-      >
-        <div class="drag-handle">⋮⋮</div>
-        <RouterLink class="points-badge" to="/points">
-          <span class="points-icon">💰</span>
-          <span class="points-value">{{ userPoints }}</span>
-        </RouterLink>
-        <RouterLink class="avatar" to="/profile" aria-label="个人信息">
-          <span>U</span>
-        </RouterLink>
-      </div>
     </header>
 
     <section class="task-grid">
@@ -38,7 +20,6 @@
         v-for="(task, idx) in filteredTasks"
         :key="task.id"
         class="task-card"
-        @contextmenu.prevent="handleDelete(idx)"
       >
         <div class="card-top">
           <div class="card-titles">
@@ -236,14 +217,6 @@ async function loadTasks(params = {}) {
 }
 
 onMounted(() => {
-  // 初始化导航菜单位置（右上角）
-  if (menuRef.value) {
-    const headerRect = menuRef.value.closest('.header')?.getBoundingClientRect()
-    if (headerRect) {
-      // 菜单宽度约为200px（删除"问卷管理"后）
-      menuPosition.value = { x: headerRect.width - 200, y: 12 }
-    }
-  }
 
   loadOverview()
   loadTasks()
@@ -261,6 +234,7 @@ onUnmounted(() => {
   document.removeEventListener('mouseup', stopDrag)
   document.removeEventListener('touchmove', onDrag)
   document.removeEventListener('touchend', stopDrag)
+  window.removeEventListener('resize', handleResize)
 })
 
 async function refreshBatch() {

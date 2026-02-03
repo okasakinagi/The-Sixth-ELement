@@ -12,55 +12,7 @@ import {
 
 const router = useRouter()
 const route = useRoute()
-const pointsBalance = ref(1240)
 
-// 拖拽相关
-const menuRef = ref(null)
-const menuPosition = ref({ x: 0, y: 0 })
-const dragState = ref({ isDragging: false, startX: 0, startY: 0, initialX: 0, initialY: 0 })
-
-function startDrag(e) {
-  const clientX = e.type.includes('touch') ? e.touches[0]?.clientX : e.clientX
-  const clientY = e.type.includes('touch') ? e.touches[0]?.clientY : e.clientY
-
-  if (!clientX || !clientY) return
-
-  dragState.value = {
-    isDragging: true,
-    startX: clientX,
-    startY: clientY,
-    initialX: menuPosition.value.x,
-    initialY: menuPosition.value.y
-  }
-
-  document.addEventListener('mousemove', onDrag)
-  document.addEventListener('mouseup', stopDrag)
-  document.addEventListener('touchmove', onDrag)
-  document.addEventListener('touchend', stopDrag)
-}
-
-function onDrag(e) {
-  if (!dragState.value.isDragging) return
-  
-  const clientX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX
-  const clientY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY
-
-  const deltaX = clientX - dragState.value.startX
-  const deltaY = clientY - dragState.value.startY
-
-  menuPosition.value = {
-    x: dragState.value.initialX + deltaX,
-    y: dragState.value.initialY + deltaY
-  }
-}
-
-function stopDrag() {
-  dragState.value.isDragging = false
-  document.removeEventListener('mousemove', onDrag)
-  document.removeEventListener('mouseup', stopDrag)
-  document.removeEventListener('touchmove', onDrag)
-  document.removeEventListener('touchend', stopDrag)
-}
 const hideCompleted = ref(false)
 const showDeleteModal = ref(false)
 const deleteTarget = ref(null)
@@ -276,30 +228,10 @@ watch(
 
 onMounted(() => {
   loadSurveys()
-  // 初始化导航菜单位置（右上角）
-  if (menuRef.value) {
-    const headerRect = menuRef.value.closest('.survey-header')?.getBoundingClientRect()
-    if (headerRect) {
-      menuPosition.value = { x: headerRect.width - 200, y: 12 }
-    }
-  }
-  // 从localStorage读取用户积分
-  try {
-    const profile = localStorage.getItem('sixth_element_profile')
-    if (profile) {
-      const userData = JSON.parse(profile)
-      pointsBalance.value = userData.points || 0
-    }
-  } catch (error) {
-    console.error('读取用户积分失败:', error)
-  }
 })
 
 onUnmounted(() => {
-  document.removeEventListener('mousemove', onDrag)
-  document.removeEventListener('mouseup', stopDrag)
-  document.removeEventListener('touchmove', onDrag)
-  document.removeEventListener('touchend', stopDrag)
+  // cleanup if needed
 })
 </script>
 
@@ -316,24 +248,6 @@ onUnmounted(() => {
         <span class="button-icon">📝</span>
         <span>创建问卷</span>
       </RouterLink>
-
-      <!-- 可拖动的导航菜单 -->
-      <div
-        class="nav-right draggable-menu"
-        ref="menuRef"
-        :style="{ left: menuPosition.x + 'px', top: menuPosition.y + 'px' }"
-        @mousedown="startDrag($event)"
-        @touchstart="startDrag($event)"
-      >
-        <div class="drag-handle">⋮⋮</div>
-        <RouterLink class="points-badge" to="/points">
-          <span class="points-icon">💰</span>
-          <span class="points-value">{{ pointsBalance }}</span>
-        </RouterLink>
-        <RouterLink class="avatar" to="/profile" aria-label="个人信息">
-          <span>U</span>
-        </RouterLink>
-      </div>
     </header>
 
     <section class="control-bar">
@@ -541,48 +455,89 @@ onUnmounted(() => {
 /* 可拖动导航菜单 */
 .draggable-menu {
   position: fixed;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 14px;
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(12px);
-  border-radius: 999px;
-  box-shadow: 0 4px 16px rgba(13, 27, 55, 0.12);
   z-index: 100;
-  cursor: grab;
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(12px);
+  border: 1px solid #e3e9f5;
+  border-radius: 16px;
+  padding: 8px 12px;
+  box-shadow: 0 8px 24px rgba(0, 82, 217, 0.15);
+  cursor: move;
+  touch-action: none;
   user-select: none;
   transition: box-shadow 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .draggable-menu:hover {
-  box-shadow: 0 6px 20px rgba(13, 27, 55, 0.18);
-}
-
-.draggable-menu:active {
-  cursor: grabbing;
+  box-shadow: 0 12px 32px rgba(0, 82, 217, 0.22);
 }
 
 .drag-handle {
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #a0b0cc;
   font-size: 14px;
-  color: #a0afc7;
-  letter-spacing: 2px;
-  opacity: 0.6;
+  letter-spacing: -2px;
+  cursor: grab;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
 }
 
 .points-badge {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
-  background: linear-gradient(135deg, #fff4dc 0%, #ffe8b8 100%);
-  border-radius: 999px;
+  background: linear-gradient(135deg, #ffd700, #ffb400);
+  color: #333;
+  border-radius: 12px;
   text-decoration: none;
+  font-weight: 700;
+  font-size: 14px;
+  box-shadow: 0 4px 12px rgba(255, 180, 0, 0.3);
   transition: transform 0.2s ease;
 }
 
 .points-badge:hover {
   transform: scale(1.05);
+}
+
+.points-icon {
+  font-size: 16px;
+}
+
+.points-value {
+  font-family: 'Courier New', monospace;
+}
+
+.avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #0052d9, #2f7bff);
+  color: white;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  font-weight: 700;
+  box-shadow: 0 6px 12px rgba(0, 82, 217, 0.16);
+  transition: transform 0.2s ease;
+}
+
+.avatar:hover {
+  transform: scale(1.1);
+}
+
+.avatar span {
+  font-size: 16px;
 }
 
 .points-icon {

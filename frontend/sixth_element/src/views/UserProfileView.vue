@@ -337,7 +337,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { handleTokenExpired } from '@/utils/authHelper'
 import { getUserProfile, updateUserProfile, getCurrentUser } from '@/utils/profileApi'
@@ -585,6 +585,54 @@ const goBack = () => {
   }
 }
 
+// 拖拽相关
+const menuRef = ref(null)
+const menuPosition = ref({ x: 0, y: 0 })
+const dragState = ref({ isDragging: false, startX: 0, startY: 0, initialX: 0, initialY: 0 })
+
+function startDrag(e) {
+  const clientX = e.type.includes('touch') ? e.touches[0]?.clientX : e.clientX
+  const clientY = e.type.includes('touch') ? e.touches[0]?.clientY : e.clientY
+
+  if (!clientX || !clientY) return
+
+  dragState.value = {
+    isDragging: true,
+    startX: clientX,
+    startY: clientY,
+    initialX: menuPosition.value.x,
+    initialY: menuPosition.value.y
+  }
+
+  document.addEventListener('mousemove', onDrag)
+  document.addEventListener('mouseup', stopDrag)
+  document.addEventListener('touchmove', onDrag)
+  document.addEventListener('touchend', stopDrag)
+}
+
+function onDrag(e) {
+  if (!dragState.value.isDragging) return
+  
+  const clientX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX
+  const clientY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY
+
+  const deltaX = clientX - dragState.value.startX
+  const deltaY = clientY - dragState.value.startY
+
+  menuPosition.value = {
+    x: dragState.value.initialX + deltaX,
+    y: dragState.value.initialY + deltaY
+  }
+}
+
+function stopDrag() {
+  dragState.value.isDragging = false
+  document.removeEventListener('mousemove', onDrag)
+  document.removeEventListener('mouseup', stopDrag)
+  document.removeEventListener('touchmove', onDrag)
+  document.removeEventListener('touchend', stopDrag)
+}
+
 // 组件挂载时加载数据
 onMounted(() => {
   loadProfile()
@@ -595,18 +643,103 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize)
 })
 
-// 组件挂载时加载数据
-onMounted(() => {
-  loadProfile()
-  window.addEventListener('resize', handleResize)
-})
-
-onBeforeUnmount(() => {
-  window.removeEventListener('resize', handleResize)
+onUnmounted(() => {
+  document.removeEventListener('mousemove', onDrag)
+  document.removeEventListener('mouseup', stopDrag)
+  document.removeEventListener('touchmove', onDrag)
+  document.removeEventListener('touchend', stopDrag)
 })
 </script>
 
 <style scoped>
+/* 可拖动悬浮菜单 */
+.draggable-menu {
+  position: fixed;
+  z-index: 100;
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(12px);
+  border: 1px solid #e3e9f5;
+  border-radius: 16px;
+  padding: 8px 12px;
+  box-shadow: 0 8px 24px rgba(0, 82, 217, 0.15);
+  cursor: move;
+  touch-action: none;
+  user-select: none;
+  transition: box-shadow 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.draggable-menu:hover {
+  box-shadow: 0 12px 32px rgba(0, 82, 217, 0.22);
+}
+
+.drag-handle {
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #a0b0cc;
+  font-size: 14px;
+  letter-spacing: -2px;
+  cursor: grab;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.points-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: linear-gradient(135deg, #ffd700, #ffb400);
+  color: #333;
+  border-radius: 12px;
+  text-decoration: none;
+  font-weight: 700;
+  font-size: 14px;
+  box-shadow: 0 4px 12px rgba(255, 180, 0, 0.3);
+  transition: transform 0.2s ease;
+}
+
+.points-badge:hover {
+  transform: scale(1.05);
+}
+
+.points-icon {
+  font-size: 16px;
+}
+
+.points-value {
+  font-family: 'Courier New', monospace;
+}
+
+.avatar-link {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #0052d9, #2f7bff);
+  color: white;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  font-weight: 700;
+  box-shadow: 0 6px 12px rgba(0, 82, 217, 0.16);
+  transition: transform 0.2s ease;
+}
+
+.avatar-link:hover {
+  transform: scale(1.1);
+}
+
+.avatar-link span {
+  font-size: 16px;
+}
+
 .profile-container {
   min-height: 100vh;
   width: 100%;
@@ -725,9 +858,10 @@ onBeforeUnmount(() => {
 .username {
   font-size: 28px;
   font-weight: bold;
-  color: #ffffff;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3), 0 0 8px rgba(0, 0, 0, 0.15);
-  margin: 0 0 5px 0;
+  color: #1f3a60;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.7);
+  letter-spacing: 0.4px;
+  margin: 0 0 6px 0;
 }
 
 .user-subtitle {
@@ -1501,6 +1635,26 @@ onBeforeUnmount(() => {
     font-size: 13px;
   }
 
+  /* 移动端悬浮菜单优化 */
+  .draggable-menu {
+    top: 16px !important;
+    left: auto !important;
+    right: 16px;
+    padding: 6px 10px;
+    gap: 8px;
+  }
+
+  .points-badge {
+    padding: 5px 10px;
+    font-size: 13px;
+  }
+
+  .avatar-link {
+    width: 32px;
+    height: 32px;
+    font-size: 14px;
+  }
+
   .profile-content {
     grid-template-columns: 1fr;
     padding: 0 15px;
@@ -1631,6 +1785,31 @@ onBeforeUnmount(() => {
   .tag {
     font-size: 12px;
     padding: 6px 12px;
+  }
+
+  /* 移动端悬浮菜单进一步优化 */
+  .draggable-menu {
+    gap: 6px;
+    padding: 5px 8px;
+  }
+
+  .points-badge {
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+
+  .points-icon {
+    font-size: 14px;
+  }
+
+  .avatar-link {
+    width: 30px;
+    height: 30px;
+    font-size: 14px;
+  }
+
+  .drag-handle {
+    font-size: 12px;
   }
 }
 </style>
