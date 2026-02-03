@@ -3,44 +3,6 @@
     <!-- 遮罩层 -->
     <div v-if="mobileSidebarOpen" class="sidebar-overlay" @click="toggleSidebar"></div>
 
-    <!-- PC端可拖动头像积分小窗口 -->
-    <div
-      v-if="!isMobile"
-      class="draggable-menu"
-      ref="menuRef"
-      :style="{ left: menuPosition.x + 'px', top: menuPosition.y + 'px' }"
-      @mousedown="startDrag"
-      @touchstart="startDrag"
-    >
-      <div class="drag-handle">⋮⋮</div>
-      <RouterLink class="points-badge" to="/points">
-        <span class="points-icon">💰</span>
-        <span class="points-value">{{ userPoints }}</span>
-      </RouterLink>
-      <RouterLink class="avatar" to="/profile" aria-label="个人信息">
-        <span>U</span>
-      </RouterLink>
-    </div>
-
-    <!-- 移动端常见问题快捷跳转 -->
-    <button 
-      v-if="isMobile"
-      class="mobile-faq-btn"
-      @click="goToFaq"
-    >
-      ❓ 常见问题
-    </button>
-
-    <!-- 移动端侧边栏切换按钮 -->
-    <button 
-      v-if="isMobile"
-      class="mobile-toggle-btn"
-      @click="toggleSidebar"
-      :title="mobileSidebarOpen ? '收起侧边栏' : '展开侧边栏'"
-    >
-      {{ mobileSidebarOpen ? '▲' : '▼' }}
-    </button>
-
     <div class="help-shell">
       <!-- 左侧导航 -->
       <aside 
@@ -214,7 +176,6 @@ const searchResults = ref([])
 const sidebarCollapsed = ref(false) // 控制帮助中心侧边栏的收起/展开状态
 const mobileSidebarOpen = ref(false) // 控制移动端侧边栏的打开/关闭状态
 const isMobile = ref(window.innerWidth <= 768) // 检测是否为移动端
-const userPoints = ref(0) // 用户积分
 
 // 反馈状态管理（localStorage存储，一周过期）
 const FEEDBACK_STORAGE_KEY = 'help_center_feedback'
@@ -308,15 +269,6 @@ function stopDrag() {
   document.removeEventListener('mouseup', stopDrag)
   document.removeEventListener('touchmove', onDrag)
   document.removeEventListener('touchend', stopDrag)
-}
-
-// 移动端跳转到常见问题
-const goToFaq = () => {
-  expandedCategories.value = ['faq']
-  const faqCategory = categories.value.find(c => c.id === 'faq')
-  if (faqCategory && faqCategory.items.length > 0) {
-    selectItem(faqCategory.items[0].id)
-  }
 }
 
 // 监听窗口大小变化
@@ -708,11 +660,6 @@ onMounted(() => {
   // 初始化反馈记录
   initFeedbackRecords()
   
-  // 初始化导航菜单位置（右上角）
-  if (!isMobile.value) {
-    menuPosition.value = { x: window.innerWidth - 220, y: 60 }
-  }
-  
   // 从路由参数初始化
   if (initialCategory.value) {
     expandedCategories.value.push(initialCategory.value)
@@ -732,6 +679,10 @@ onMounted(() => {
       selectItem(categories.value[0].items[0].id)
     }
   }
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', handleResize)
 })
 
 // 监听路由变化
@@ -762,28 +713,34 @@ watch(
 /* PC端可拖动头像积分小窗口 */
 .draggable-menu {
   position: fixed;
-  display: flex;
-  align-items: center;
-  gap: 12px;
+  z-index: 100;
   background: rgba(255, 255, 255, 0.98);
-  border: 1px solid rgba(33, 150, 243, 0.15);
-  border-radius: 28px;
-  padding: 8px 16px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-  z-index: 1000;
+  backdrop-filter: blur(12px);
+  border: 1px solid #e3e9f5;
+  border-radius: 16px;
+  padding: 8px 12px;
+  box-shadow: 0 8px 24px rgba(0, 82, 217, 0.15);
   cursor: move;
+  touch-action: none;
   user-select: none;
   transition: box-shadow 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .draggable-menu:hover {
-  box-shadow: 0 12px 32px rgba(33, 150, 243, 0.2);
+  box-shadow: 0 12px 32px rgba(0, 82, 217, 0.22);
 }
 
 .drag-handle {
-  color: #90a4ae;
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #a0b0cc;
   font-size: 14px;
-  letter-spacing: 2px;
+  letter-spacing: -2px;
   cursor: grab;
 }
 
@@ -792,19 +749,22 @@ watch(
 }
 
 .points-badge {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
-  background: linear-gradient(135deg, #fff3e0, #ffe0b2);
-  border-radius: 16px;
+  background: linear-gradient(135deg, #ffd700, #ffb400);
+  color: #333;
+  border-radius: 12px;
   text-decoration: none;
-  transition: all 0.2s ease;
+  font-weight: 700;
+  font-size: 14px;
+  box-shadow: 0 4px 12px rgba(255, 180, 0, 0.3);
+  transition: transform 0.2s ease;
 }
 
 .points-badge:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(255, 152, 0, 0.3);
+  transform: scale(1.05);
 }
 
 .points-icon {
@@ -812,56 +772,30 @@ watch(
 }
 
 .points-value {
-  font-size: 14px;
-  font-weight: 700;
-  color: #e65100;
+  font-family: 'Courier New', monospace;
 }
 
 .avatar {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #42a5f5, #1976d2);
-  display: flex;
+  background: linear-gradient(135deg, #0052d9, #2f7bff);
+  color: white;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   text-decoration: none;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 8px rgba(33, 150, 243, 0.3);
+  font-weight: 700;
+  box-shadow: 0 6px 12px rgba(0, 82, 217, 0.16);
+  transition: transform 0.2s ease;
 }
 
 .avatar:hover {
   transform: scale(1.1);
-  box-shadow: 0 4px 12px rgba(33, 150, 243, 0.4);
 }
 
 .avatar span {
-  color: white;
-  font-weight: 700;
   font-size: 16px;
-}
-
-/* 移动端常见问题快捷按钮 */
-.mobile-faq-btn {
-  position: fixed;
-  bottom: 80px;
-  right: 16px;
-  padding: 12px 20px;
-  background: linear-gradient(135deg, #42a5f5, #1976d2);
-  color: white;
-  border: none;
-  border-radius: 24px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  box-shadow: 0 6px 20px rgba(33, 150, 243, 0.4);
-  z-index: 999;
-  transition: all 0.2s ease;
-}
-
-.mobile-faq-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(33, 150, 243, 0.5);
 }
 
 .help-shell {
@@ -1704,42 +1638,6 @@ watch(
 
   .article-title {
     font-size: 20px;
-  }
-
-  /* 移动端切换按钮样式 */
-  .mobile-toggle-btn {
-    position: fixed;
-    left: 50%;
-    transform: translateX(-50%);
-    top: 16px;
-    z-index: 1003;
-    width: 32px;
-    height: 32px;
-    font-size: 12px;
-    background: rgba(255, 255, 255, 0.8);
-    color: #9ca3af;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    backdrop-filter: blur(10px);
-  }
-
-  .mobile-toggle-btn:hover {
-    transform: translateX(-50%) translateY(-1px);
-    box-shadow: 0 3px 8px rgba(66, 153, 225, 0.15);
-    background: rgba(255, 255, 255, 0.9);
-    color: #4299e1;
-  }
-
-  /* 确保移动端按钮始终可见，位置固定不变 */
-  .mobile-toggle-btn {
-    position: fixed;
-    z-index: 1003;
   }
 
   /* 调整移动端侧边栏内容 */

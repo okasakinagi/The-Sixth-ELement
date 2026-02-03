@@ -3,6 +3,7 @@ import { RouterView, useRouter } from 'vue-router'
 import { ref, computed, watch } from 'vue'
 import ProfileCompletionModal from './components/ProfileCompletionModal.vue'
 import AppSidebar from './components/AppSidebar.vue'
+import GlobalFloatingMenu from './components/GlobalFloatingMenu.vue'
 
 const router = useRouter()
 
@@ -36,6 +37,7 @@ const showSidebar = computed(() => {
 </script>
 
 <template>
+  <GlobalFloatingMenu />
   <AppSidebar v-if="showSidebar">
     <RouterView />
   </AppSidebar>

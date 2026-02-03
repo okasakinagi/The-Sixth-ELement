@@ -150,10 +150,23 @@ async function handleLogin() {
       return
     }
 
-    // 保存 token
+    // 保存 token 和用户信息
     localStorage.setItem('access_token', data.access_token)
     localStorage.setItem('user_id', data.user?.id || '')
     localStorage.setItem('user_nickname', data.user?.nickname || '')
+    
+    // 保存用户完整信息（包括积分）
+    if (data.user) {
+      localStorage.setItem('sixth_element_profile', JSON.stringify({
+        id: data.user.id,
+        email: data.user.email,
+        nickname: data.user.nickname,
+        points: data.user.points || 0,
+        credit_score: data.user.credit_score || 80,
+        activity_points: data.user.activity_points || 0,
+        profile_completion: data.user.profile_completion || 0
+      }))
+    }
 
     // 判断是否首次登录（后端可返回 is_first_login 字段，暂用 user.profile_completion 判断）
     const isFirstLogin = data.user && (data.user.profile_completion === 0 || data.user.is_first_login)
@@ -199,10 +212,23 @@ async function handleRegister() {
       return
     }
 
-    // 保存 token
+    // 保存 token 和用户信息
     localStorage.setItem('access_token', data.access_token)
     localStorage.setItem('user_id', data.user?.id || '')
     localStorage.setItem('user_nickname', data.user?.nickname || '')
+    
+    // 保存用户完整信息（包括积分）
+    if (data.user) {
+      localStorage.setItem('sixth_element_profile', JSON.stringify({
+        id: data.user.id,
+        email: data.user.email,
+        nickname: data.user.nickname,
+        points: data.user.points || 0,
+        credit_score: data.user.credit_score || 80,
+        activity_points: data.user.activity_points || 0,
+        profile_completion: data.user.profile_completion || 0
+      }))
+    }
 
     // 注册后一定跳转到个人资料编辑页
     setTimeout(() => {

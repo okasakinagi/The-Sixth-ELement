@@ -13,24 +13,6 @@
         </div>
         <button class="ghost" @click="refreshBatch">换一批</button>
       </div>
-
-      <!-- 可拖动的导航菜单 -->
-      <div
-        class="nav-right draggable-menu"
-        ref="menuRef"
-        :style="{ left: menuPosition.x + 'px', top: menuPosition.y + 'px' }"
-        @mousedown="startDrag($event, 'menu')"
-        @touchstart="startDrag($event, 'menu')"
-      >
-        <div class="drag-handle">⋮⋮</div>
-        <RouterLink class="points-badge" to="/points">
-          <span class="points-icon">💰</span>
-          <span class="points-value">{{ userPoints }}</span>
-        </RouterLink>
-        <RouterLink class="avatar" to="/profile" aria-label="个人信息">
-          <span>U</span>
-        </RouterLink>
-      </div>
     </header>
 
     <section class="task-grid">
@@ -38,7 +20,6 @@
         v-for="(task, idx) in filteredTasks"
         :key="task.id"
         class="task-card"
-        @contextmenu.prevent="handleDelete(idx)"
       >
         <div class="card-top">
           <div class="card-titles">
@@ -78,7 +59,7 @@
           <div class="match-indicator" :class="getMatchClass(task)">
             {{ getMatchText(task) }}
           </div>
-          <button class="delete-btn" @click.stop="handleDelete(idx)" aria-label="删除问卷">
+          <button class="delete-btn" @click="handleDelete(task.id)" aria-label="删除问卷">
             ×
           </button>
         </div>
@@ -101,10 +82,44 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
+import { getUserPoints } from '@/utils/userPointsHelper'
 
 const keyword = ref('')
 const userPoints = ref(0) // 用户积分
+const windowWidth = ref(window.innerWidth)
+const windowHeight = ref(window.innerHeight)
+
+// 根据屏幕大小计算最佳显示数量
+const optimalTaskCount = computed(() => {
+  const width = windowWidth.value
+  const height = windowHeight.value
+  
+  // 估算每个卡片的大小（包含间距）
+  let cardWidth = 360  // 默认卡片宽度 + 间距
+  let cardHeight = 180 // 估算卡片高度 + 间距
+  
+  if (width >= 1800) {
+    cardWidth = 420
+  } else if (width >= 1400) {
+    cardWidth = 380
+  } else if (width <= 640) {
+    cardWidth = width - 20  // 移动端单列
+    cardHeight = 160
+  } else if (width <= 960) {
+    cardWidth = (width - 40) / 2  // 小屏幕2列
+    cardHeight = 160
+  }
+  
+  // 计算可以容纳的列数
+  const cols = Math.floor((width - 40) / cardWidth) || 1
+  // 计算可以容纳的行数（减去header等空间）
+  const availableHeight = height - 200 // 减去header和底部空间
+  const rows = Math.max(3, Math.floor(availableHeight / cardHeight))
+  
+  // 总数量，至少15个
+  return Math.max(15, cols * rows)
+})
 
 // 拖拽相关
 const menuRef = ref(null)
@@ -190,27 +205,19 @@ function stopDrag() {
   document.removeEventListener('touchend', stopDrag)
 }
 
-onMounted(() => {
-  // 初始化导航菜单位置（右上角）
-  if (menuRef.value) {
-    const headerRect = menuRef.value.closest('.header')?.getBoundingClientRect()
-    if (headerRect) {
-      // 菜单宽度约为200px（删除"问卷管理"后）
-      menuPosition.value = { x: headerRect.width - 200, y: 12 }
-    }
-  }
+// 监听窗口大小变化
+function handleResize() {
+  windowWidth.value = window.innerWidth
+  windowHeight.value = window.innerHeight
+}
 
-  // 从localStorage读取用户积分
-  try {
-    const profile = localStorage.getItem('sixth_element_profile')
-    if (profile) {
-      const userData = JSON.parse(profile)
-      userPoints.value = userData.points || 0
-    }
-  } catch (error) {
-    console.error('读取用户积分失败:', error)
-    userPoints.value = 128 // 默认值
-  }
+onMounted(() => {
+
+  // 初始化问卷列表
+  visibleTasks.value = pickBatch(allTasks.value, optimalTaskCount.value)
+  
+  // 添加窗口大小监听
+  window.addEventListener('resize', handleResize)
 })
 
 onUnmounted(() => {
@@ -222,6 +229,7 @@ onUnmounted(() => {
   document.removeEventListener('mouseup', stopDrag)
   document.removeEventListener('touchmove', onDrag)
   document.removeEventListener('touchend', stopDrag)
+  window.removeEventListener('resize', handleResize)
 })
 
 const allTasks = ref([
@@ -240,38 +248,93 @@ const allTasks = ref([
   { id: 't13', title: '寝室卫生公约共识', subtitle: '共建寝室卫生标准', sender: '宿管部', type: '共识投票', estimated: 3, difficulty: 1, reward: 1, filled: 76, total: 120 },
   { id: 't14', title: '艺术节节目征集', subtitle: '报名你想展示的节目', sender: '文艺部', type: '活动报名', estimated: 5, difficulty: 2, reward: 2, filled: 34, total: 100 },
   { id: 't15', title: '志愿服务档期收集', subtitle: '收集可出勤的志愿时段', sender: '团委', type: '志愿服务', estimated: 4, difficulty: 2, reward: 2, filled: 95, total: 180 },
+  { id: 't16', title: '手机使用习惯调研', subtitle: 'APP偏好与使用时长统计', sender: '王同学', type: '数字生活', estimated: 5, difficulty: 2, reward: 2, filled: 67, total: 150 },
+  { id: 't17', title: '宿舍网络质量反馈', subtitle: '网速、稳定性与覆盖范围', sender: '信息中心', type: '设施反馈', estimated: 4, difficulty: 1, reward: 1, filled: 156, total: 300 },
+  { id: 't18', title: '考研意向调查', subtitle: '考研方向与备考计划', sender: '就业办', type: '升学调研', estimated: 8, difficulty: 3, reward: 3, filled: 42, total: 100 },
+  { id: 't19', title: '校园快递满意度', subtitle: '快递点服务质量评价', sender: '物流公司', type: '服务评价', estimated: 3, difficulty: 1, reward: 1, filled: 188, total: 250 },
+  { id: 't20', title: '晨跑打卡活动', subtitle: '参与意愿与时间安排', sender: '体育部', type: '活动征集', estimated: 3, difficulty: 1, reward: 1, filled: 23, total: 80 },
+  { id: 't21', title: '创业项目需求调研', subtitle: '创业方向与资源需求', sender: '创业中心', type: '创业调研', estimated: 10, difficulty: 4, reward: 4, filled: 15, total: 60 },
+  { id: 't22', title: '课外阅读习惯', subtitle: '阅读类型与频率调查', sender: '图书馆', type: '文化调研', estimated: 5, difficulty: 2, reward: 2, filled: 89, total: 200 },
+  { id: 't23', title: '校园安全隐患反馈', subtitle: '发现的安全问题上报', sender: '保卫处', type: '安全反馈', estimated: 4, difficulty: 2, reward: 2, filled: 34, total: 100 },
+  { id: 't24', title: '选修课程推荐', subtitle: '你最推荐的选修课', sender: '教务处', type: '课程推荐', estimated: 4, difficulty: 2, reward: 2, filled: 112, total: 200 },
+  { id: 't25', title: '毕业旅行计划', subtitle: '目的地与预算调查', sender: '旅游协会', type: '活动策划', estimated: 6, difficulty: 2, reward: 2, filled: 56, total: 120 },
+  { id: 't26', title: '线上学习效果评估', subtitle: '网课体验与改进建议', sender: '教学办', type: '教学反馈', estimated: 7, difficulty: 3, reward: 3, filled: 78, total: 150 },
+  { id: 't27', title: '校园美食地图', subtitle: '推荐你喜欢的餐厅', sender: '美食社', type: '生活分享', estimated: 4, difficulty: 1, reward: 1, filled: 145, total: 300 },
+  { id: 't28', title: '环保意识调查', subtitle: '垃圾分类与节能习惯', sender: '环保协会', type: '环保调研', estimated: 5, difficulty: 2, reward: 2, filled: 67, total: 150 },
+  { id: 't29', title: '寒假实践活动', subtitle: '实践类型与收获分享', sender: '团委', type: '实践总结', estimated: 8, difficulty: 3, reward: 3, filled: 23, total: 80 },
+  { id: 't30', title: '校园文创产品设计', subtitle: '你想要的校园周边', sender: '学生会', type: '创意征集', estimated: 6, difficulty: 3, reward: 3, filled: 45, total: 100 },
+  { id: 't31', title: '奖学金评定意见', subtitle: '评定标准合理性反馈', sender: '学工处', type: '制度反馈', estimated: 7, difficulty: 3, reward: 3, filled: 34, total: 80 },
+  { id: 't32', title: '通勤方式调查', subtitle: '上下学交通工具选择', sender: '后勤部', type: '交通调研', estimated: 3, difficulty: 1, reward: 1, filled: 167, total: 250 },
+  { id: 't33', title: '考试周压力调查', subtitle: '备考状态与心理压力', sender: '心理中心', type: '健康调研', estimated: 6, difficulty: 3, reward: 3, filled: 89, total: 150 },
+  { id: 't34', title: '社团招新建议', subtitle: '招新方式与宣传效果', sender: '社团联', type: '活动优化', estimated: 5, difficulty: 2, reward: 2, filled: 56, total: 120 },
+  { id: 't35', title: '宿舍文化建设', subtitle: '宿舍氛围与活动建议', sender: '宿管部', type: '文化建设', estimated: 6, difficulty: 2, reward: 2, filled: 78, total: 150 },
+  { id: 't36', title: '就业指导需求', subtitle: '需要的就业辅导服务', sender: '就业中心', type: '服务需求', estimated: 7, difficulty: 3, reward: 3, filled: 45, total: 100 },
 ])
 
-const visibleTasks = ref(pickBatch(allTasks.value))
+const visibleTasks = ref([])
 
-function pickBatch(pool) {
+function pickBatch(pool, size) {
   const shuffled = [...pool].sort(() => Math.random() - 0.5)
-  return shuffled.slice(0, 15) // 增加到15个任务
+  const count = Math.min(size || optimalTaskCount.value, pool.length)
+  return shuffled.slice(0, count)
 }
+
+// 监听最佳数量变化，自动调整显示数量
+watch(optimalTaskCount, (newCount, oldCount) => {
+  if (newCount !== oldCount && visibleTasks.value.length > 0) {
+    const currentIds = new Set(visibleTasks.value.map(t => t.id))
+    
+    if (newCount > visibleTasks.value.length) {
+      // 需要增加问卷
+      const needed = newCount - visibleTasks.value.length
+      const candidates = allTasks.value.filter(t => !currentIds.has(t.id))
+      const shuffled = [...candidates].sort(() => Math.random() - 0.5)
+      const toAdd = shuffled.slice(0, needed)
+      visibleTasks.value = [...visibleTasks.value, ...toAdd]
+    } else if (newCount < visibleTasks.value.length) {
+      // 需要减少问卷
+      visibleTasks.value = visibleTasks.value.slice(0, newCount)
+    }
+  }
+})
 
 function refreshBatch() {
   const confirm = window.confirm('确认要换一批问卷吗？当前页面的问卷将被替换。')
   if (!confirm) return
-  visibleTasks.value = pickBatch(allTasks.value)
+  const currentSize = visibleTasks.value.length
+  visibleTasks.value = pickBatch(allTasks.value, currentSize)
 }
 
-function handleDelete(index) {
+function handleDelete(taskId) {
   const ok = window.confirm('确认删除该问卷吗？将自动补位新的问卷。')
   if (!ok) return
+
+  // 找到要删除的任务在数组中的索引
+  const index = visibleTasks.value.findIndex((t) => t.id === taskId)
+  if (index === -1) return
 
   // 获取当前显示的所有问卷ID
   const usedIds = new Set(visibleTasks.value.map((t) => t.id))
   // 移除被删除的问卷
-  usedIds.delete(visibleTasks.value[index].id)
+  usedIds.delete(taskId)
   // 从所有问卷中找出还未显示的问卷
   const candidates = allTasks.value.filter((t) => !usedIds.has(t.id))
   // 随机选择一份未显示的问卷作为补位
-  const replacement = candidates.length ? candidates[Math.floor(Math.random() * candidates.length)] : null
+  const replacement = candidates.length > 0 ? candidates[Math.floor(Math.random() * candidates.length)] : null
 
   if (replacement) {
-    visibleTasks.value.splice(index, 1, replacement)
+    // 使用新问卷替换被删除的问卷
+    visibleTasks.value = [
+      ...visibleTasks.value.slice(0, index),
+      replacement,
+      ...visibleTasks.value.slice(index + 1)
+    ]
   } else {
-    visibleTasks.value.splice(index, 1)
+    // 如果没有可替换的问卷，直接删除
+    visibleTasks.value = [
+      ...visibleTasks.value.slice(0, index),
+      ...visibleTasks.value.slice(index + 1)
+    ]
   }
 }
 
