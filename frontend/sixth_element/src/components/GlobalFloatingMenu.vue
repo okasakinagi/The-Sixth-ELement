@@ -61,7 +61,18 @@ async function fetchUserPoints() {
     })
 
     if (res.ok) {
-      const data = await res.json()
+      const raw = await res.text()
+      if (!raw) {
+        return
+      }
+
+      let data
+      try {
+        data = JSON.parse(raw)
+      } catch (parseError) {
+        console.error('积分接口返回非 JSON:', parseError)
+        return
+      }
       userPoints.value = data.points || 0
       
       // 同步更新localStorage
@@ -182,13 +193,6 @@ function handleVisibilityChange() {
   }
 }
 
-// 路由变化时刷新积分
-function handleRouteChange() {
-  if (isLoggedIn.value) {
-    fetchUserPoints()
-  }
-}
-
 // 定时刷新积分（每30秒）
 let refreshTimer = null
 
@@ -211,9 +215,6 @@ onMounted(() => {
   // 监听页面可见性变化
   document.addEventListener('visibilitychange', handleVisibilityChange)
 
-  // 监听路由变化
-  router.afterEach(handleRouteChange)
-
   // 定时刷新积分
   refreshTimer = setInterval(() => {
     if (!document.hidden && isLoggedIn.value) {
@@ -228,7 +229,7 @@ onUnmounted(() => {
   document.removeEventListener('touchmove', onDrag)
   document.removeEventListener('touchend', stopDrag)
   document.removeEventListener('visibilitychange', handleVisibilityChange)
-  
+
   if (refreshTimer) {
     clearInterval(refreshTimer)
   }
