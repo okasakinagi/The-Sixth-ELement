@@ -12,6 +12,18 @@ function getAuthToken() {
   return localStorage.getItem('access_token');
 }
 
+async function parseJsonResponse(response) {
+  const raw = await response.text();
+  if (!raw) {
+    return null;
+  }
+  try {
+    return JSON.parse(raw);
+  } catch (error) {
+    throw new Error('服务返回了非 JSON 内容');
+  }
+}
+
 /**
  * 获取积分流水记录
  * GET /points/logs
@@ -48,11 +60,15 @@ export async function getPointsLogs(params = {}) {
     if (response.status === 422) {
       throw new Error('参数错误，请检查输入');
     }
-    const error = await response.json();
-    throw new Error(error.error || '获取积分记录失败');
+    const error = await parseJsonResponse(response);
+    throw new Error(error?.error || '获取积分记录失败');
   }
 
-  return await response.json();
+  const data = await parseJsonResponse(response);
+  if (!data) {
+    throw new Error('服务返回空内容');
+  }
+  return data;
 }
 
 /**
@@ -83,12 +99,16 @@ export async function createReport(data) {
       throw new Error('登录已过期，请重新登录');
     }
     if (response.status === 422) {
-      const error = await response.json();
-      throw new Error(JSON.stringify(error.error.details || error.error.message));
+      const error = await parseJsonResponse(response);
+      throw new Error(JSON.stringify(error?.error?.details || error?.error?.message || '参数错误'));
     }
-    const error = await response.json();
-    throw new Error(error.error || '提交举报失败');
+    const error = await parseJsonResponse(response);
+    throw new Error(error?.error || '提交举报失败');
   }
 
-  return await response.json();
+  const responseData = await parseJsonResponse(response);
+  if (!responseData) {
+    throw new Error('服务返回空内容');
+  }
+  return responseData;
 }
