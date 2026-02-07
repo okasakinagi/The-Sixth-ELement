@@ -1,0 +1,102 @@
+name: CI/CD — Deploy Docker images to single server via SSH
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [closed]
+  workflow_dispatch: {}
+
+jobs:
+  build-and-deploy-docker:
+    runs-on: ubuntu-latest
+    if: >
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main') ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    env:
+      APP_DIR: ${{ secrets.APP_DIR }}
+      SSH_HOST: ${{ secrets.SSH_HOST }}
+      SSH_USER: ${{ secrets.SSH_USER }}
+      SSH_PORT: ${{ secrets.SSH_PORT }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU (for multi-arch) and Docker buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Build and tag images (with short SHA)
+        run: |
+          SHORT_SHA=${GITHUB_SHA::8}
+          BACKEND_TAG=backend:${SHORT_SHA}
+          FRONTEND_TAG=frontend:${SHORT_SHA}
+          echo "Using tags: ${BACKEND_TAG} ${FRONTEND_TAG}"
+          # determine python image to use (fallback to Dockerfile default if not provided)
+          PYTHON_IMAGE="${{ secrets.PYTHON_IMAGE }}"
+          if [ -z "${PYTHON_IMAGE}" ]; then
+            # 默认使用与本地一致的 Python 3.12.9 slim 版本（含小版本以保证一致性）
+            PYTHON_IMAGE=3.12.9-slim
+          fi
+          echo "Using Python base image: ${PYTHON_IMAGE}"
+          # build backend with optional python build-arg and tag with latest and sha
+          docker build --build-arg PYTHON_IMAGE=${PYTHON_IMAGE} -t backend:latest -t ${BACKEND_TAG} -f docker/backend.Dockerfile .
+          # build frontend and tag
+          docker build -t frontend:latest -t ${FRONTEND_TAG} -f docker/frontend.Dockerfile .
+          # save tagged images
+          docker save ${BACKEND_TAG} ${FRONTEND_TAG} -o images.tar
+        shell: bash
+
+      - name: Prepare SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -p ${SSH_PORT:-22} ${SSH_HOST} >> ~/.ssh/known_hosts
+
+      - name: Prepare docker-compose with tags and upload
+        run: |
+          SHORT_SHA=${GITHUB_SHA::8}
+          BACKEND_TAG=backend:${SHORT_SHA}
+          FRONTEND_TAG=frontend:${SHORT_SHA}
+          # 生成替换后用于部署的 compose 文件（保留原始为参考）
+          sed "s|image: backend:latest|image: ${BACKEND_TAG}|g; s|image: frontend:latest|image: ${FRONTEND_TAG}|g" deploy/docker-compose.yml > deploy/docker-compose.deploy.yml
+          scp -P ${SSH_PORT:-22} images.tar ${SSH_USER}@${SSH_HOST}:${APP_DIR}/images.tar
+          scp -P ${SSH_PORT:-22} deploy/docker-compose.deploy.yml ${SSH_USER}@${SSH_HOST}:${APP_DIR}/docker-compose.yml
+        shell: bash
+
+      - name: Upload .env (from secrets) to server
+        env:
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_PORT: ${{ secrets.DB_PORT }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          DB_ROOT_PASSWORD: ${{ secrets.DB_ROOT_PASSWORD }}
+          DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
+        run: |
+          ssh -p ${SSH_PORT:-22} ${SSH_USER}@${SSH_HOST} "bash -s" <<'SSH'
+          set -e
+          mkdir -p "${APP_DIR}"
+          cat > ${APP_DIR}/.env <<ENV
+          DEBUG=False
+          SECRET_KEY=${DJANGO_SECRET_KEY}
+          DB_HOST=${DB_HOST}
+          DB_PORT=${DB_PORT}
+          DB_NAME=${DB_NAME}
+          DB_USER=${DB_USER}
+          DB_PASSWORD=${DB_PASSWORD}
+          ENV
+          SSH
+
+      - name: Load images and start with docker-compose on server
+        run: |
+          ssh -p ${SSH_PORT:-22} ${SSH_USER}@${SSH_HOST} "bash -s" <<'SSH'
+          set -e
+          cd "${APP_DIR}"
+          # 加载镜像
+          docker load -i images.tar
+          # 启动或更新服务
+          docker-compose -f docker-compose.yml up -d --remove-orphans
+          # 运行数据库迁移（在容器内）
+          docker-compose -f docker-compose.yml run --rm web python Main.py migrate || true
+          SSH
