@@ -44,9 +44,10 @@ jobs:
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
           DB_ROOT_PASSWORD: ${{ secrets.DB_ROOT_PASSWORD }}
           DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
         run: |
           # Ensure remote repo is updated and built on the server; repository is public so no token required
-          ssh -p ${SSH_PORT:-22} -i ~/.ssh/id_rsa ${SSH_USER}@${SSH_HOST} "APP_DIR='${APP_DIR}' DB_HOST='${DB_HOST}' DB_PORT='${DB_PORT}' DB_NAME='${DB_NAME}' DB_USER='${DB_USER}' DB_PASSWORD='${DB_PASSWORD}' DB_ROOT_PASSWORD='${DB_ROOT_PASSWORD}' DJANGO_SECRET_KEY='${DJANGO_SECRET_KEY}' GITHUB_REPOSITORY='${GITHUB_REPOSITORY}' bash -s" <<'SSH'
+          ssh -p ${SSH_PORT:-22} -i ~/.ssh/id_rsa ${SSH_USER}@${SSH_HOST} "APP_DIR='${APP_DIR}' DB_HOST='${DB_HOST}' DB_PORT='${DB_PORT}' DB_NAME='${DB_NAME}' DB_USER='${DB_USER}' DB_PASSWORD='${DB_PASSWORD}' DB_ROOT_PASSWORD='${DB_ROOT_PASSWORD}' DJANGO_SECRET_KEY='${DJANGO_SECRET_KEY}' GITHUB_REPOSITORY='${GITHUB_REPOSITORY}' DEPLOY_KEY='${DEPLOY_KEY}' bash -s" <<SSH
           set -e
           mkdir -p "${APP_DIR}"
           # create .env from secrets so docker-compose has DB_* values
@@ -61,20 +62,38 @@ jobs:
           DJANGO_DB_PASSWORD=${DB_PASSWORD}
           DB_ROOT_PASSWORD=${DB_ROOT_PASSWORD}
           ENV
+          # prepare a deploy SSH key for git operations if provided
+          if [ -n "${DEPLOY_KEY}" ]; then
+            mkdir -p "${APP_DIR}/.ssh"
+            printf '%s\n' "${DEPLOY_KEY}" > ${APP_DIR}/.ssh/id_github
+            chmod 600 ${APP_DIR}/.ssh/id_github
+          fi
           # If repo already exists, reset to origin/main; otherwise clone
+          GIT_SSH_CMD=""
+          if [ -f "${APP_DIR}/.ssh/id_github" ]; then
+            GIT_SSH_CMD="ssh -i ${APP_DIR}/.ssh/id_github -o StrictHostKeyChecking=no"
+          fi
           if [ -d "${APP_DIR}/.git" ]; then
             cd "${APP_DIR}"
-            git fetch --all
-            git reset --hard origin/main
+            if [ -n "$GIT_SSH_CMD" ]; then
+              GIT_SSH_COMMAND="$GIT_SSH_CMD" git fetch --all
+              GIT_SSH_COMMAND="$GIT_SSH_CMD" git reset --hard origin/main
+            else
+              git fetch --all
+              git reset --hard origin/main
+            fi
           else
             rm -rf "${APP_DIR}"/* || true
-            GIT_URL="https://github.com/${GITHUB_REPOSITORY}.git"
-            git clone "$GIT_URL" "${APP_DIR}"
+            if [ -n "$GIT_SSH_CMD" ]; then
+              GIT_SSH_COMMAND="$GIT_SSH_CMD" git clone git@github.com:${GITHUB_REPOSITORY}.git "${APP_DIR}"
+            else
+              GIT_URL="https://github.com/${GITHUB_REPOSITORY}.git"
+              git clone "$GIT_URL" "${APP_DIR}"
+            fi
           fi
           cd "${APP_DIR}"
           # Build and start containers on the server
-          docker compose -f deploy/docker-compose.yml build --no-cache || true
-          docker compose -f deploy/docker-compose.yml up -d --remove-orphans
+          docker compose -f deploy/docker-compose.yml build --no-cache || true && docker compose -f deploy/docker-compose.yml up -d --remove-orphans
           # Run migrations and collectstatic
           docker compose -f deploy/docker-compose.yml run --rm web python Main.py migrate || true
           docker compose -f deploy/docker-compose.yml run --rm web python Main.py collectstatic --noinput || true
@@ -82,16 +101,3 @@ jobs:
         shell: bash
 
       # .env is created on the server as part of the Deploy step above
-
-      - name: Load images and start with docker-compose on server
-        run: |
-          ssh -p ${SSH_PORT:-22} ${SSH_USER}@${SSH_HOST} "bash -s" <<'SSH'
-          set -e
-          cd "${APP_DIR}"
-          # 加载镜像
-          docker load -i images.tar
-          # 启动或更新服务
-          docker-compose -f docker-compose.yml up -d --remove-orphans
-          # 运行数据库迁移（在容器内）
-          docker-compose -f docker-compose.yml run --rm web python Main.py migrate || true
-          SSH
