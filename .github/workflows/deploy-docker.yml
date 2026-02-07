@@ -36,11 +36,9 @@ jobs:
           ssh-keyscan -p ${SSH_PORT:-22} ${SSH_HOST} >> ~/.ssh/known_hosts
 
       - name: Deploy on server (git pull, build, up)
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Ensure remote repo is updated and built on the server; uses GITHUB_TOKEN for HTTPS clone if needed
-          ssh -p ${SSH_PORT:-22} -i ~/.ssh/id_rsa ${SSH_USER}@${SSH_HOST} "bash -s" <<'SSH'
+          # Ensure remote repo is updated and built on the server; repository is public so no token required
+          ssh -p ${SSH_PORT:-22} -i ~/.ssh/id_rsa ${SSH_USER}@${SSH_HOST} "APP_DIR='${APP_DIR}' bash -s" <<'SSH'
           set -e
           mkdir -p "${APP_DIR}"
           # If repo already exists, reset to origin/main; otherwise clone using token
@@ -50,7 +48,7 @@ jobs:
             git reset --hard origin/main
           else
             rm -rf "${APP_DIR}"/* || true
-            GIT_URL="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+            GIT_URL="https://github.com/${GITHUB_REPOSITORY}.git"
             git clone "$GIT_URL" "${APP_DIR}"
           fi
           cd "${APP_DIR}"
@@ -73,7 +71,7 @@ jobs:
           DB_ROOT_PASSWORD: ${{ secrets.DB_ROOT_PASSWORD }}
           DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
         run: |
-          ssh -p ${SSH_PORT:-22} ${SSH_USER}@${SSH_HOST} "bash -s" <<'SSH'
+          ssh -p ${SSH_PORT:-22} -i ~/.ssh/id_rsa ${SSH_USER}@${SSH_HOST} "APP_DIR='${APP_DIR}' bash -s" <<'SSH'
           set -e
           mkdir -p "${APP_DIR}"
           cat > ${APP_DIR}/.env <<ENV
