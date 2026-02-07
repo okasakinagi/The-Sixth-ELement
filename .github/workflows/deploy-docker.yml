@@ -25,26 +25,8 @@ jobs:
       - name: Set up QEMU (for multi-arch) and Docker buildx
         uses: docker/setup-buildx-action@v2
 
-      - name: Build and tag images (with short SHA)
-        run: |
-          SHORT_SHA=${GITHUB_SHA::8}
-          BACKEND_TAG=backend:${SHORT_SHA}
-          FRONTEND_TAG=frontend:${SHORT_SHA}
-          echo "Using tags: ${BACKEND_TAG} ${FRONTEND_TAG}"
-          # determine python image to use (fallback to Dockerfile default if not provided)
-          PYTHON_IMAGE="${{ secrets.PYTHON_IMAGE }}"
-          if [ -z "${PYTHON_IMAGE}" ]; then
-            # 默认使用与本地一致的 Python 3.12.9 slim 版本（含小版本以保证一致性）
-            PYTHON_IMAGE=3.12.9-slim
-          fi
-          echo "Using Python base image: ${PYTHON_IMAGE}"
-          # build backend with optional python build-arg and tag with latest and sha
-          docker build --build-arg PYTHON_IMAGE=${PYTHON_IMAGE} -t backend:latest -t ${BACKEND_TAG} -f docker/backend.Dockerfile .
-          # build frontend and tag
-          docker build -t frontend:latest -t ${FRONTEND_TAG} -f docker/frontend.Dockerfile .
-          # save tagged images
-          docker save ${BACKEND_TAG} ${FRONTEND_TAG} -o images.tar
-        shell: bash
+      # NOTE: Build will be performed on the server by pulling the repository
+      # This avoids transferring large image tarballs and lets the server build images locally
 
       - name: Prepare SSH key
         run: |
@@ -53,15 +35,32 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -p ${SSH_PORT:-22} ${SSH_HOST} >> ~/.ssh/known_hosts
 
-      - name: Prepare docker-compose with tags and upload
+      - name: Deploy on server (git pull, build, up)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          SHORT_SHA=${GITHUB_SHA::8}
-          BACKEND_TAG=backend:${SHORT_SHA}
-          FRONTEND_TAG=frontend:${SHORT_SHA}
-          # 生成替换后用于部署的 compose 文件（保留原始为参考）
-          sed "s|image: backend:latest|image: ${BACKEND_TAG}|g; s|image: frontend:latest|image: ${FRONTEND_TAG}|g" deploy/docker-compose.yml > deploy/docker-compose.deploy.yml
-          scp -P ${SSH_PORT:-22} images.tar ${SSH_USER}@${SSH_HOST}:${APP_DIR}/images.tar
-          scp -P ${SSH_PORT:-22} deploy/docker-compose.deploy.yml ${SSH_USER}@${SSH_HOST}:${APP_DIR}/docker-compose.yml
+          # Ensure remote repo is updated and built on the server; uses GITHUB_TOKEN for HTTPS clone if needed
+          ssh -p ${SSH_PORT:-22} -i ~/.ssh/id_rsa ${SSH_USER}@${SSH_HOST} "bash -s" <<'SSH'
+          set -e
+          mkdir -p "${APP_DIR}"
+          # If repo already exists, reset to origin/main; otherwise clone using token
+          if [ -d "${APP_DIR}/.git" ]; then
+            cd "${APP_DIR}"
+            git fetch --all
+            git reset --hard origin/main
+          else
+            rm -rf "${APP_DIR}"/* || true
+            GIT_URL="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+            git clone "$GIT_URL" "${APP_DIR}"
+          fi
+          cd "${APP_DIR}"
+          # Build and start containers on the server
+          docker compose -f deploy/docker-compose.yml build --no-cache
+          docker compose -f deploy/docker-compose.yml up -d --remove-orphans
+          # Run migrations and collectstatic
+          docker compose -f deploy/docker-compose.yml run --rm web python Main.py migrate || true
+          docker compose -f deploy/docker-compose.yml run --rm web python Main.py collectstatic --noinput || true
+          SSH
         shell: bash
 
       - name: Upload .env (from secrets) to server
