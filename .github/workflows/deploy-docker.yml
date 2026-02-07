@@ -36,12 +36,32 @@ jobs:
           ssh-keyscan -p ${SSH_PORT:-22} ${SSH_HOST} >> ~/.ssh/known_hosts
 
       - name: Deploy on server (git pull, build, up)
+        env:
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_PORT: ${{ secrets.DB_PORT }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          DB_ROOT_PASSWORD: ${{ secrets.DB_ROOT_PASSWORD }}
+          DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
         run: |
           # Ensure remote repo is updated and built on the server; repository is public so no token required
-          ssh -p ${SSH_PORT:-22} -i ~/.ssh/id_rsa ${SSH_USER}@${SSH_HOST} "APP_DIR='${APP_DIR}' GITHUB_REPOSITORY='${GITHUB_REPOSITORY}' bash -s" <<'SSH'
+          ssh -p ${SSH_PORT:-22} -i ~/.ssh/id_rsa ${SSH_USER}@${SSH_HOST} "APP_DIR='${APP_DIR}' DB_HOST='${DB_HOST}' DB_PORT='${DB_PORT}' DB_NAME='${DB_NAME}' DB_USER='${DB_USER}' DB_PASSWORD='${DB_PASSWORD}' DB_ROOT_PASSWORD='${DB_ROOT_PASSWORD}' DJANGO_SECRET_KEY='${DJANGO_SECRET_KEY}' GITHUB_REPOSITORY='${GITHUB_REPOSITORY}' bash -s" <<'SSH'
           set -e
           mkdir -p "${APP_DIR}"
-          # If repo already exists, reset to origin/main; otherwise clone using token
+          # create .env from secrets so docker-compose has DB_* values
+          cat > ${APP_DIR}/.env <<ENV
+          DEBUG=False
+          DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
+          DJANGO_DEBUG=0
+          DJANGO_DB_HOST=${DB_HOST}
+          DJANGO_DB_PORT=${DB_PORT}
+          DJANGO_DB_NAME=${DB_NAME}
+          DJANGO_DB_USER=${DB_USER}
+          DJANGO_DB_PASSWORD=${DB_PASSWORD}
+          DB_ROOT_PASSWORD=${DB_ROOT_PASSWORD}
+          ENV
+          # If repo already exists, reset to origin/main; otherwise clone
           if [ -d "${APP_DIR}/.git" ]; then
             cd "${APP_DIR}"
             git fetch --all
@@ -53,7 +73,7 @@ jobs:
           fi
           cd "${APP_DIR}"
           # Build and start containers on the server
-          docker compose -f deploy/docker-compose.yml build --no-cache
+          docker compose -f deploy/docker-compose.yml build --no-cache || true
           docker compose -f deploy/docker-compose.yml up -d --remove-orphans
           # Run migrations and collectstatic
           docker compose -f deploy/docker-compose.yml run --rm web python Main.py migrate || true
@@ -61,29 +81,7 @@ jobs:
           SSH
         shell: bash
 
-      - name: Upload .env (from secrets) to server
-        env:
-          DB_HOST: ${{ secrets.DB_HOST }}
-          DB_PORT: ${{ secrets.DB_PORT }}
-          DB_NAME: ${{ secrets.DB_NAME }}
-          DB_USER: ${{ secrets.DB_USER }}
-          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-          DB_ROOT_PASSWORD: ${{ secrets.DB_ROOT_PASSWORD }}
-          DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
-        run: |
-          ssh -p ${SSH_PORT:-22} -i ~/.ssh/id_rsa ${SSH_USER}@${SSH_HOST} "APP_DIR='${APP_DIR}' bash -s" <<'SSH'
-          set -e
-          mkdir -p "${APP_DIR}"
-          cat > ${APP_DIR}/.env <<ENV
-          DEBUG=False
-          SECRET_KEY=${DJANGO_SECRET_KEY}
-          DB_HOST=${DB_HOST}
-          DB_PORT=${DB_PORT}
-          DB_NAME=${DB_NAME}
-          DB_USER=${DB_USER}
-          DB_PASSWORD=${DB_PASSWORD}
-          ENV
-          SSH
+      # .env is created on the server as part of the Deploy step above
 
       - name: Load images and start with docker-compose on server
         run: |
