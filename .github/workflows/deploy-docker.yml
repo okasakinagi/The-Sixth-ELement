@@ -38,7 +38,7 @@ jobs:
       - name: Deploy on server (git pull, build, up)
         run: |
           # Ensure remote repo is updated and built on the server; repository is public so no token required
-          ssh -p ${SSH_PORT:-22} -i ~/.ssh/id_rsa ${SSH_USER}@${SSH_HOST} "APP_DIR='${APP_DIR}' bash -s" <<'SSH'
+          ssh -p ${SSH_PORT:-22} -i ~/.ssh/id_rsa ${SSH_USER}@${SSH_HOST} "APP_DIR='${APP_DIR}' GITHUB_REPOSITORY='${GITHUB_REPOSITORY}' bash -s" <<'SSH'
           set -e
           mkdir -p "${APP_DIR}"
           # If repo already exists, reset to origin/main; otherwise clone using token
