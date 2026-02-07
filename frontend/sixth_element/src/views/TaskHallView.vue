@@ -83,10 +83,12 @@
 
 <script setup>
 import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
-import { getUserPoints } from '@/utils/userPointsHelper'
+import { useRouter } from 'vue-router'
+import { getTaskHallTasks, refreshTaskHallBatch } from '@/utils/taskHallApi'
 
 const keyword = ref('')
-const userPoints = ref(0) // 用户积分
+const router = useRouter()
+const loading = ref(false)
 const windowWidth = ref(window.innerWidth)
 const windowHeight = ref(window.innerHeight)
 
@@ -212,9 +214,7 @@ function handleResize() {
 }
 
 onMounted(() => {
-
-  // 初始化问卷列表
-  visibleTasks.value = pickBatch(allTasks.value, optimalTaskCount.value)
+  loadInitialTasks()
   
   // 添加窗口大小监听
   window.addEventListener('resize', handleResize)
@@ -236,80 +236,80 @@ onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
 })
 
-const allTasks = ref([
-  { id: 't01', title: '校园生活满意度调查', subtitle: '宿舍、食堂、安保整体反馈', sender: '李同学', type: '校园调研', estimated: 6, difficulty: 2, reward: 2, filled: 54, total: 200 },
-  { id: 't02', title: '课程体验回访', subtitle: '这学期的主要课程体验', sender: '张老师', type: '教学反馈', estimated: 8, difficulty: 4, reward: 4, filled: 120, total: 260 },
-  { id: 't03', title: '食堂新品口味投票', subtitle: '为春季菜单挑选新品', sender: '后勤部', type: '投票', estimated: 3, difficulty: 1, reward: 1, filled: 82, total: 150 },
-  { id: 't04', title: '社团活动偏好', subtitle: '选出你想参加的活动', sender: '学生会', type: '兴趣画像', estimated: 5, difficulty: 2, reward: 2, filled: 33, total: 100 },
-  { id: 't05', title: '实习就业意向', subtitle: '求职方向、城市与行业偏好', sender: '就业中心', type: '就业调研', estimated: 7, difficulty: 4, reward: 4, filled: 45, total: 120 },
-  { id: 't06', title: '心理健康与压力', subtitle: '期末周的压力与缓解方式', sender: '心理中心', type: '健康问卷', estimated: 9, difficulty: 5, reward: 5, filled: 18, total: 80 },
-  { id: 't07', title: '图书馆使用体验', subtitle: '空间、座位、设备反馈', sender: '图书馆', type: '服务反馈', estimated: 4, difficulty: 2, reward: 2, filled: 210, total: 400 },
-  { id: 't08', title: '校园出行与班车', subtitle: '线路、班次与满意度调查', sender: '后勤部', type: '交通', estimated: 4, difficulty: 2, reward: 2, filled: 60, total: 180 },
-  { id: 't09', title: '新生入学指南优化', subtitle: '帮我们改进 2026 新生手册', sender: '教务处', type: '文案优化', estimated: 10, difficulty: 4, reward: 4, filled: 12, total: 60 },
-  { id: 't10', title: '赛事观众调研', subtitle: '校运动会观众体验反馈', sender: '体育部', type: '活动复盘', estimated: 6, difficulty: 2, reward: 2, filled: 140, total: 260 },
-  { id: 't11', title: '校友访谈邀约', subtitle: '愿意参加校友访谈的时间', sender: '校友办', type: '访谈邀约', estimated: 5, difficulty: 3, reward: 3, filled: 28, total: 90 },
-  { id: 't12', title: '科研助理机会', subtitle: '可接受的课题与工作量', sender: '科研办', type: '科研匹配', estimated: 12, difficulty: 5, reward: 5, filled: 8, total: 50 },
-  { id: 't13', title: '寝室卫生公约共识', subtitle: '共建寝室卫生标准', sender: '宿管部', type: '共识投票', estimated: 3, difficulty: 1, reward: 1, filled: 76, total: 120 },
-  { id: 't14', title: '艺术节节目征集', subtitle: '报名你想展示的节目', sender: '文艺部', type: '活动报名', estimated: 5, difficulty: 2, reward: 2, filled: 34, total: 100 },
-  { id: 't15', title: '志愿服务档期收集', subtitle: '收集可出勤的志愿时段', sender: '团委', type: '志愿服务', estimated: 4, difficulty: 2, reward: 2, filled: 95, total: 180 },
-  { id: 't16', title: '手机使用习惯调研', subtitle: 'APP偏好与使用时长统计', sender: '王同学', type: '数字生活', estimated: 5, difficulty: 2, reward: 2, filled: 67, total: 150 },
-  { id: 't17', title: '宿舍网络质量反馈', subtitle: '网速、稳定性与覆盖范围', sender: '信息中心', type: '设施反馈', estimated: 4, difficulty: 1, reward: 1, filled: 156, total: 300 },
-  { id: 't18', title: '考研意向调查', subtitle: '考研方向与备考计划', sender: '就业办', type: '升学调研', estimated: 8, difficulty: 3, reward: 3, filled: 42, total: 100 },
-  { id: 't19', title: '校园快递满意度', subtitle: '快递点服务质量评价', sender: '物流公司', type: '服务评价', estimated: 3, difficulty: 1, reward: 1, filled: 188, total: 250 },
-  { id: 't20', title: '晨跑打卡活动', subtitle: '参与意愿与时间安排', sender: '体育部', type: '活动征集', estimated: 3, difficulty: 1, reward: 1, filled: 23, total: 80 },
-  { id: 't21', title: '创业项目需求调研', subtitle: '创业方向与资源需求', sender: '创业中心', type: '创业调研', estimated: 10, difficulty: 4, reward: 4, filled: 15, total: 60 },
-  { id: 't22', title: '课外阅读习惯', subtitle: '阅读类型与频率调查', sender: '图书馆', type: '文化调研', estimated: 5, difficulty: 2, reward: 2, filled: 89, total: 200 },
-  { id: 't23', title: '校园安全隐患反馈', subtitle: '发现的安全问题上报', sender: '保卫处', type: '安全反馈', estimated: 4, difficulty: 2, reward: 2, filled: 34, total: 100 },
-  { id: 't24', title: '选修课程推荐', subtitle: '你最推荐的选修课', sender: '教务处', type: '课程推荐', estimated: 4, difficulty: 2, reward: 2, filled: 112, total: 200 },
-  { id: 't25', title: '毕业旅行计划', subtitle: '目的地与预算调查', sender: '旅游协会', type: '活动策划', estimated: 6, difficulty: 2, reward: 2, filled: 56, total: 120 },
-  { id: 't26', title: '线上学习效果评估', subtitle: '网课体验与改进建议', sender: '教学办', type: '教学反馈', estimated: 7, difficulty: 3, reward: 3, filled: 78, total: 150 },
-  { id: 't27', title: '校园美食地图', subtitle: '推荐你喜欢的餐厅', sender: '美食社', type: '生活分享', estimated: 4, difficulty: 1, reward: 1, filled: 145, total: 300 },
-  { id: 't28', title: '环保意识调查', subtitle: '垃圾分类与节能习惯', sender: '环保协会', type: '环保调研', estimated: 5, difficulty: 2, reward: 2, filled: 67, total: 150 },
-  { id: 't29', title: '寒假实践活动', subtitle: '实践类型与收获分享', sender: '团委', type: '实践总结', estimated: 8, difficulty: 3, reward: 3, filled: 23, total: 80 },
-  { id: 't30', title: '校园文创产品设计', subtitle: '你想要的校园周边', sender: '学生会', type: '创意征集', estimated: 6, difficulty: 3, reward: 3, filled: 45, total: 100 },
-  { id: 't31', title: '奖学金评定意见', subtitle: '评定标准合理性反馈', sender: '学工处', type: '制度反馈', estimated: 7, difficulty: 3, reward: 3, filled: 34, total: 80 },
-  { id: 't32', title: '通勤方式调查', subtitle: '上下学交通工具选择', sender: '后勤部', type: '交通调研', estimated: 3, difficulty: 1, reward: 1, filled: 167, total: 250 },
-  { id: 't33', title: '考试周压力调查', subtitle: '备考状态与心理压力', sender: '心理中心', type: '健康调研', estimated: 6, difficulty: 3, reward: 3, filled: 89, total: 150 },
-  { id: 't34', title: '社团招新建议', subtitle: '招新方式与宣传效果', sender: '社团联', type: '活动优化', estimated: 5, difficulty: 2, reward: 2, filled: 56, total: 120 },
-  { id: 't35', title: '宿舍文化建设', subtitle: '宿舍氛围与活动建议', sender: '宿管部', type: '文化建设', estimated: 6, difficulty: 2, reward: 2, filled: 78, total: 150 },
-  { id: 't36', title: '就业指导需求', subtitle: '需要的就业辅导服务', sender: '就业中心', type: '服务需求', estimated: 7, difficulty: 3, reward: 3, filled: 45, total: 100 },
-])
-
 const visibleTasks = ref([])
+const maxClientBatch = 50
 
-function pickBatch(pool, size) {
-  const shuffled = [...pool].sort(() => Math.random() - 0.5)
-  const count = Math.min(size || optimalTaskCount.value, pool.length)
-  return shuffled.slice(0, count)
+async function loadInitialTasks() {
+  try {
+    loading.value = true
+    const targetCount = Math.max(1, Math.min(optimalTaskCount.value, maxClientBatch))
+    const response = await getTaskHallTasks(
+      {
+        status: 'active',
+        sort: 'newest',
+        page: 1,
+        page_size: targetCount,
+      },
+      router
+    )
+    visibleTasks.value = Array.isArray(response.items) ? response.items : []
+  } catch (error) {
+    console.error('加载任务大厅失败:', error)
+    visibleTasks.value = []
+  } finally {
+    loading.value = false
+  }
+}
+
+async function appendTasksFromServer(count) {
+  if (!count || count <= 0) return
+  try {
+    loading.value = true
+    const response = await refreshTaskHallBatch(
+      visibleTasks.value.map((task) => task.id),
+      count,
+      router
+    )
+    const items = Array.isArray(response.items) ? response.items : []
+    visibleTasks.value = [...visibleTasks.value, ...items]
+  } catch (error) {
+    console.error('补位任务失败:', error)
+  } finally {
+    loading.value = false
+  }
 }
 
 // 监听最佳数量变化，自动调整显示数量
-const stopWatchOptimalTaskCount = watch(optimalTaskCount, (newCount, oldCount) => {
-  if (newCount !== oldCount && visibleTasks.value.length > 0) {
-    const currentIds = new Set(visibleTasks.value.map(t => t.id))
-    
-    if (newCount > visibleTasks.value.length) {
-      // 需要增加问卷
-      const needed = newCount - visibleTasks.value.length
-      const candidates = allTasks.value.filter(t => !currentIds.has(t.id))
-      const shuffled = [...candidates].sort(() => Math.random() - 0.5)
-      const toAdd = shuffled.slice(0, needed)
-      visibleTasks.value = [...visibleTasks.value, ...toAdd]
-    } else if (newCount < visibleTasks.value.length) {
-      // 需要减少问卷
-      visibleTasks.value = visibleTasks.value.slice(0, newCount)
-    }
+const stopWatchOptimalTaskCount = watch(optimalTaskCount, async (newCount, oldCount) => {
+  if (newCount === oldCount || visibleTasks.value.length === 0) return
+  const safeCount = Math.max(1, Math.min(newCount, maxClientBatch))
+  if (safeCount > visibleTasks.value.length) {
+    await appendTasksFromServer(safeCount - visibleTasks.value.length)
+    return
   }
+  visibleTasks.value = visibleTasks.value.slice(0, safeCount)
 })
 
-function refreshBatch() {
+async function refreshBatch() {
   const confirm = window.confirm('确认要换一批问卷吗？当前页面的问卷将被替换。')
   if (!confirm) return
-  const currentSize = visibleTasks.value.length
-  visibleTasks.value = pickBatch(allTasks.value, currentSize)
+  try {
+    loading.value = true
+    const currentSize = Math.max(1, Math.min(visibleTasks.value.length || optimalTaskCount.value, maxClientBatch))
+    const response = await refreshTaskHallBatch(
+      visibleTasks.value.map((task) => task.id),
+      currentSize,
+      router
+    )
+    visibleTasks.value = Array.isArray(response.items) ? response.items : []
+  } catch (error) {
+    console.error('换一批失败:', error)
+  } finally {
+    loading.value = false
+  }
 }
 
-function handleDelete(taskId) {
+async function handleDelete(taskId) {
   const ok = window.confirm('确认删除该问卷吗？将自动补位新的问卷。')
   if (!ok) return
 
@@ -317,28 +317,31 @@ function handleDelete(taskId) {
   const index = visibleTasks.value.findIndex((t) => t.id === taskId)
   if (index === -1) return
 
-  // 获取当前显示的所有问卷ID
-  const usedIds = new Set(visibleTasks.value.map((t) => t.id))
-  // 移除被删除的问卷
-  usedIds.delete(taskId)
-  // 从所有问卷中找出还未显示的问卷
-  const candidates = allTasks.value.filter((t) => !usedIds.has(t.id))
-  // 随机选择一份未显示的问卷作为补位
-  const replacement = candidates.length > 0 ? candidates[Math.floor(Math.random() * candidates.length)] : null
+  const nextVisibleTasks = [
+    ...visibleTasks.value.slice(0, index),
+    ...visibleTasks.value.slice(index + 1)
+  ]
+  visibleTasks.value = nextVisibleTasks
 
-  if (replacement) {
-    // 使用新问卷替换被删除的问卷
-    visibleTasks.value = [
-      ...visibleTasks.value.slice(0, index),
-      replacement,
-      ...visibleTasks.value.slice(index + 1)
-    ]
-  } else {
-    // 如果没有可替换的问卷，直接删除
-    visibleTasks.value = [
-      ...visibleTasks.value.slice(0, index),
-      ...visibleTasks.value.slice(index + 1)
-    ]
+  try {
+    loading.value = true
+    const response = await refreshTaskHallBatch(
+      [...nextVisibleTasks.map((task) => task.id), taskId],
+      1,
+      router
+    )
+    const replacement = Array.isArray(response.items) ? response.items[0] : null
+    if (replacement) {
+      visibleTasks.value = [
+        ...nextVisibleTasks.slice(0, index),
+        replacement,
+        ...nextVisibleTasks.slice(index)
+      ]
+    }
+  } catch (error) {
+    console.error('删除补位失败:', error)
+  } finally {
+    loading.value = false
   }
 }
 
