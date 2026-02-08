@@ -25,12 +25,51 @@ async function parseJsonResponse(response) {
 }
 
 /**
+ * 获取积分汇总信息
+ * GET /points/summary
+ */
+export async function getPointsSummary() {
+  const token = getAuthToken();
+  if (!token) {
+    throw new Error('未登录，请先登录');
+  }
+
+  const url = `${API_BASE_URL}/points/summary`;
+
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      throw new Error('登录已过期，请重新登录');
+    }
+    const error = await parseJsonResponse(response);
+    throw new Error(error?.error || '获取积分汇总失败');
+  }
+
+  const data = await parseJsonResponse(response);
+  if (!data) {
+    throw new Error('服务返回空内容');
+  }
+  return data;
+}
+
+/**
  * 获取积分流水记录
  * GET /points/logs
  * @param {Object} params 查询参数
  * @param {string} params.type 筛选类型 (earn/spend)
  * @param {number} params.page 页码
  * @param {number} params.page_size 每页数量
+ * @param {string} params.sort 排序方式 (time_asc/amount_asc/amount_desc)
+ * @param {string} params.start_date 开始日期
+ * @param {string} params.end_date 结束日期
+ * @param {string} params.keyword 关键词搜索
  */
 export async function getPointsLogs(params = {}) {
   const token = getAuthToken();
@@ -42,6 +81,10 @@ export async function getPointsLogs(params = {}) {
   if (params.type) queryParams.append('type', params.type);
   if (params.page) queryParams.append('page', params.page);
   if (params.page_size) queryParams.append('page_size', params.page_size);
+  if (params.sort) queryParams.append('sort', params.sort);
+  if (params.start_date) queryParams.append('start_date', params.start_date);
+  if (params.end_date) queryParams.append('end_date', params.end_date);
+  if (params.keyword) queryParams.append('keyword', params.keyword);
 
   const url = `${API_BASE_URL}/points/logs${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
 
@@ -72,20 +115,23 @@ export async function getPointsLogs(params = {}) {
 }
 
 /**
- * 创建举报
- * POST /reports
- * @param {Object} data 举报数据
- * @param {string} data.target_type 举报目标类型 (survey/user)
- * @param {string} data.target_id 被举报对象ID
- * @param {string} data.reason 举报原因
+ * 更新积分
+ * POST /points/update
+ * @param {Object} data 积分变更数据
+ * @param {number} data.delta 积分变更值（正数增加，负数减少）
+ * @param {string} data.reason 变更原因
+ * @param {string} data.ref_type 关联类型（如 survey_fill）
+ * @param {string} data.ref_id 关联 ID
  */
-export async function createReport(data) {
+export async function updatePoints(data) {
   const token = getAuthToken();
   if (!token) {
     throw new Error('未登录，请先登录');
   }
 
-  const response = await fetch(`${API_BASE_URL}/reports`, {
+  const url = `${API_BASE_URL}/points/update`;
+  
+  const response = await fetch(url, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -93,22 +139,22 @@ export async function createReport(data) {
     },
     body: JSON.stringify(data),
   });
-
+  
   if (!response.ok) {
     if (response.status === 401) {
       throw new Error('登录已过期，请重新登录');
     }
-    if (response.status === 422) {
+    if (response.status === 400) {
       const error = await parseJsonResponse(response);
-      throw new Error(JSON.stringify(error?.error?.details || error?.error?.message || '参数错误'));
+      throw new Error(error?.error || '参数错误，请检查输入');
     }
     const error = await parseJsonResponse(response);
-    throw new Error(error?.error || '提交举报失败');
+    throw new Error(error?.error || '更新积分失败');
   }
-
-  const responseData = await parseJsonResponse(response);
-  if (!responseData) {
+  
+  const result = await parseJsonResponse(response);
+  if (!result) {
     throw new Error('服务返回空内容');
   }
-  return responseData;
+  return result;
 }
