@@ -1,4 +1,27 @@
-# Byte-compiled / optimized / DLL files
+.env
+deploy/.env
+.env.*
+.env.local
+*.pem
+*.key
+.ssh/
+images.tar
+*.tar
+frontend/sixth_element/node_modules/
+node_modules/
+dist/
+__pycache__/
+*.pyc
+.venv
+venv/
+.pytest_cache/
+.vscode/
+.idea/
+*.log
+docker/config.json
+secrets/
+.DS_Store
+/.history# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
 *$py.class

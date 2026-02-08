@@ -288,3 +288,69 @@ class UserTag(models.Model):
         indexes = [
             models.Index(fields=["tag"], name="user_tag_tag_idx"),
         ]
+
+
+class IDVector(models.Model):
+    """存储与 `user` 或 `survey` 关联的向量数据。
+
+    - `ref_type`: 'user' 或 'survey' 等，标识 ref_id 的类型。
+    - `ref_id`: 引用对象 ID（字符串/UUID）。
+    - `vector`: 向量内容，使用 JSONField 存储浮点数组（也可改为二进制/外部向量库 ID）。
+    - `created_at`: 写入时间，当 ref_type == 'user' 时用于标记用户向量写入时间。
+    """
+
+    ref_type = models.CharField(max_length=32)
+    ref_id = models.CharField(max_length=128, db_index=True)
+    # 存为 float32 bytes，以节省空间并加快整体加载（use array('f') to pack/unpack）
+    vector = models.BinaryField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def set_vector(self, vec):
+        """把 Python 列表浮点数转为 float32 bytes 并保存到 `vector` 字段。"""
+        from array import array
+
+        arr = array("f", vec)
+        self.vector = arr.tobytes()
+
+    def get_vector(self):
+        """从二进制中恢复为 Python 列表（float）。若无向量返回 None。"""
+        from array import array
+
+        if not self.vector:
+            return None
+        arr = array("f")
+        arr.frombytes(self.vector)
+        return list(arr)
+
+    def __str__(self):
+        return f"{self.ref_type}:{self.ref_id}"
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["ref_type", "ref_id"], name="idvector_ref_idx"),
+            models.Index(
+                fields=["ref_type", "created_at"], name="idvector_type_created_idx"
+            ),
+        ]
+
+
+class SurveyUserSimilarity(models.Model):
+    """保存问卷与用户之间的余弦相似度（cosine）。
+
+    约束：每条记录的 `survey` 必须来自 `Survey`，`user` 来自 `AppUser`，用于保证“问卷-用户”配对。
+    """
+
+    survey = models.ForeignKey(Survey, on_delete=models.CASCADE)
+    user = models.ForeignKey(AppUser, on_delete=models.CASCADE)
+    cosine = models.FloatField(db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["survey", "user"], name="unique_survey_user_similarity"
+            )
+        ]
+        indexes = [
+            models.Index(fields=["cosine"], name="survey_user_cosine_idx"),
+        ]

@@ -1,6 +1,7 @@
 from django.urls import path
 from . import views
 from surveyfill.controller import survey_fill_controller
+from core.controllers import similarity_controller
 
 urlpatterns = [
     path("auth/register", views.register),
@@ -15,4 +16,16 @@ urlpatterns = [
     path("fills/<str:fill_id>/review", views.review_fill),
     path("fills/me", views.my_fills),
     path("points/logs", views.points_logs),
+    path("reports", views.create_report),
+    # Internal similarity/vector endpoints
+    path(
+        "internal/similarity/compute", similarity_controller.compute_user_survey_cosine
+    ),
+    path("internal/vector/encode", similarity_controller.encode_text_to_vector),
+    path(
+        "internal/vector/generate-string",
+        similarity_controller.generate_placeholder_string,
+    ),
+    path("internal/vector/generate", similarity_controller.generate_and_store_vector),
+    path("internal/recommend", similarity_controller.recommend_surveys),
 ]
