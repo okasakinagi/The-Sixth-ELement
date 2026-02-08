@@ -15,5 +15,4 @@ urlpatterns = [
     path("fills/<str:fill_id>/review", views.review_fill),
     path("fills/me", views.my_fills),
     path("points/logs", views.points_logs),
-    path("reports", views.create_report),
 ]

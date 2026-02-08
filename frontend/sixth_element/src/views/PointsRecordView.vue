@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { handleTokenExpired } from '@/utils/authHelper'
-import { getPointsLogs } from '@/utils/pointsApi'
+import { getPointsLogs, getPointsSummary } from '@/utils/pointsApi'
 import { updateUserPoints } from '@/utils/userPointsHelper'
 
 const router = useRouter()
@@ -36,9 +36,33 @@ function formatDateTime(isoString) {
   return `${year}-${month}-${day} ${hours}:${minutes}`
 }
 
+async function fetchPointsSummary() {
+  try {
+    const summaryData = await getPointsSummary()
+    if (summaryData.user) {
+      userBalance.value = summaryData.user.points
+      userCredit.value = summaryData.user.credit_score || 0
+      hasHonor.value = summaryData.user.has_honor || false
+      activityPoints.value = summaryData.user.activity_points || 0
+      
+      // 同步更新localStorage
+      updateUserPoints(summaryData.user.points)
+    }
+  } catch (err) {
+    console.error('Failed to fetch points summary:', err)
+    // 不阻止后续操作，继续获取积分记录
+  }
+}
+
 async function fetchPointsLogs() {
   try {
     loading.value = true
+    
+    // 首次加载时获取积分汇总
+    if (currentPage.value === 1) {
+      await fetchPointsSummary()
+    }
+    
     const typeParam = selectedType.value === 'all' ? '' : selectedType.value
     const data = await getPointsLogs({
       type: typeParam,
@@ -46,17 +70,11 @@ async function fetchPointsLogs() {
       page_size: pageSize.value
     })
 
-    if (currentPage.value === 1 && data.user) {
-      userBalance.value = data.user.points
-      userCredit.value = data.user.credit_score
-      hasHonor.value = data.user.has_honor
-      activityPoints.value = data.user.activity_points
+    if (currentPage.value === 1) {
+      // 计算累计赚取的积分
       const earnedRecords = data.items.filter(item => item.delta > 0)
       totalEarned.value = earnedRecords.reduce((sum, item) => sum + item.delta, 0)
       logs.value = data.items
-      
-      // 同步更新localStorage
-      updateUserPoints(data.user.points)
     } else if (currentPage.value > 1) {
       logs.value = [...logs.value, ...data.items]
     }
@@ -90,18 +108,18 @@ function loadMore() {
 }
 
 function navigateToSurvey(log) {
-  if (!log.related_id || !log.related_type) return
+  if (!log.ref_id || !log.ref_type) return
 
-  if (log.related_type === 'survey_fill') {
+  if (log.ref_type === 'survey_fill') {
     router.push({
       name: 'survey-fill',
-      params: { id: log.related_id },
+      params: { id: log.ref_id },
       query: { readonly: 'true' },
     })
-  } else if (log.related_type === 'survey_publish') {
+  } else if (log.ref_type === 'survey_publish') {
     router.push({
       name: 'survey-builder',
-      params: { id: log.related_id },
+      params: { id: log.ref_id },
     })
   }
 }
@@ -188,7 +206,7 @@ onUnmounted(() => {
           <div 
             v-for="log in displayedLogs" 
             :key="log.id"
-            :class="['list-item', { clickable: log.related_id }]"
+            :class="['list-item', { clickable: log.ref_id }]"
             @click="navigateToSurvey(log)"
           >
             <div class="item-left">
