@@ -1,6 +1,6 @@
 from django.db.models import Count, Q
 
-from core.models import PointsLog, Questionnaire, Response, Survey
+from core.models import PointsLog, Question, QuestionOption, Questionnaire, Response, Survey
 
 
 class SurveyManagementMapper:
@@ -56,6 +56,70 @@ class SurveyManagementMapper:
         survey.active_questionnaire = questionnaire
         survey.save(update_fields=["active_questionnaire"])
         return survey
+
+    @staticmethod
+    def create_draft_survey(owner, title, subtitle=None):
+        survey = Survey.objects.create(
+            owner=owner,
+            title=title,
+            description=subtitle,
+            status="draft",
+            reward_points=0,
+            publish_cost_points=0,
+        )
+        questionnaire = Questionnaire.objects.create(
+            survey=survey,
+            version=1,
+            status="draft",
+            title=title,
+        )
+        survey.active_questionnaire = questionnaire
+        survey.save(update_fields=["active_questionnaire"])
+        return survey
+
+    @staticmethod
+    def get_questions(questionnaire_id):
+        return list(
+            Question.objects.filter(questionnaire_id=questionnaire_id).order_by(
+                "order_no", "id"
+            )
+        )
+
+    @staticmethod
+    def delete_questions(questionnaire_id):
+        Question.objects.filter(questionnaire_id=questionnaire_id).delete()
+
+    @staticmethod
+    def delete_question(questionnaire_id, question_id):
+        return Question.objects.filter(
+            questionnaire_id=questionnaire_id,
+            id=question_id,
+        ).delete()
+
+    @staticmethod
+    def create_question(questionnaire, payload):
+        question = Question.objects.create(
+            questionnaire=questionnaire,
+            order_no=payload["order_no"],
+            type=payload["type"],
+            title=payload["title"],
+            is_required=payload.get("required", True),
+            config_json=payload.get("config_json"),
+        )
+        options = payload.get("options") or []
+        option_rows = []
+        for idx, label in enumerate(options, start=1):
+            option_rows.append(
+                QuestionOption(
+                    question=question,
+                    order_no=idx,
+                    label=label,
+                    value=str(label),
+                )
+            )
+        if option_rows:
+            QuestionOption.objects.bulk_create(option_rows)
+        return question
 
     @staticmethod
     def create_points_log(user, delta, reason, ref_type=None, ref_id=None):
