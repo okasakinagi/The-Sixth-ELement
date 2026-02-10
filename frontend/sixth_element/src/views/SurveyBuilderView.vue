@@ -1,9 +1,12 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { aiGenerateDraftQuestions, createSurveyDraft } from '../utils/surveyManagementApi'
 
 const router = useRouter()
 const route = useRoute()
+
+const aiGenerating = ref(false)
 
 const makeId = () => `q-${Date.now()}-${Math.floor(Math.random() * 10000)}`
 
@@ -129,13 +132,25 @@ const saveDraft = () => {
 
 let autosaveTimer
 
+const normalizeQuestions = (questions) => {
+  return questions.map((question, index) => {
+    const type = (question.type || 'text').toLowerCase()
+    const options = Array.isArray(question.options) ? question.options : []
+    const required = typeof question.required === 'boolean' ? question.required : false
+    const isAi = typeof question.is_ai === 'boolean' ? question.is_ai : (question.isAi ?? true)
+    return {
+      id: question.id || makeId(),
+      type,
+      title: question.title || `问题${index + 1}`,
+      options: type === 'text' ? [] : options,
+      required,
+      isAi,
+    }
+  })
+}
+
 const setQuestions = (questions) => {
-  state.questions = questions.map((question) => ({
-    id: makeId(),
-    required: false,
-    isAi: true,
-    ...question,
-  }))
+  state.questions = normalizeQuestions(questions)
 }
 
 const loadDraft = () => {
@@ -145,15 +160,8 @@ const loadDraft = () => {
       const draft = JSON.parse(raw)
       state.title = draft.title || state.title
       state.description = draft.description || ''
-      if (route.query.ai === '1') {
-        const prompt = `${draft.prompt || ''}${draft.title || ''}`
-        const matched =
-          AI_TEMPLATES.find((item) => (prompt.includes('餐厅') ? item.key === 'cafeteria' : false)) ||
-          AI_TEMPLATES.find((item) => (prompt.includes('培训') ? item.key === 'training' : false)) ||
-          AI_TEMPLATES.find((item) => (prompt.includes('会员') ? item.key === 'service' : false))
-        const fallback = matched || AI_TEMPLATES[0]
-        setQuestions(fallback.questions)
-        state.description = fallback.description
+      if (route.query.ai === '1' && Array.isArray(draft.questions) && draft.questions.length > 0) {
+        setQuestions(draft.questions)
         return
       }
     } catch {
@@ -368,7 +376,7 @@ const handleTouchEnd = () => {
   dragState.value.dropIndex = null
 }
 
-const generateFromTemplate = () => {
+const generateFromTemplate = async () => {
   const input = state.templateInput.trim()
   if (!input) {
     alert('请先填写模板内容')
@@ -378,9 +386,7 @@ const generateFromTemplate = () => {
   // 提取模板信息
   const themeMatch = input.match(/【问卷主题】[:：]\s*(.+)/)
   const targetMatch = input.match(/【目标人群】[:：]\s*(.+)/)
-  const questionsMatch = input.match(/【关键问题】[:：]\s*([\s\S]+?)(?=【|$)/)
 
-  // 设置标题和描述
   if (themeMatch) {
     state.title = themeMatch[1].trim()
   }
@@ -388,49 +394,47 @@ const generateFromTemplate = () => {
     state.description = `针对${targetMatch[1].trim()}的问卷调研`
   }
 
-  // 生成问题
-  const questions = []
-  if (questionsMatch) {
-    const keyQuestions = questionsMatch[1].trim().split('\n').filter(line => line.trim() && /^\d+\./.test(line.trim()))
-    keyQuestions.forEach((q, idx) => {
-      const questionText = q.replace(/^\d+\.\s*/, '').trim()
-      if (questionText) {
-        let type = 'single'
-        if (questionText.includes('多少') || questionText.includes('填写') || questionText.includes('简述')) {
-          type = 'text'
-        } else if (questionText.includes('多选') || questionText.includes('全部')) {
-          type = 'multi'
-        }
-
-        questions.push({
-          id: makeId(),
-          type: type,
-          title: questionText,
-          options: type === 'text' ? [] : ['选项1', '选项2', '选项3', '选项4'],
-          required: idx < 3,
-          isAi: true
-        })
-      }
-    })
-  }
-
-  if (questions.length === 0) {
-    for (let i = 0; i < 5; i++) {
-      questions.push({
-        id: makeId(),
-        type: i % 3 === 0 ? 'multi' : (i % 3 === 1 ? 'single' : 'text'),
-        title: `问题${i + 1}：请根据实际需求修改`,
-        options: i % 3 === 2 ? [] : ['选项1', '选项2', '选项3'],
-        required: i < 3,
-        isAi: true
+  aiGenerating.value = true
+  try {
+    const draftRaw = sessionStorage.getItem('survey-draft')
+    const storedDraft = draftRaw ? JSON.parse(draftRaw) : {}
+    let draftId = storedDraft.id
+    if (!draftId) {
+      const created = await createSurveyDraft({
+        title: state.title || '未命名问卷',
+        subtitle: state.description || '',
       })
+      draftId = created.id
     }
-  }
 
-  state.questions = questions
-  state.showTemplateGuide = false
-  saveDraft()
-  alert(`已成功生成 ${questions.length} 道问题，请根据需要继续编辑`)
+    const questionCount = parseQuestionCount(input)
+    const generated = await aiGenerateDraftQuestions(draftId, {
+      prompt: input,
+      question_count: questionCount,
+    })
+
+    const normalized = normalizeQuestions(generated.questions || [])
+    state.questions = normalized
+    state.showTemplateGuide = false
+    sessionStorage.setItem(
+      'survey-draft',
+      JSON.stringify({
+        ...storedDraft,
+        id: draftId,
+        title: state.title,
+        description: state.description,
+        prompt: input,
+        questions: normalized,
+        source: 'ai',
+      }),
+    )
+    saveDraft()
+    alert(`已成功生成 ${normalized.length} 道问题，请根据需要继续编辑`)
+  } catch (error) {
+    alert(error?.message || 'AI 生成失败，请稍后重试')
+  } finally {
+    aiGenerating.value = false
+  }
 }
 
 const scrollToQuestion = (id) => {
@@ -443,6 +447,13 @@ const scrollToQuestion = (id) => {
 // 重置模板内容
 const resetTemplate = () => {
   state.templateInput = DEFAULT_TEMPLATE
+}
+
+const parseQuestionCount = (input) => {
+  const match = input.match(/【问题数量】[:：]\s*(\d+)/)
+  if (!match) return 10
+  const parsed = parseInt(match[1], 10)
+  return Number.isNaN(parsed) || parsed <= 0 ? 10 : parsed
 }
 </script>
 
@@ -497,8 +508,8 @@ const resetTemplate = () => {
             <button class="ghost-button small" type="button" @click="resetTemplate">
               🔄 重置
             </button>
-            <button class="primary-button" type="button" @click="generateFromTemplate">
-              ✨ 生成问卷
+            <button class="primary-button" type="button" :disabled="aiGenerating" @click="generateFromTemplate">
+              {{ aiGenerating ? '生成中...' : '✨ 生成问卷' }}
             </button>
           </div>
         </div>

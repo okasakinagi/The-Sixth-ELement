@@ -1,9 +1,12 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { aiGenerateDraftQuestions, createSurveyDraft } from '../utils/surveyManagementApi'
 
 const router = useRouter()
 const title = ref('')
+const loading = ref(false)
+const errorMessage = ref('')
 
 // 左侧可编辑的需求描述（默认填好模板文案）
 const prompt = ref(`请生成一份调查问卷
@@ -36,7 +39,7 @@ const loadDraft = () => {
 
 onMounted(loadDraft)
 
-const startGenerate = () => {
+const startGenerate = async () => {
   const raw = sessionStorage.getItem('survey-draft')
   const draft = raw ? JSON.parse(raw) : {}
   const merged = {
@@ -45,8 +48,36 @@ const startGenerate = () => {
     prompt: prompt.value.trim(),
     source: 'ai',
   }
-  sessionStorage.setItem('survey-draft', JSON.stringify(merged))
-  router.push({ name: 'survey-editor', query: { ai: '1' } })
+  if (!merged.prompt) {
+    errorMessage.value = '请先填写问卷需求描述'
+    return
+  }
+  loading.value = true
+  errorMessage.value = ''
+  try {
+    const created = await createSurveyDraft({
+      title: merged.title,
+      subtitle: merged.description,
+    })
+    const draftId = created.id
+    const generated = await aiGenerateDraftQuestions(draftId, {
+      prompt: merged.prompt,
+      question_count: 10,
+    })
+    sessionStorage.setItem(
+      'survey-draft',
+      JSON.stringify({
+        ...merged,
+        id: draftId,
+        questions: generated.questions || [],
+      }),
+    )
+    router.push({ name: 'survey-editor', query: { ai: '1', draft_id: draftId } })
+  } catch (error) {
+    errorMessage.value = error?.message || 'AI 生成失败，请稍后重试'
+  } finally {
+    loading.value = false
+  }
 }
 </script>
 
@@ -84,10 +115,11 @@ const startGenerate = () => {
           <button class="ghost-button" type="button" @click="router.push({ name: 'survey-editor' })">
             跳过并手动编辑
           </button>
-          <button class="primary-button" type="button" @click="startGenerate">
-            开始生成
+          <button class="primary-button" type="button" :disabled="loading" @click="startGenerate">
+            {{ loading ? '生成中...' : '开始生成' }}
           </button>
         </div>
+        <p v-if="errorMessage" class="error-text">{{ errorMessage }}</p>
       </section>
 
       <!-- 右侧：只读的案例引导 -->
@@ -255,6 +287,12 @@ const startGenerate = () => {
   gap: 12px;
   flex-wrap: wrap;
   margin-top: auto;
+}
+
+.error-text {
+  color: #b42318;
+  font-size: 13px;
+  margin: 0;
 }
 
 .ghost-button,
