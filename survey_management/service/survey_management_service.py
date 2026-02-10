@@ -1,6 +1,12 @@
+import json
+import os
+import re
 from datetime import timezone as dt_timezone
+from urllib import error as url_error
+from urllib import request as url_request
 from django.utils import timezone
 
+from core.models import Questionnaire
 from survey_management.mapper.survey_management_mapper import SurveyManagementMapper
 
 
@@ -194,6 +200,94 @@ class SurveyManagementService:
             )
         return {"id": self._public_survey_id(survey.id), "status": "active"}
 
+    def create_draft(self, user, data):
+        title = (data.get("title") or "").strip()
+        if not title:
+            raise SurveyManagementError(422, "title required")
+        subtitle = data.get("subtitle")
+        survey = self.mapper.create_draft_survey(user, title, subtitle=subtitle)
+        return {
+            "id": self._public_survey_id(survey.id),
+            "title": survey.title,
+            "status": "draft",
+        }
+
+    def get_draft(self, user, survey_id):
+        survey, questionnaire = self._get_draft_or_error(user, survey_id)
+        questions = self.mapper.get_questions(questionnaire.id)
+        return {
+            "id": self._public_survey_id(survey.id),
+            "title": survey.title,
+            "subtitle": survey.description or "",
+            "status": "draft",
+            "questions": [self._question_payload(q) for q in questions],
+            "updated_at": self._iso_str(survey.updated_at),
+        }
+
+    def update_draft(self, user, survey_id, data):
+        survey, questionnaire = self._get_draft_or_error(user, survey_id)
+        title = data.get("title")
+        subtitle = data.get("subtitle")
+        updated_fields = []
+        if title is not None:
+            title = str(title).strip()
+            if not title:
+                raise SurveyManagementError(422, "title required")
+            survey.title = title
+            updated_fields.append("title")
+        if subtitle is not None:
+            survey.description = subtitle
+            updated_fields.append("description")
+
+        questions = data.get("questions")
+        if questions is not None:
+            normalized = self._normalize_questions_payload(questions)
+            self.mapper.delete_questions(questionnaire.id)
+            for payload in normalized:
+                self.mapper.create_question(questionnaire, payload)
+            updated_fields.append("updated_at")
+
+        if updated_fields:
+            updated_fields.append("updated_at")
+            survey.save(update_fields=list(set(updated_fields)))
+        return {
+            "id": self._public_survey_id(survey.id),
+            "updated_at": self._iso_str(survey.updated_at),
+        }
+
+    def delete_draft_question(self, user, survey_id, question_id):
+        _, questionnaire = self._get_draft_or_error(user, survey_id)
+        deleted, _ = self.mapper.delete_question(questionnaire.id, question_id)
+        if deleted == 0:
+            raise SurveyManagementError(404, "question not found")
+        return {"success": True}
+
+    def ai_generate_questions(self, user, survey_id, data):
+        survey, questionnaire = self._get_draft_or_error(user, survey_id)
+        prompt = (data.get("prompt") or "").strip()
+        if not prompt:
+            raise SurveyManagementError(422, "prompt required")
+        question_count = data.get("question_count", 10)
+        try:
+            question_count = int(question_count)
+        except (TypeError, ValueError):
+            raise SurveyManagementError(422, "question_count must be a number")
+        if question_count <= 0:
+            raise SurveyManagementError(422, "question_count must be >= 1")
+
+        questions = self._call_siliconflow(prompt, question_count)
+        normalized = self._normalize_questions_payload(questions, default_is_ai=True)
+        self.mapper.delete_questions(questionnaire.id)
+        for payload in normalized:
+            self.mapper.create_question(questionnaire, payload)
+
+        survey.updated_at = timezone.now()
+        survey.save(update_fields=["updated_at"])
+        return {
+            "draft_id": self._public_survey_id(survey.id),
+            "questions": [self._question_payload(q) for q in self.mapper.get_questions(questionnaire.id)],
+        }
+
     def _survey_list_payload(self, survey, completed):
         target = survey.target or 0
         return {
@@ -243,6 +337,9 @@ class SurveyManagementService:
     def _public_user_id(self, user_id):
         return f"u_{user_id}"
 
+    def _public_qid(self, question_id):
+        return f"q_{question_id}"
+
     def _date_str(self, dt):
         if not dt:
             return None
@@ -252,3 +349,175 @@ class SurveyManagementService:
         if not dt:
             return None
         return dt.astimezone(dt_timezone.utc).isoformat().replace("+00:00", "Z")
+
+    def _get_draft_or_error(self, user, survey_id):
+        survey = self.mapper.get_owner_survey(user, survey_id)
+        if not survey:
+            raise SurveyManagementError(404, "survey not found")
+        if survey.status != "draft":
+            raise SurveyManagementError(409, "survey is not a draft")
+        questionnaire = survey.active_questionnaire
+        if not questionnaire:
+            questionnaire = Questionnaire.objects.create(
+                survey=survey,
+                version=1,
+                status="draft",
+                title=survey.title,
+            )
+            survey.active_questionnaire = questionnaire
+            survey.save(update_fields=["active_questionnaire"])
+        return survey, questionnaire
+
+    def _question_payload(self, question):
+        options = [
+            opt.label
+            for opt in question.questionoption_set.all().order_by("order_no", "id")
+        ]
+        config = question.config_json or {}
+        return {
+            "id": self._public_qid(question.id),
+            "type": question.type,
+            "title": question.title,
+            "options": options,
+            "required": question.is_required,
+            "order": question.order_no,
+            "is_ai": bool(config.get("is_ai")) if isinstance(config, dict) else False,
+        }
+
+    def _normalize_questions_payload(self, questions, default_is_ai=False):
+        if not isinstance(questions, list):
+            raise SurveyManagementError(422, "questions must be a list")
+        normalized = []
+        allowed_types = {"single", "multi", "text", "multi-text"}
+        for idx, item in enumerate(questions, start=1):
+            if not isinstance(item, dict):
+                raise SurveyManagementError(422, "invalid questions payload")
+            qtype = (item.get("type") or "").strip().lower()
+            if qtype not in allowed_types:
+                raise SurveyManagementError(422, "invalid question type")
+            title = (item.get("title") or "").strip()
+            if not title:
+                raise SurveyManagementError(422, "question title required")
+            options = item.get("options") or []
+            if qtype in {"single", "multi"}:
+                if not isinstance(options, list) or not options:
+                    raise SurveyManagementError(422, "options required")
+                cleaned = []
+                for opt in options:
+                    opt_str = str(opt).strip()
+                    if not opt_str:
+                        continue
+                    cleaned.append(opt_str)
+                if not cleaned:
+                    raise SurveyManagementError(422, "options required")
+                options = cleaned
+            else:
+                if options and not isinstance(options, list):
+                    raise SurveyManagementError(422, "options must be a list")
+
+            required = item.get("required")
+            if required is None:
+                required = True
+            is_ai = item.get("is_ai", default_is_ai)
+            order_no = item.get("order") or idx
+            try:
+                order_no = int(order_no)
+            except (TypeError, ValueError):
+                order_no = idx
+            normalized.append(
+                {
+                    "order_no": order_no,
+                    "type": qtype,
+                    "title": title,
+                    "options": options,
+                    "required": bool(required),
+                    "config_json": {"is_ai": bool(is_ai)},
+                }
+            )
+        return normalized
+
+    def _call_siliconflow(self, prompt, question_count):
+        api_key = os.environ.get("SILICONFLOW_API_KEY")
+        if not api_key:
+            raise SurveyManagementError(500, "SILICONFLOW_API_KEY not configured")
+        base_url = os.environ.get(
+            "SILICONFLOW_BASE_URL",
+            "https://api.siliconflow.cn/v1/chat/completions",
+        )
+        model = os.environ.get("SILICONFLOW_MODEL")
+        if not model:
+            raise SurveyManagementError(500, "SILICONFLOW_MODEL not configured")
+
+        instruction = (
+            "You are a survey designer. Return JSON only. "
+            "Output format: {\"questions\":[{\"type\":\"single|multi|text|multi-text\","
+            "\"title\":\"...\",\"options\":[...],\"required\":true}]}. "
+            f"Generate {question_count} questions."
+        )
+
+        payload = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": instruction},
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0.7,
+        }
+        req = url_request.Request(
+            base_url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+
+        try:
+            with url_request.urlopen(req, timeout=30) as resp:
+                body = resp.read().decode("utf-8")
+        except url_error.HTTPError as exc:
+            error_body = exc.read().decode("utf-8") if exc.fp else str(exc)
+            raise SurveyManagementError(502, f"llm error: {error_body}")
+        except url_error.URLError as exc:
+            raise SurveyManagementError(502, f"llm error: {str(exc)}")
+
+        try:
+            data = json.loads(body)
+        except json.JSONDecodeError:
+            raise SurveyManagementError(502, "llm returned invalid response")
+
+        text = None
+        if isinstance(data, dict):
+            choices = data.get("choices") or []
+            if choices:
+                first = choices[0] or {}
+                message = first.get("message") or {}
+                text = message.get("content") or first.get("text")
+        if not text:
+            raise SurveyManagementError(502, "llm returned empty output")
+
+        json_text = self._extract_json(text)
+        try:
+            payload = json.loads(json_text)
+        except json.JSONDecodeError:
+            raise SurveyManagementError(502, "llm returned non-json output")
+
+        if isinstance(payload, dict):
+            questions = payload.get("questions")
+        elif isinstance(payload, list):
+            questions = payload
+        else:
+            questions = None
+        if questions is None:
+            raise SurveyManagementError(502, "llm output missing questions")
+        return questions
+
+    def _extract_json(self, text):
+        match = re.search(r"\{[\s\S]*\}", text)
+        if match:
+            return match.group(0)
+        match = re.search(r"\[[\s\S]*\]", text)
+        if match:
+            return match.group(0)
+        return text

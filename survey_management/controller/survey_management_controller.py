@@ -44,6 +44,10 @@ def _parse_survey_id(value):
         return None
 
 
+def _parse_question_id(value):
+    return _parse_survey_id(value)
+
+
 @csrf_exempt
 def surveys_handler(request):
     user, err = require_auth(request)
@@ -78,6 +82,99 @@ def surveys_handler(request):
             return error(500, f"Internal server error: {str(exc)}")
 
     return error(405, "Method not allowed")
+
+
+@csrf_exempt
+def survey_drafts_handler(request):
+    user, err = require_auth(request)
+    if err:
+        return err
+
+    if request.method != "POST":
+        return error(405, "Method not allowed")
+
+    data = _parse_json(request)
+    try:
+        payload = service.create_draft(user, data)
+        return JsonResponse(payload, status=200)
+    except SurveyManagementError as exc:
+        return error(exc.status, exc.message)
+    except Exception as exc:
+        return error(500, f"Internal server error: {str(exc)}")
+
+
+@csrf_exempt
+def survey_draft_detail(request, draft_id):
+    user, err = require_auth(request)
+    if err:
+        return err
+    draft_pk = _parse_survey_id(draft_id)
+    if draft_pk is None:
+        return error(422, "invalid draft id")
+
+    if request.method == "GET":
+        try:
+            payload = service.get_draft(user, draft_pk)
+            return JsonResponse(payload, status=200)
+        except SurveyManagementError as exc:
+            return error(exc.status, exc.message)
+        except Exception as exc:
+            return error(500, f"Internal server error: {str(exc)}")
+
+    if request.method == "PATCH":
+        data = _parse_json(request)
+        try:
+            payload = service.update_draft(user, draft_pk, data)
+            return JsonResponse(payload, status=200)
+        except SurveyManagementError as exc:
+            return error(exc.status, exc.message)
+        except Exception as exc:
+            return error(500, f"Internal server error: {str(exc)}")
+
+    return error(405, "Method not allowed")
+
+
+@csrf_exempt
+def survey_draft_ai_generate(request, draft_id):
+    if request.method != "POST":
+        return error(405, "Method not allowed")
+    user, err = require_auth(request)
+    if err:
+        return err
+    draft_pk = _parse_survey_id(draft_id)
+    if draft_pk is None:
+        return error(422, "invalid draft id")
+
+    data = _parse_json(request)
+    try:
+        payload = service.ai_generate_questions(user, draft_pk, data)
+        return JsonResponse(payload, status=200)
+    except SurveyManagementError as exc:
+        return error(exc.status, exc.message)
+    except Exception as exc:
+        return error(500, f"Internal server error: {str(exc)}")
+
+
+@csrf_exempt
+def survey_draft_delete_question(request, draft_id, question_id):
+    if request.method != "DELETE":
+        return error(405, "Method not allowed")
+    user, err = require_auth(request)
+    if err:
+        return err
+    draft_pk = _parse_survey_id(draft_id)
+    if draft_pk is None:
+        return error(422, "invalid draft id")
+    question_pk = _parse_question_id(question_id)
+    if question_pk is None:
+        return error(422, "invalid question id")
+    try:
+        payload = service.delete_draft_question(user, draft_pk, question_pk)
+        return JsonResponse(payload, status=200)
+    except SurveyManagementError as exc:
+        return error(exc.status, exc.message)
+    except Exception as exc:
+        return error(500, f"Internal server error: {str(exc)}")
 
 
 @csrf_exempt
