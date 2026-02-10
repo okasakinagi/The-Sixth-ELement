@@ -257,3 +257,70 @@ export async function getSurveyDetail(surveyId) {
 
   return await response.json();
 }
+
+/**
+ * 创建问卷草稿
+ * POST /surveys/drafts
+ * @param {Object} data
+ * @param {string} data.title 问卷标题
+ * @param {string} data.subtitle 问卷副标题
+ */
+export async function createSurveyDraft(data) {
+  const token = getAuthToken();
+  if (!token) {
+    throw new Error('未登录，请先登录');
+  }
+
+  const response = await fetch(`${API_BASE_URL}/surveys/drafts`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      throw new Error('登录已过期，请重新登录');
+    }
+    const error = await response.json();
+    throw new Error(error.error || '创建草稿失败');
+  }
+
+  return await response.json();
+}
+
+/**
+ * AI 生成草稿题目
+ * POST /surveys/drafts/{draft_id}/ai-generate
+ * @param {string} draftId 草稿ID
+ * @param {Object} data
+ * @param {string} data.prompt 提示词
+ * @param {number} data.question_count 题目数量
+ */
+export async function aiGenerateDraftQuestions(draftId, data) {
+  const token = getAuthToken();
+  if (!token) {
+    throw new Error('未登录，请先登录');
+  }
+
+  const response = await fetch(`${API_BASE_URL}/surveys/drafts/${draftId}/ai-generate`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      throw new Error('登录已过期，请重新登录');
+    }
+    const error = await response.json();
+    throw new Error(error.error || 'AI 生成失败');
+  }
+
+  return await response.json();
+}

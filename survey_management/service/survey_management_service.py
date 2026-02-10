@@ -1,6 +1,7 @@
 import json
 import os
 import re
+from pathlib import Path
 from datetime import timezone as dt_timezone
 from urllib import error as url_error
 from urllib import request as url_request
@@ -437,14 +438,20 @@ class SurveyManagementService:
         return normalized
 
     def _call_siliconflow(self, prompt, question_count):
-        api_key = os.environ.get("SILICONFLOW_API_KEY")
+        config = self._load_ai_config()
+        api_key = config.get("api_key") or os.environ.get("SILICONFLOW_API_KEY")
         if not api_key:
             raise SurveyManagementError(500, "SILICONFLOW_API_KEY not configured")
-        base_url = os.environ.get(
+        base_url = config.get("base_url") or os.environ.get(
             "SILICONFLOW_BASE_URL",
             "https://api.siliconflow.cn/v1/chat/completions",
         )
-        model = os.environ.get("SILICONFLOW_MODEL")
+        normalized_base = base_url.rstrip("/")
+        if normalized_base.endswith("/v1"):
+            base_url = f"{normalized_base}/chat/completions"
+        elif "chat/completions" not in normalized_base:
+            base_url = normalized_base
+        model = config.get("model") or os.environ.get("SILICONFLOW_MODEL")
         if not model:
             raise SurveyManagementError(500, "SILICONFLOW_MODEL not configured")
 
@@ -512,6 +519,24 @@ class SurveyManagementService:
         if questions is None:
             raise SurveyManagementError(502, "llm output missing questions")
         return questions
+
+    def _load_ai_config(self):
+        project_root = Path(__file__).resolve().parents[2]
+        config_path = project_root / "deploy" / "ai_config.json"
+        if not config_path.exists():
+            return {}
+        try:
+            content = config_path.read_text(encoding="utf-8")
+            data = json.loads(content)
+        except (OSError, json.JSONDecodeError):
+            return {}
+        if not isinstance(data, dict):
+            return {}
+        return {
+            "api_key": str(data.get("api_key") or "").strip(),
+            "model": str(data.get("model") or "").strip(),
+            "base_url": str(data.get("base_url") or "").strip(),
+        }
 
     def _extract_json(self, text):
         match = re.search(r"\{[\s\S]*\}", text)
