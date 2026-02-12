@@ -290,6 +290,31 @@ class UserTag(models.Model):
         ]
 
 
+class UserTagWeight(models.Model):
+    """记录用户和 tag 的权重，供相似性/推荐使用。
+
+    - 当用户手动编辑（set_user_tags）时，将权重写为 1.0。
+    - 当用户提交问卷时（submit_fill），相关 survey 的 tag 对应权重增加（+0.2）。
+    - 当用户在任务大厅标记不感兴趣/删除（dismiss）时，权重减少 -0.2。
+    - 当用户填写一半放弃（abandon）时，减少为 -0.04（即 -0.2 的五分之一）。
+    权重保持在 [0.0, 5.0] 范围内以防失控。
+    """
+
+    user = models.ForeignKey(AppUser, on_delete=models.CASCADE)
+    tag = models.ForeignKey(Tag, on_delete=models.CASCADE)
+    weight = models.FloatField(default=0.0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["user", "tag"], name="unique_user_tag_weight")
+        ]
+        indexes = [
+            models.Index(fields=["tag"], name="user_tagweight_tag_idx"),
+            models.Index(fields=["user"], name="user_tagweight_user_idx"),
+        ]
+
+
 class IDVector(models.Model):
     """存储与 `user` 或 `survey` 关联的向量数据。
 

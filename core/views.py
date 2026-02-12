@@ -21,7 +21,16 @@ from .models import (
     Survey,
     Tag,
     UserTag,
+    UserTagWeight,
 )
+
+# 权重参数
+WEIGHT_MANUAL = 1.0
+WEIGHT_INCREMENT = 0.2
+WEIGHT_DISMISS_DECREMENT = -0.2
+WEIGHT_ABANDON_DECREMENT = -0.04
+WEIGHT_MIN = 0.0
+WEIGHT_MAX = 5.0
 
 
 def now_iso(dt=None):
@@ -97,6 +106,14 @@ def set_user_tags(user, tag_type, tags):
         seen.add(name)
         tag, _ = Tag.objects.get_or_create(name=name, type=tag_type)
         UserTag.objects.create(user=user, tag=tag)
+        # 手动编辑标签时将权重写为 1.0（覆盖）
+        try:
+            utw, created = UserTagWeight.objects.get_or_create(user=user, tag=tag)
+            utw.weight = WEIGHT_MANUAL
+            utw.save(update_fields=["weight", "updated_at"])
+        except Exception:
+            # 保守失败，不阻塞主流程
+            pass
 
 
 def get_current_user(request):
@@ -377,6 +394,13 @@ def surveys(request):
                 delta=-reward_points,
                 reason="发布问卷消耗",
             )
+        # generate survey vector at creation time (best-effort)
+        try:
+            from core.services.similarity_service import SimilarityService
+
+            SimilarityService.generate_and_store_vector("survey", str(survey.id))
+        except Exception:
+            pass
         return JsonResponse({"id": str(survey.id), "status": "active"})
 
     if request.method != "GET":
@@ -478,6 +502,20 @@ def submit_fill(request, survey_id):
         status="submitted",
         submitted_at=timezone.now(),
     )
+    # 提交问卷时增加用户与问卷主要 tag 的权重（初始记录为 0，按 WEIGHT_INCREMENT 增加）
+    try:
+        survey_tags = survey.surveytag_set.select_related("tag").all()
+        for st in survey_tags:
+            tag = st.tag
+            utw, created = UserTagWeight.objects.get_or_create(user=user, tag=tag)
+            new_w = utw.weight + WEIGHT_INCREMENT
+            if new_w > WEIGHT_MAX:
+                new_w = WEIGHT_MAX
+            utw.weight = new_w
+            utw.save(update_fields=["weight", "updated_at"])
+    except Exception:
+        # 权重更新失败不影响主要提交流程
+        pass
     return JsonResponse(
         {"id": str(response.id), "status": response.status, "points_awarded": 0}
     )

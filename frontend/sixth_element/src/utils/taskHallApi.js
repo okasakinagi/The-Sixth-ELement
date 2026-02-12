@@ -151,3 +151,65 @@ export async function refreshTaskHallBatch(excludeTaskIds = [], batchSize = 15) 
   }
   return data;
 }
+
+
+/**
+ * 标记当前用户对某个问卷不感兴趣（后端会据此降低该问卷相关 tag 的权重）
+ * POST /internal/similarity/dismiss
+ */
+export async function dismissSurvey(surveyId) {
+  const token = getAuthToken();
+  if (!token) {
+    throw new Error('未登录，请先登录');
+  }
+
+  const response = await fetch(`${API_BASE_URL}/internal/similarity/dismiss`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ survey_id: surveyId }),
+  });
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      throw new Error('登录已过期，请重新登录');
+    }
+    const error = await parseJsonResponse(response);
+    throw new Error(error?.error || '请求失败');
+  }
+
+  return await parseJsonResponse(response);
+}
+
+
+/**
+ * 填写页面放弃填写时调用，减少用户-问卷相关 tag 权重
+ * POST /internal/similarity/abandon
+ */
+export async function abandonBySurvey(surveyId) {
+  const token = getAuthToken();
+  if (!token) {
+    throw new Error('未登录，请先登录');
+  }
+
+  const response = await fetch(`${API_BASE_URL}/internal/similarity/abandon`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ survey_id: surveyId }),
+  });
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      throw new Error('登录已过期，请重新登录');
+    }
+    const error = await parseJsonResponse(response);
+    throw new Error(error?.error || '请求失败');
+  }
+
+  return await parseJsonResponse(response);
+}

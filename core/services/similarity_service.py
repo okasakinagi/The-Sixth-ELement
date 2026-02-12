@@ -1,22 +1,14 @@
 from core.managers.similarity_manager import SimilarityManager
 from django.utils import timezone
+from core.models import Survey
 
 
 class SimilarityService:
     @staticmethod
     def get_or_compute_daily_cosine(user_id, survey_id):
-        # check existing today
-        row = SimilarityManager.get_similarity_today(survey_id, user_id)
-        if row:
-            return {
-                "cosine": float(row.cosine),
-                "cached": True,
-                "created_at": row.created_at,
-            }
-
-        # fetch vectors
-        user_vec = SimilarityManager.fetch_vector("user", str(user_id))
-        survey_vec = SimilarityManager.fetch_vector("survey", str(survey_id))
+        # Use existing manager behavior (which now applies a 30-minute TTL for user vectors)
+        user_vec = SimilarityManager.generate_and_store_vector("user", str(user_id), dim=100, force=False)
+        survey_vec = SimilarityManager.generate_and_store_vector("survey", str(survey_id), dim=100, force=False)
         if user_vec is None or survey_vec is None:
             return {
                 "error": "missing_vector",
@@ -41,7 +33,10 @@ class SimilarityService:
 
     @staticmethod
     def generate_and_store_vector(ref_type, ref_id, dim=100):
-        return SimilarityManager.generate_and_store_vector(ref_type, ref_id, dim=dim)
+        # For the public/internal generate endpoint: force recompute for user type, keep survey behavior
+        if ref_type == "user":
+            return SimilarityManager.generate_and_store_vector(ref_type, ref_id, dim=dim, force=True)
+        return SimilarityManager.generate_and_store_vector(ref_type, ref_id, dim=dim, force=False)
 
     @staticmethod
     def recommend_surveys_for_user(user_id, k):

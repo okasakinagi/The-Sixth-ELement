@@ -36,6 +36,21 @@ class SimilarityManager:
         node, _ = IDVector.objects.get_or_create(ref_type=ref_type, ref_id=str(ref_id))
         node.set_vector(vec)
         node.save()
+        # If a user vector was updated, refresh any cached SurveyUserSimilarity rows for this user
+        if ref_type == "user":
+            try:
+                user_vec = node.get_vector()
+                rows = SurveyUserSimilarity.objects.filter(user__id=ref_id)
+                for row in rows:
+                    survey_vec = SimilarityManager.fetch_vector("survey", str(row.survey.id))
+                    if survey_vec is None:
+                        continue
+                    cosine = SimilarityManager.compute_cosine(user_vec, survey_vec)
+                    row.cosine = float(cosine) if cosine is not None else 0.0
+                    row.save(update_fields=["cosine"])
+            except Exception:
+                # non-fatal: keep vector saved even if cache refresh fails
+                pass
         return node
 
     @staticmethod
@@ -85,17 +100,23 @@ class SimilarityManager:
         return ""
 
     @staticmethod
-    def generate_and_store_vector(ref_type, ref_id, dim=100):
-        """检查数据库：若已存在（用户且为当天，或问卷任意时间）则直接返回现有向量；否则生成字符串、转向量并保存。
+    def generate_and_store_vector(ref_type, ref_id, dim=100, force=False):
+        """生成并持久化向量。
+
+        行为：
+        - 当 force=True 时无视已有向量，重新生成并覆盖（用于强制刷新）。
+        - 当 force=False 时维持原有行为：
+          - 对于 `user`：若已有向量且为当天则返回现有向量，否则生成并覆盖。
+          - 对于 `survey`：若已有向量则直接返回现有向量。
 
         返回 Python 列表形式的向量。
         """
         now = timezone.now()
         node = IDVector.objects.filter(ref_type=ref_type, ref_id=str(ref_id)).first()
-        if node and node.vector:
-            # 已有向量，用户需检查是否为同一天
+        if node and node.vector and not force:
+            # 已有向量，用户向量按 TTL 缓存（30 分钟）；survey 向量直接复用
             if ref_type == "user":
-                if node.created_at and node.created_at.date() == now.date():
+                if node.created_at and (now - node.created_at).total_seconds() <= 30 * 60:
                     return node.get_vector()
             else:
                 return node.get_vector()

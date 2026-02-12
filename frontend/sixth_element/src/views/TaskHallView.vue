@@ -84,7 +84,7 @@
 <script setup>
 import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { getTaskHallTasks, refreshTaskHallBatch } from '@/utils/taskHallApi'
+import { getTaskHallTasks, refreshTaskHallBatch, dismissSurvey } from '@/utils/taskHallApi'
 
 const keyword = ref('')
 const router = useRouter()
@@ -325,6 +325,13 @@ async function handleDelete(taskId) {
 
   try {
     loading.value = true
+    // Notify backend that user dismissed this survey (decrease tag weights).
+    try {
+      await dismissSurvey(taskId)
+    } catch (err) {
+      console.warn('dismissSurvey failed:', err)
+    }
+
     const response = await refreshTaskHallBatch(
       [...nextVisibleTasks.map((task) => task.id), taskId],
       1,

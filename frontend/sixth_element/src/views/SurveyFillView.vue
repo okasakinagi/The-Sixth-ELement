@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { abandonBySurvey } from '@/utils/taskHallApi'
 import { useRouter, useRoute } from 'vue-router'
 
 const router = useRouter()
@@ -252,6 +253,14 @@ function handleAbandon() {
   }
   
   if (confirm('退出后进度将不被保存，确定离开吗？')) {
+    // 通知后端该用户放弃填写，以减少 tag 权重（失败不阻塞用户操作）
+    try {
+      abandonBySurvey(route.params.id).catch((err) => {
+        console.warn('abandonBySurvey failed:', err)
+      })
+    } catch (err) {
+      console.warn('abandonBySurvey call error:', err)
+    }
     localStorage.removeItem(localStorageKey.value)
     goBack()
   }

@@ -28,4 +28,7 @@ urlpatterns = [
     ),
     path("internal/vector/generate", similarity_controller.generate_and_store_vector),
     path("internal/recommend", similarity_controller.recommend_surveys),
+    path("internal/similarity/dismiss", similarity_controller.dismiss_survey),
+    path("internal/similarity/abandon", similarity_controller.abandon_by_survey),
+    path("internal/similarity/abandon/<str:fill_id>", similarity_controller.abandon_fill),
 ]
