@@ -23,6 +23,7 @@ from .models import (
     UserTag,
     UserTagWeight,
 )
+from core.managers.similarity_manager import SimilarityManager
 
 # 权重参数
 WEIGHT_MANUAL = 1.0
@@ -114,6 +115,11 @@ def set_user_tags(user, tag_type, tags):
         except Exception:
             # 保守失败，不阻塞主流程
             pass
+    # 用户标签更新后立即刷新 user 向量，减少推荐滞后
+    try:
+        SimilarityManager.generate_and_store_vector("user", str(user.id), force=True)
+    except Exception:
+        pass
 
 
 def get_current_user(request):

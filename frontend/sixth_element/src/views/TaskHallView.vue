@@ -16,11 +16,7 @@
     </header>
 
     <section class="task-grid">
-      <article
-        v-for="(task, idx) in filteredTasks"
-        :key="task.id"
-        class="task-card"
-      >
+      <article v-for="task in filteredTasks" :key="task.id" class="task-card">
         <div class="card-top">
           <div class="card-titles">
             <h3>{{ task.title }}</h3>
@@ -82,51 +78,17 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getTaskHallTasks, refreshTaskHallBatch, dismissSurvey } from '@/utils/taskHallApi'
 
 const keyword = ref('')
 const router = useRouter()
 const loading = ref(false)
-const windowWidth = ref(window.innerWidth)
-const windowHeight = ref(window.innerHeight)
-
-// 根据屏幕大小计算最佳显示数量
-const optimalTaskCount = computed(() => {
-  const width = windowWidth.value
-  const height = windowHeight.value
-  
-  // 估算每个卡片的大小（包含间距）
-  let cardWidth = 360  // 默认卡片宽度 + 间距
-  let cardHeight = 180 // 估算卡片高度 + 间距
-  
-  if (width >= 1800) {
-    cardWidth = 420
-  } else if (width >= 1400) {
-    cardWidth = 380
-  } else if (width <= 640) {
-    cardWidth = width - 20  // 移动端单列
-    cardHeight = 160
-  } else if (width <= 960) {
-    cardWidth = (width - 40) / 2  // 小屏幕2列
-    cardHeight = 160
-  }
-  
-  // 计算可以容纳的列数
-  const cols = Math.floor((width - 40) / cardWidth) || 1
-  // 计算可以容纳的行数（减去header等空间）
-  const availableHeight = height - 200 // 减去header和底部空间
-  const rows = Math.max(3, Math.floor(availableHeight / cardHeight))
-  
-  // 总数量，至少15个
-  return Math.max(15, cols * rows)
-})
+const fixedBatchSize = 15
 
 // 拖拽相关
-const menuRef = ref(null)
 const fabRef = ref(null)
-const menuPosition = ref({ x: 0, y: 0 })
 const fabPosition = ref({ x: 20, y: 20 })
 const dragState = ref({ isDragging: false, type: null, startX: 0, startY: 0, initialX: 0, initialY: 0 })
 const fabDragTimer = ref(null)
@@ -140,11 +102,10 @@ function startDrag(e, type) {
       if (fabTouchStarted.value) {
         activateFabDrag(e, type)
       }
-    }, 500) // 长按500ms才能拖拽
+    }, 500)
     return
   }
 
-  // 菜单可以直接拖拽
   activateFabDrag(e, type)
 }
 
@@ -159,8 +120,8 @@ function activateFabDrag(e, type) {
     type: type,
     startX: clientX,
     startY: clientY,
-    initialX: type === 'menu' ? menuPosition.value.x : fabPosition.value.x,
-    initialY: type === 'menu' ? menuPosition.value.y : fabPosition.value.y
+    initialX: fabPosition.value.x,
+    initialY: fabPosition.value.y
   }
 
   document.addEventListener('mousemove', onDrag)
@@ -171,19 +132,14 @@ function activateFabDrag(e, type) {
 
 function onDrag(e) {
   if (!dragState.value.isDragging) return
-  
+
   const clientX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX
   const clientY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY
 
   const deltaX = clientX - dragState.value.startX
   const deltaY = clientY - dragState.value.startY
 
-  if (dragState.value.type === 'menu') {
-    menuPosition.value = {
-      x: dragState.value.initialX + deltaX,
-      y: dragState.value.initialY + deltaY
-    }
-  } else if (dragState.value.type === 'fab') {
+  if (dragState.value.type === 'fab') {
     // FAB使用right/bottom，所以拖动时需要反向计算
     fabPosition.value = {
       x: dragState.value.initialX - deltaX,
@@ -193,7 +149,6 @@ function onDrag(e) {
 }
 
 function stopDrag() {
-  // 清除FAB长按定时器
   if (fabDragTimer.value) {
     clearTimeout(fabDragTimer.value)
     fabDragTimer.value = null
@@ -207,101 +162,70 @@ function stopDrag() {
   document.removeEventListener('touchend', stopDrag)
 }
 
-// 监听窗口大小变化
-function handleResize() {
-  windowWidth.value = window.innerWidth
-  windowHeight.value = window.innerHeight
-}
-
 onMounted(() => {
   loadInitialTasks()
-  
-  // 添加窗口大小监听
-  window.addEventListener('resize', handleResize)
 })
 
 onUnmounted(() => {
-  // 清除FAB长按定时器
   if (fabDragTimer.value) {
     clearTimeout(fabDragTimer.value)
-  }
-  // 清除watch监听
-  if (stopWatchOptimalTaskCount) {
-    stopWatchOptimalTaskCount()
   }
   document.removeEventListener('mousemove', onDrag)
   document.removeEventListener('mouseup', stopDrag)
   document.removeEventListener('touchmove', onDrag)
   document.removeEventListener('touchend', stopDrag)
-  window.removeEventListener('resize', handleResize)
 })
 
 const visibleTasks = ref([])
-const maxClientBatch = 50
+const seenTaskIds = ref([])
+
+function addSeenTaskIds(ids = []) {
+  const idSet = new Set(seenTaskIds.value.map((id) => String(id)))
+  for (const rawId of ids) {
+    if (!rawId) continue
+    idSet.add(String(rawId))
+  }
+  seenTaskIds.value = Array.from(idSet)
+}
 
 async function loadInitialTasks() {
   try {
     loading.value = true
-    const targetCount = Math.max(1, Math.min(optimalTaskCount.value, maxClientBatch))
     const response = await getTaskHallTasks(
       {
         status: 'active',
-        sort: 'newest',
+        sort: 'recommend',
         page: 1,
-        page_size: targetCount,
+        page_size: fixedBatchSize,
       },
       router
     )
-    visibleTasks.value = Array.isArray(response.items) ? response.items : []
+    const items = Array.isArray(response.items) ? response.items : []
+    visibleTasks.value = items
+    seenTaskIds.value = []
+    addSeenTaskIds(items.map((task) => task.id))
   } catch (error) {
     console.error('加载任务大厅失败:', error)
     visibleTasks.value = []
+    seenTaskIds.value = []
   } finally {
     loading.value = false
   }
 }
-
-async function appendTasksFromServer(count) {
-  if (!count || count <= 0) return
-  try {
-    loading.value = true
-    const response = await refreshTaskHallBatch(
-      visibleTasks.value.map((task) => task.id),
-      count,
-      router
-    )
-    const items = Array.isArray(response.items) ? response.items : []
-    visibleTasks.value = [...visibleTasks.value, ...items]
-  } catch (error) {
-    console.error('补位任务失败:', error)
-  } finally {
-    loading.value = false
-  }
-}
-
-// 监听最佳数量变化，自动调整显示数量
-const stopWatchOptimalTaskCount = watch(optimalTaskCount, async (newCount, oldCount) => {
-  if (newCount === oldCount || visibleTasks.value.length === 0) return
-  const safeCount = Math.max(1, Math.min(newCount, maxClientBatch))
-  if (safeCount > visibleTasks.value.length) {
-    await appendTasksFromServer(safeCount - visibleTasks.value.length)
-    return
-  }
-  visibleTasks.value = visibleTasks.value.slice(0, safeCount)
-})
 
 async function refreshBatch() {
   const confirm = window.confirm('确认要换一批问卷吗？当前页面的问卷将被替换。')
   if (!confirm) return
   try {
     loading.value = true
-    const currentSize = Math.max(1, Math.min(visibleTasks.value.length || optimalTaskCount.value, maxClientBatch))
     const response = await refreshTaskHallBatch(
-      visibleTasks.value.map((task) => task.id),
-      currentSize,
+      seenTaskIds.value,
+      fixedBatchSize,
       router
     )
-    visibleTasks.value = Array.isArray(response.items) ? response.items : []
+    const items = Array.isArray(response.items) ? response.items : []
+    visibleTasks.value = items
+    addSeenTaskIds(items.map((task) => task.id))
   } catch (error) {
     console.error('换一批失败:', error)
   } finally {
@@ -313,7 +237,6 @@ async function handleDelete(taskId) {
   const ok = window.confirm('确认删除该问卷吗？将自动补位新的问卷。')
   if (!ok) return
 
-  // 找到要删除的任务在数组中的索引
   const index = visibleTasks.value.findIndex((t) => t.id === taskId)
   if (index === -1) return
 
@@ -322,10 +245,10 @@ async function handleDelete(taskId) {
     ...visibleTasks.value.slice(index + 1)
   ]
   visibleTasks.value = nextVisibleTasks
+  addSeenTaskIds([taskId])
 
   try {
     loading.value = true
-    // Notify backend that user dismissed this survey (decrease tag weights).
     try {
       await dismissSurvey(taskId)
     } catch (err) {
@@ -333,12 +256,13 @@ async function handleDelete(taskId) {
     }
 
     const response = await refreshTaskHallBatch(
-      [...nextVisibleTasks.map((task) => task.id), taskId],
+      seenTaskIds.value,
       1,
       router
     )
     const replacement = Array.isArray(response.items) ? response.items[0] : null
     if (replacement) {
+      addSeenTaskIds([replacement.id])
       visibleTasks.value = [
         ...nextVisibleTasks.slice(0, index),
         replacement,
@@ -365,17 +289,20 @@ function progressPercent(task) {
   return Math.min(100, Math.round((task.filled / task.total) * 100))
 }
 
-// 根据难度显示分类（只有高性价比和挑战任务两种）
 function getMatchClass(task) {
-  if (task.difficulty <= 2) return 'high-match'
+  if (task.match_level === 'high') return 'high-match'
+  if (task.match_level === 'medium') return 'mid-match'
   return 'low-match'
 }
 
 function getMatchText(task) {
-  if (task.difficulty <= 2) return '高性价比'
-  return '挑战任务'
+  if (task.match_reason) return task.match_reason
+  if (task.match_level === 'high') return '高匹配'
+  if (task.match_level === 'medium') return '中匹配'
+  return '低匹配'
 }
 </script>
+
 
 <style scoped>
 .task-hall {
@@ -771,6 +698,12 @@ function getMatchText(task) {
   background: linear-gradient(135deg, #4caf50, #66bb6a);
   color: white;
   box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
+}
+
+.mid-match {
+  background: linear-gradient(135deg, #ffb300, #ffca28);
+  color: #5d4000;
+  box-shadow: 0 2px 8px rgba(255, 179, 0, 0.28);
 }
 
 .low-match {

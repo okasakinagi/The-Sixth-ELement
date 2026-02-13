@@ -167,6 +167,20 @@ python Main.py migrate
 python Main.py showmigrations
 ```
 
+### 一键生成测试数据（用户 + 问卷 + 填写记录）
+
+```powershell
+cd d:\The-Sixth-ELement
+
+# 会先删除旧的 DEMO 数据，再重新生成
+python Main.py seed_demo_data --reset
+```
+
+生成后可直接使用以下账号登录前端：
+- `demo_owner@local.test` / `Demo@123456`
+- `demo_filler1@local.test` / `Demo@123456`
+- `demo_filler2@local.test` / `Demo@123456`
+
 ### 创建超级用户（可选）
 
 ```powershell
