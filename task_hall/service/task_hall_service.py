@@ -1,6 +1,7 @@
 from datetime import timezone as dt_timezone
 from django.utils import timezone
 
+from core.services.similarity_service import SimilarityService
 from task_hall.mapper.task_hall_mapper import TaskHallMapper
 
 
@@ -52,14 +53,7 @@ class TaskHallService:
         page_size = min(max(normalized.get("page_size", 20), 1), 50)
         offset = (page - 1) * page_size
 
-        ordering = self._ordering_for_sort(normalized.get("sort"))
-        surveys = list(queryset.order_by(*ordering)[offset : offset + page_size])
-        filled_counts = self.mapper.get_filled_counts([survey.id for survey in surveys])
-
-        items = [
-            self._to_task_card(survey, filled_counts.get(survey.id, 0))
-            for survey in surveys
-        ]
+        items = self._list_personalized_items(user.id, queryset, offset, page_size)
         return {
             "items": items,
             "page": page,
@@ -75,15 +69,56 @@ class TaskHallService:
             .exclude(response__user=user)
             .distinct()
         )
-        if exclude_task_ids:
-            queryset = queryset.exclude(id__in=exclude_task_ids)
-        surveys = list(queryset.order_by("-created_at")[: batch_size or 0])
-        filled_counts = self.mapper.get_filled_counts([survey.id for survey in surveys])
-        items = [
-            self._to_task_card(survey, filled_counts.get(survey.id, 0))
-            for survey in surveys
-        ]
+
+        size = max(batch_size or 0, 0)
+        items = self._list_personalized_items(
+            user.id,
+            queryset,
+            offset=0,
+            page_size=size,
+            exclude_task_ids=exclude_task_ids,
+        )
         return {"items": items}
+
+    def _list_personalized_items(
+        self, user_id, queryset, offset, page_size, exclude_task_ids=None
+    ):
+        survey_ids = list(queryset.values_list("id", flat=True))
+        ranked = SimilarityService.rank_candidate_surveys_for_user(
+            user_id=str(user_id),
+            candidate_survey_ids=survey_ids,
+            exclude_ids=exclude_task_ids,
+        )
+
+        if not ranked:
+            fallback = list(queryset.order_by("-created_at")[offset : offset + page_size])
+            filled_counts = self.mapper.get_filled_counts([survey.id for survey in fallback])
+            return [
+                self._to_task_card(survey, filled_counts.get(survey.id, 0))
+                for survey in fallback
+            ]
+
+        window = ranked[offset : offset + page_size]
+        id_order = [item["survey_id"] for item in window]
+        survey_by_id = {
+            s.id: s for s in queryset.filter(id__in=id_order).select_related("owner")
+        }
+        filled_counts = self.mapper.get_filled_counts(id_order)
+
+        items = []
+        for item in window:
+            survey = survey_by_id.get(item["survey_id"])
+            if not survey:
+                continue
+            items.append(
+                self._to_task_card(
+                    survey,
+                    filled_counts.get(survey.id, 0),
+                    match_score=float(item.get("score", 0.0)),
+                    match_reason=item.get("reason", ""),
+                )
+            )
+        return items
 
     def _get_summary(self):
         queryset = self.mapper.base_queryset().filter(status__in=self.STATUS_LIVE_INTERNAL)
@@ -117,32 +152,33 @@ class TaskHallService:
             "page_size": filters.get("page_size", 20),
         }
 
-    def _ordering_for_sort(self, sort):
-        if sort == "reward_desc":
-            return ("-reward_points", "-created_at")
-        if sort == "ending":
-            return ("deadline", "-created_at")
-        if sort == "newest":
-            return ("-created_at",)
-        if sort == "recommend":
-            return ("-reward_points", "difficulty", "-created_at")
-        return ("-created_at",)
-
-    def _to_task_card(self, survey, filled_count=0):
+    def _to_task_card(self, survey, filled_count=0, match_score=None, match_reason=""):
         difficulty = survey.difficulty or 3
         reward = survey.reward_points or 0
-        ratio = reward / difficulty if difficulty else 0
-        if ratio >= 1.5:
-            match_level = "high"
-        elif ratio >= 1:
-            match_level = "medium"
-        else:
-            match_level = "low"
 
         target = survey.target or 0
         status = "active" if survey.status in self.STATUS_LIVE_INTERNAL else "closed"
         if target and filled_count >= target:
             status = "full"
+
+        if match_score is None:
+            ratio = reward / difficulty if difficulty else 0
+            if ratio >= 1.5:
+                match_level = "high"
+            elif ratio >= 1:
+                match_level = "medium"
+            else:
+                match_level = "low"
+            match_reason = match_reason or ""
+        else:
+            if match_score >= 0.45:
+                match_level = "high"
+            elif match_score >= 0.2:
+                match_level = "medium"
+            else:
+                match_level = "low"
+            if not match_reason:
+                match_reason = "基于你的标签偏好推荐"
 
         return {
             "id": self._public_survey_id(survey.id),
@@ -158,7 +194,7 @@ class TaskHallService:
             "deadline": self._iso_str(survey.deadline) if survey.deadline else None,
             "status": status,
             "match_level": match_level,
-            "match_reason": "",
+            "match_reason": match_reason,
         }
 
     def _public_survey_id(self, survey_id):
