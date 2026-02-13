@@ -1,5 +1,5 @@
 {
-  "api_key": "your_api_key_here",
-  "model": "Qwen/Qwen3-Next-80B-A3B-Instruct",
-  "base_url": "https://api.siliconflow.cn/v1/chat/completions"
+  "api_key": "sk-wbhkolcggjkofeocqhduniajvugivxrfzqqdyuiniqzhfbkm",
+  "model": "Qwen/Qwen3-Embedding-4B",
+  "base_url": "https://api.siliconflow.com/v1/embeddings"
 }
