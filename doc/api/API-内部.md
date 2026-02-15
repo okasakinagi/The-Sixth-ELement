@@ -54,6 +54,11 @@
 **任务大厅集成说明**
 - 描述：任务大厅（Task Hall）的初次展示与“换一批”均应优先调用内部推荐接口 `/api/v1/internal/recommend`（或通过服务层 `SimilarityService.recommend_surveys_for_user`）来获取个性化推荐。前端在收到推荐列表后按推荐顺序加载问卷卡片；若内部推荐失败（请求异常或返回为空），回退到原始未个性化列表示例（按发布时间/其他策略）。
 
+- 可配置开关：为了便于后台快速切换推荐策略，系统新增环境/配置项 `RECOMMENDATION_MODE`（位于 `module/survey_app/settings.py`），可取值：
+   - `personalized`（默认）：按相似度打分并返回最优候选；
+   - `random`：纯随机抽取问卷（不计算相似度）；
+   修改该配置后需重启服务以生效。此开关使后台能在性能/质量权衡时快速切换实现。
+
 **关于“始终为 user 重算”的消耗估算与建议**
 - 背景：当前实现中对 `user` 类型的向量生成在 `/vector/generate` 被设计为强制重算；`/similarity/compute` 也会在计算前强制重算 user 与 survey 向量。因此当推荐/计算在同步请求路径（用户触发且实时等待返回）中使用时，会带来额外计算与 IO 开销。
 
