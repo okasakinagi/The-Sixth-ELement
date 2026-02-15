@@ -140,11 +140,25 @@ class SimilarityManager:
                 return {}
             with config_path.open("r", encoding="utf-8") as f:
                 data = json.load(f)
-            cfg = {
+            if not isinstance(data, dict):
+                SimilarityManager._AI_CONFIG_CACHE = {}
+                return {}
+
+            # Backward compatibility: old flat fields remain supported.
+            flat = {
                 "api_key": str(data.get("api_key") or "").strip(),
                 "base_url": str(data.get("base_url") or "").strip(),
                 "model": str(data.get("model") or "").strip(),
             }
+            embedding_raw = data.get("embedding")
+            if isinstance(embedding_raw, dict):
+                cfg = {
+                    "api_key": str(embedding_raw.get("api_key") or flat["api_key"]).strip(),
+                    "base_url": str(embedding_raw.get("base_url") or flat["base_url"]).strip(),
+                    "model": str(embedding_raw.get("model") or flat["model"]).strip(),
+                }
+            else:
+                cfg = flat
             SimilarityManager._AI_CONFIG_CACHE = cfg
             return cfg
         except Exception:

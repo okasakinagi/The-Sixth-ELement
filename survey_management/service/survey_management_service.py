@@ -438,20 +438,32 @@ class SurveyManagementService:
         return normalized
 
     def _call_siliconflow(self, prompt, question_count):
-        config = self._load_ai_config()
-        api_key = config.get("api_key") or os.environ.get("SILICONFLOW_API_KEY")
+        config = self._load_ai_config().get("survey_generation", {})
+        api_key = (
+            config.get("api_key")
+            or os.environ.get("SURVEY_GENERATION_API_KEY")
+            or os.environ.get("SILICONFLOW_API_KEY")
+        )
         if not api_key:
             raise SurveyManagementError(500, "SILICONFLOW_API_KEY not configured")
-        base_url = config.get("base_url") or os.environ.get(
-            "SILICONFLOW_BASE_URL",
-            "https://api.siliconflow.cn/v1/chat/completions",
+        base_url = (
+            config.get("base_url")
+            or os.environ.get("SURVEY_GENERATION_BASE_URL")
+            or os.environ.get(
+                "SILICONFLOW_BASE_URL",
+                "https://api.siliconflow.cn/v1/chat/completions",
+            )
         )
         normalized_base = base_url.rstrip("/")
         if normalized_base.endswith("/v1"):
             base_url = f"{normalized_base}/chat/completions"
         elif "chat/completions" not in normalized_base:
             base_url = normalized_base
-        model = config.get("model") or os.environ.get("SILICONFLOW_MODEL")
+        model = (
+            config.get("model")
+            or os.environ.get("SURVEY_GENERATION_MODEL")
+            or os.environ.get("SILICONFLOW_MODEL")
+        )
         if not model:
             raise SurveyManagementError(500, "SILICONFLOW_MODEL not configured")
 
@@ -524,18 +536,43 @@ class SurveyManagementService:
         project_root = Path(__file__).resolve().parents[2]
         config_path = project_root / "deploy" / "ai_config.json"
         if not config_path.exists():
-            return {}
+            return {"survey_generation": {}, "embedding": {}}
         try:
             content = config_path.read_text(encoding="utf-8")
             data = json.loads(content)
         except (OSError, json.JSONDecodeError):
-            return {}
+            return {"survey_generation": {}, "embedding": {}}
         if not isinstance(data, dict):
-            return {}
-        return {
+            return {"survey_generation": {}, "embedding": {}}
+
+        # Backward compatibility: if old flat fields exist, treat them as defaults.
+        flat = {
             "api_key": str(data.get("api_key") or "").strip(),
             "model": str(data.get("model") or "").strip(),
             "base_url": str(data.get("base_url") or "").strip(),
+        }
+
+        survey_cfg_raw = data.get("survey_generation")
+        survey_cfg = flat.copy()
+        if isinstance(survey_cfg_raw, dict):
+            survey_cfg = {
+                "api_key": str(survey_cfg_raw.get("api_key") or survey_cfg["api_key"]).strip(),
+                "model": str(survey_cfg_raw.get("model") or survey_cfg["model"]).strip(),
+                "base_url": str(survey_cfg_raw.get("base_url") or survey_cfg["base_url"]).strip(),
+            }
+
+        embedding_cfg_raw = data.get("embedding")
+        embedding_cfg = flat.copy()
+        if isinstance(embedding_cfg_raw, dict):
+            embedding_cfg = {
+                "api_key": str(embedding_cfg_raw.get("api_key") or embedding_cfg["api_key"]).strip(),
+                "model": str(embedding_cfg_raw.get("model") or embedding_cfg["model"]).strip(),
+                "base_url": str(embedding_cfg_raw.get("base_url") or embedding_cfg["base_url"]).strip(),
+            }
+
+        return {
+            "survey_generation": survey_cfg,
+            "embedding": embedding_cfg,
         }
 
     def _extract_json(self, text):
