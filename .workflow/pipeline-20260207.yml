@@ -3,10 +3,8 @@ name: pipeline-20260207
 displayName: pipeline-20260207
 triggers:
   trigger: auto
-  push:
-    branches:
-      precise:
-        - main
+  schedule:
+    - cron: '* * 8 * * ? *'
 stages:
   - name: stage-532932c6
     displayName: 更新部署服务器
