@@ -3,70 +3,25 @@
  * 用于任务大厅页面的 API 调用
  */
 
-const API_BASE_URL = '/api/v1';
+import { get, post } from './apiClient'
 
 /**
- * 获取认证Token
+ * taskHall API - 使用统一的 `apiClient` 以便统一处理 401、token 清理与重定向
  */
-function getAuthToken() {
-  return localStorage.getItem('access_token');
-}
-
-async function parseJsonResponse(response) {
-  const raw = await response.text();
-  if (!raw) {
-    return null;
-  }
-  try {
-    return JSON.parse(raw);
-  } catch (error) {
-    throw new Error('服务返回了非 JSON 内容');
-  }
-}
 
 /**
  * 获取任务大厅概览
  * GET /task-hall/overview
  */
-export async function getTaskHallOverview() {
-  const token = getAuthToken();
-  if (!token) {
-    throw new Error('未登录，请先登录');
-  }
-
-  const response = await fetch(`${API_BASE_URL}/task-hall/overview`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    if (response.status === 401) {
-      throw new Error('登录已过期，请重新登录');
-    }
-    const error = await parseJsonResponse(response);
-    throw new Error(error?.error || '获取任务大厅概览失败');
-  }
-
-  const data = await parseJsonResponse(response);
-  if (!data) {
-    throw new Error('服务返回空内容');
-  }
-  return data;
+export async function getTaskHallOverview(router = null) {
+  return await get('/task-hall/overview', router)
 }
 
 /**
  * 获取任务列表
  * GET /task-hall/tasks
  */
-export async function getTaskHallTasks(params = {}) {
-  const token = getAuthToken();
-  if (!token) {
-    throw new Error('未登录，请先登录');
-  }
-
+export async function getTaskHallTasks(params = {}, router = null) {
   const queryParams = new URLSearchParams();
   if (params.keyword) queryParams.append('keyword', params.keyword);
   if (params.type) queryParams.append('type', params.type);
@@ -84,72 +39,16 @@ export async function getTaskHallTasks(params = {}) {
   if (params.page) queryParams.append('page', String(params.page));
   if (params.page_size) queryParams.append('page_size', String(params.page_size));
 
-  const url = `${API_BASE_URL}/task-hall/tasks${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
-
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    if (response.status === 401) {
-      throw new Error('登录已过期，请重新登录');
-    }
-    if (response.status === 422) {
-      throw new Error('参数错误，请检查筛选条件');
-    }
-    const error = await parseJsonResponse(response);
-    throw new Error(error?.error || '获取任务列表失败');
-  }
-
-  const data = await parseJsonResponse(response);
-  if (!data) {
-    throw new Error('服务返回空内容');
-  }
-  return data;
+  const path = `/task-hall/tasks${queryParams.toString() ? '?' + queryParams.toString() : ''}`
+  return await get(path, router)
 }
 
 /**
  * 换一批任务
  * POST /task-hall/batch/refresh
  */
-export async function refreshTaskHallBatch(excludeTaskIds = [], batchSize = 15) {
-  const token = getAuthToken();
-  if (!token) {
-    throw new Error('未登录，请先登录');
-  }
-
-  const response = await fetch(`${API_BASE_URL}/task-hall/batch/refresh`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      exclude_task_ids: excludeTaskIds,
-      batch_size: batchSize,
-    }),
-  });
-
-  if (!response.ok) {
-    if (response.status === 401) {
-      throw new Error('登录已过期，请重新登录');
-    }
-    if (response.status === 422) {
-      throw new Error('参数错误，请检查请求内容');
-    }
-    const error = await parseJsonResponse(response);
-    throw new Error(error?.error || '换一批任务失败');
-  }
-
-  const data = await parseJsonResponse(response);
-  if (!data) {
-    throw new Error('服务返回空内容');
-  }
-  return data;
+export async function refreshTaskHallBatch(excludeTaskIds = [], batchSize = 15, router = null) {
+  return await post('/task-hall/batch/refresh', { exclude_task_ids: excludeTaskIds, batch_size: batchSize }, router)
 }
 
 
@@ -157,30 +56,8 @@ export async function refreshTaskHallBatch(excludeTaskIds = [], batchSize = 15) 
  * 标记当前用户对某个问卷不感兴趣（后端会据此降低该问卷相关 tag 的权重）
  * POST /internal/similarity/dismiss
  */
-export async function dismissSurvey(surveyId) {
-  const token = getAuthToken();
-  if (!token) {
-    throw new Error('未登录，请先登录');
-  }
-
-  const response = await fetch(`${API_BASE_URL}/internal/similarity/dismiss`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ survey_id: surveyId }),
-  });
-
-  if (!response.ok) {
-    if (response.status === 401) {
-      throw new Error('登录已过期，请重新登录');
-    }
-    const error = await parseJsonResponse(response);
-    throw new Error(error?.error || '请求失败');
-  }
-
-  return await parseJsonResponse(response);
+export async function dismissSurvey(surveyId, router = null) {
+  return await post('/internal/similarity/dismiss', { survey_id: surveyId }, router)
 }
 
 
@@ -188,28 +65,6 @@ export async function dismissSurvey(surveyId) {
  * 填写页面放弃填写时调用，减少用户-问卷相关 tag 权重
  * POST /internal/similarity/abandon
  */
-export async function abandonBySurvey(surveyId) {
-  const token = getAuthToken();
-  if (!token) {
-    throw new Error('未登录，请先登录');
-  }
-
-  const response = await fetch(`${API_BASE_URL}/internal/similarity/abandon`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ survey_id: surveyId }),
-  });
-
-  if (!response.ok) {
-    if (response.status === 401) {
-      throw new Error('登录已过期，请重新登录');
-    }
-    const error = await parseJsonResponse(response);
-    throw new Error(error?.error || '请求失败');
-  }
-
-  return await parseJsonResponse(response);
+export async function abandonBySurvey(surveyId, router = null) {
+  return await post('/internal/similarity/abandon', { survey_id: surveyId }, router)
 }
