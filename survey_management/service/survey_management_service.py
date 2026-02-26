@@ -41,8 +41,12 @@ class SurveyManagementService:
             if not status_list:
                 raise SurveyManagementError(422, "invalid status")
 
-        surveys = self.mapper.list_surveys(user, status_list=status_list, keyword=keyword)
-        completed_counts = self.mapper.get_completed_counts([survey.id for survey in surveys])
+        surveys = self.mapper.list_surveys(
+            user, status_list=status_list, keyword=keyword
+        )
+        completed_counts = self.mapper.get_completed_counts(
+            [survey.id for survey in surveys]
+        )
 
         items = []
         for survey in surveys:
@@ -52,7 +56,9 @@ class SurveyManagementService:
 
     def get_summary(self, user):
         surveys = self.mapper.list_surveys(user)
-        completed_counts = self.mapper.get_completed_counts([survey.id for survey in surveys])
+        completed_counts = self.mapper.get_completed_counts(
+            [survey.id for survey in surveys]
+        )
         summary = {"draft_count": 0, "live_count": 0, "ended_count": 0}
         for survey in surveys:
             completed = completed_counts.get(survey.id, survey.completed or 0)
@@ -133,7 +139,15 @@ class SurveyManagementService:
         survey.publish_cost_points = budget_points
         survey.status = "published"
         survey.updated_at = timezone.now()
-        survey.save(update_fields=["target", "publish_cost_points", "reward_points", "status", "updated_at"])
+        survey.save(
+            update_fields=[
+                "target",
+                "publish_cost_points",
+                "reward_points",
+                "status",
+                "updated_at",
+            ]
+        )
 
         if budget_points > 0:
             user.points -= budget_points
@@ -149,7 +163,10 @@ class SurveyManagementService:
         return {
             "id": self._public_survey_id(survey.id),
             "status": "live",
-            "published_at": timezone.now().astimezone(dt_timezone.utc).isoformat().replace("+00:00", "Z"),
+            "published_at": timezone.now()
+            .astimezone(dt_timezone.utc)
+            .isoformat()
+            .replace("+00:00", "Z"),
         }
 
     def create_survey(self, user, data):
@@ -286,7 +303,10 @@ class SurveyManagementService:
         survey.save(update_fields=["updated_at"])
         return {
             "draft_id": self._public_survey_id(survey.id),
-            "questions": [self._question_payload(q) for q in self.mapper.get_questions(questionnaire.id)],
+            "questions": [
+                self._question_payload(q)
+                for q in self.mapper.get_questions(questionnaire.id)
+            ],
         }
 
     def _survey_list_payload(self, survey, completed):
@@ -438,39 +458,34 @@ class SurveyManagementService:
         return normalized
 
     def _call_siliconflow(self, prompt, question_count):
-        config = self._load_ai_config().get("survey_generation", {})
-        api_key = (
-            config.get("api_key")
-            or os.environ.get("SURVEY_GENERATION_API_KEY")
-            or os.environ.get("SILICONFLOW_API_KEY")
-        )
+        file_cfg = self._load_ai_config().get("survey_generation", {})
+        api_key = os.getenv("GENERATION_API_KEY", "").strip()
         if not api_key:
-            raise SurveyManagementError(500, "SILICONFLOW_API_KEY not configured")
-        base_url = (
-            config.get("base_url")
-            or os.environ.get("SURVEY_GENERATION_BASE_URL")
-            or os.environ.get(
-                "SILICONFLOW_BASE_URL",
-                "https://api.siliconflow.cn/v1/chat/completions",
-            )
-        )
+            api_key = str(file_cfg.get("api_key") or "").strip()
+        if not api_key:
+            raise SurveyManagementError(500, "GENERATION_API_KEY not configured")
+
+        base_url = os.getenv("GENERATION_BASE_URL", "").strip()
+        if not base_url:
+            base_url = str(
+                file_cfg.get("base_url")
+                or "https://api.siliconflow.cn/v1/chat/completions"
+            ).strip()
         normalized_base = base_url.rstrip("/")
         if normalized_base.endswith("/v1"):
             base_url = f"{normalized_base}/chat/completions"
         elif "chat/completions" not in normalized_base:
             base_url = normalized_base
-        model = (
-            config.get("model")
-            or os.environ.get("SURVEY_GENERATION_MODEL")
-            or os.environ.get("SILICONFLOW_MODEL")
-        )
+        model = os.getenv("GENERATION_MODEL", "").strip()
         if not model:
-            raise SurveyManagementError(500, "SILICONFLOW_MODEL not configured")
+            model = str(file_cfg.get("model") or "").strip()
+        if not model:
+            raise SurveyManagementError(500, "GENERATION_MODEL not configured")
 
         instruction = (
             "You are a survey designer. Return JSON only. "
-            "Output format: {\"questions\":[{\"type\":\"single|multi|text|multi-text\","
-            "\"title\":\"...\",\"options\":[...],\"required\":true}]}. "
+            'Output format: {"questions":[{"type":"single|multi|text|multi-text",'
+            '"title":"...","options":[...],"required":true}]}. '
             f"Generate {question_count} questions."
         )
 
@@ -556,18 +571,30 @@ class SurveyManagementService:
         survey_cfg = flat.copy()
         if isinstance(survey_cfg_raw, dict):
             survey_cfg = {
-                "api_key": str(survey_cfg_raw.get("api_key") or survey_cfg["api_key"]).strip(),
-                "model": str(survey_cfg_raw.get("model") or survey_cfg["model"]).strip(),
-                "base_url": str(survey_cfg_raw.get("base_url") or survey_cfg["base_url"]).strip(),
+                "api_key": str(
+                    survey_cfg_raw.get("api_key") or survey_cfg["api_key"]
+                ).strip(),
+                "model": str(
+                    survey_cfg_raw.get("model") or survey_cfg["model"]
+                ).strip(),
+                "base_url": str(
+                    survey_cfg_raw.get("base_url") or survey_cfg["base_url"]
+                ).strip(),
             }
 
         embedding_cfg_raw = data.get("embedding")
         embedding_cfg = flat.copy()
         if isinstance(embedding_cfg_raw, dict):
             embedding_cfg = {
-                "api_key": str(embedding_cfg_raw.get("api_key") or embedding_cfg["api_key"]).strip(),
-                "model": str(embedding_cfg_raw.get("model") or embedding_cfg["model"]).strip(),
-                "base_url": str(embedding_cfg_raw.get("base_url") or embedding_cfg["base_url"]).strip(),
+                "api_key": str(
+                    embedding_cfg_raw.get("api_key") or embedding_cfg["api_key"]
+                ).strip(),
+                "model": str(
+                    embedding_cfg_raw.get("model") or embedding_cfg["model"]
+                ).strip(),
+                "base_url": str(
+                    embedding_cfg_raw.get("base_url") or embedding_cfg["base_url"]
+                ).strip(),
             }
 
         return {
