@@ -564,7 +564,7 @@ class SurveyManagementService:
         return questions
 
     def evaluate_survey(self, user, survey_id):
-        survey = self._get_survey(survey_id)
+        survey = self.mapper.get_survey(survey_id)
         if survey.owner != user:
             raise SurveyManagementError(403, "not your survey")
 
