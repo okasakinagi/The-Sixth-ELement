@@ -24,7 +24,6 @@ const publishTarget = ref(null)
 const publishConfig = ref({
   rewardPoints: 3,
   targetCount: 30,
-  promptConstraint: '',
   speedBoostPoints: 0,
   estimatedMinutes: 5,
   difficulty: 1.0
@@ -99,7 +98,6 @@ const openPublishConfig = async (survey) => {
   publishConfig.value = {
     rewardPoints: 3,
     targetCount: 30,
-    promptConstraint: '',
     speedBoostPoints: 0,
     estimatedMinutes: 5,
     difficultyLevel: 3
@@ -415,11 +413,7 @@ onUnmounted(() => {
           <input v-model.number="publishConfig.estimatedMinutes" type="number" min="1" max="60" />
           <span class="hint">填写问卷需要的时间，该时间将由系统根据问卷结构智能评估，通常较为准确。建议保持默认值，以保障填写者体验与积分公平性。如有特殊情况可自行调整。</span>
         </div>
-        <div class="form-group">
-          <label>人群锁定（可选）</label>
-          <textarea v-model="publishConfig.promptConstraint" rows="3" placeholder="例如：只想要大一到大三女生的数据、不需要研究生和博士生的数据等..."></textarea>
-          <span class="hint">我们的AI助手会根据您的需求智能投放问卷</span>
-        </div>
+
         <div class="form-group">
           <label>积分加速（可选）</label>
           <div class="boost-input-wrapper">
