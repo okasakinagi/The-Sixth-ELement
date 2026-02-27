@@ -109,6 +109,7 @@ const state = reactive({
   showTemplateGuide: false,
   templateInput: DEFAULT_TEMPLATE,
   exampleInput: DEFAULT_EXAMPLE,
+  source: 'manual', // 默认来源，'manual' 或 'ai'
 })
 
 const formatTime = (value) => {
@@ -160,6 +161,7 @@ const loadDraft = () => {
       const draft = JSON.parse(raw)
       state.title = draft.title || state.title
       state.description = draft.description || ''
+      state.source = draft.source || 'manual'
       if (route.query.ai === '1' && Array.isArray(draft.questions) && draft.questions.length > 0) {
         setQuestions(draft.questions)
         return
@@ -488,7 +490,7 @@ const parseQuestionCount = (input) => {
     </header>
 
     <!-- AI生成模板区域 - 移到页面中上方 -->
-    <section v-if="state.questions.length === 0" class="ai-template-section">
+    <section v-if="state.questions.length === 0 && state.source === 'ai'" class="ai-template-section">
       <div class="ai-template-header">
         <h2>🎯 用 AI 生成问卷草案</h2>
         <p class="ai-hint">在左侧描述需求，或参考右侧示例进行修改</p>
