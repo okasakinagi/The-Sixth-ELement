@@ -22,5 +22,11 @@ urlpatterns = [
     path("surveys/<str:survey_id>", survey_management_controller.survey_detail_handler),
     path("surveys/<str:survey_id>/pause", survey_management_controller.pause_survey),
     path("surveys/<str:survey_id>/resume", survey_management_controller.resume_survey),
-    path("surveys/<str:survey_id>/publish", survey_management_controller.publish_survey),
+    path(
+        "surveys/<str:survey_id>/publish", survey_management_controller.publish_survey
+    ),
+    path(
+        "surveys/<str:survey_id>/evaluate",
+        survey_management_controller.survey_evaluate_handler,
+    ),
 ]

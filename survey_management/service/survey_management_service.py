@@ -135,6 +135,20 @@ class SurveyManagementService:
         if not survey.reward_points and budget_points > 0:
             survey.reward_points = max(1, budget_points // target) if target else 0
 
+        frontend_estimated = data.get("estimated_minutes")
+        if frontend_estimated is not None:
+            try:
+                survey.estimated_minutes = int(frontend_estimated)
+            except (TypeError, ValueError):
+                pass
+
+        frontend_difficulty = data.get("difficulty")
+        if frontend_difficulty is not None:
+            try:
+                survey.difficulty = int(frontend_difficulty)
+            except (TypeError, ValueError):
+                pass
+
         survey.target = target
         survey.publish_cost_points = budget_points
         survey.status = "published"
@@ -146,6 +160,8 @@ class SurveyManagementService:
                 "reward_points",
                 "status",
                 "updated_at",
+                "estimated_minutes",
+                "difficulty",
             ]
         )
 
@@ -547,6 +563,137 @@ class SurveyManagementService:
             raise SurveyManagementError(502, "llm output missing questions")
         return questions
 
+    def evaluate_survey(self, user, survey_id):
+        survey = self._get_survey(survey_id)
+        if survey.owner != user:
+            raise SurveyManagementError(403, "not your survey")
+
+        questionnaire = survey.active_questionnaire
+        if not questionnaire:
+            raise SurveyManagementError(404, "questionnaire not found")
+
+        questions = questionnaire.question_set.all().order_by("order_no", "id")
+        fallback_time = max(1, len(questions) // 2)  # 简单回退规则：每2题1分钟
+        if not questions.exists():
+            return {"difficulty_level": 1, "estimated_time_minutes": 1}
+
+        # Prepare survey content for AI
+        survey_content = f"Title: {survey.title}\n"
+        survey_content += f"Description: {survey.description}\n\n"
+        survey_content += "Questions:\n"
+
+        for q in questions:
+            survey_content += f"- [{q.type}] {q.title}\n"
+            if q.type in ["single", "multi"]:
+                options = q.questionoption_set.all().order_by("order_no", "id")
+                for opt in options:
+                    survey_content += f"  * {opt.label}\n"
+
+        try:
+            return self._call_siliconflow_for_evaluation(survey_content)
+        except Exception as e:
+            # 异常与容错机制：AI调用失败或返回值异常时，使用基础规则
+            return {"difficulty_level": 3, "estimated_time_minutes": fallback_time}
+
+    def _call_siliconflow_for_evaluation(self, survey_content):
+        file_cfg = self._load_ai_config().get("difficulties", {})
+        api_key = os.getenv("DIFFICULTIES_API_KEY", "").strip()
+        if not api_key:
+            api_key = str(file_cfg.get("api_key") or "").strip()
+        if not api_key:
+            raise SurveyManagementError(500, "DIFFICULTIES_API_KEY not configured")
+
+        base_url = os.getenv("DIFFICULTIES_BASE_URL", "").strip()
+        if not base_url:
+            base_url = str(
+                file_cfg.get("base_url")
+                or "https://api.siliconflow.cn/v1/chat/completions"
+            ).strip()
+        normalized_base = base_url.rstrip("/")
+        if normalized_base.endswith("/v1"):
+            base_url = f"{normalized_base}/chat/completions"
+        elif "chat/completions" not in normalized_base:
+            base_url = normalized_base
+
+        model = os.getenv("DIFFICULTIES_MODEL", "").strip()
+        if not model:
+            model = str(file_cfg.get("model") or "").strip()
+        if not model:
+            raise SurveyManagementError(500, "DIFFICULTIES_MODEL not configured")
+
+        instruction = (
+            "You are an expert survey evaluator. Analyze the provided survey content and estimate its difficulty and completion time. "
+            "Difficulty level must be an integer between 1 (very easy) and 5 (very hard). "
+            "Estimated time must be an integer representing the average time to complete the survey in minutes. "
+            "Return ONLY a JSON object with the keys 'difficulty_level' and 'estimated_time_minutes'. "
+            'Example: {"difficulty_level": 3, "estimated_time_minutes": 4}'
+        )
+
+        payload = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": instruction},
+                {"role": "user", "content": survey_content},
+            ],
+            "temperature": 0.3,
+        }
+        req = url_request.Request(
+            base_url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+
+        try:
+            with url_request.urlopen(req, timeout=30) as resp:
+                body = resp.read().decode("utf-8")
+        except url_error.HTTPError as exc:
+            error_body = exc.read().decode("utf-8") if exc.fp else str(exc)
+            raise SurveyManagementError(502, f"llm error: {error_body}")
+        except url_error.URLError as exc:
+            raise SurveyManagementError(502, f"llm error: {str(exc)}")
+
+        try:
+            data = json.loads(body)
+        except json.JSONDecodeError:
+            raise SurveyManagementError(502, "llm returned invalid response")
+
+        text = None
+        if isinstance(data, dict):
+            choices = data.get("choices") or []
+            if choices:
+                first = choices[0] or {}
+                message = first.get("message") or {}
+                text = message.get("content") or first.get("text")
+        if not text:
+            raise SurveyManagementError(502, "llm returned empty output")
+
+        json_text = self._extract_json(text)
+        try:
+            payload = json.loads(json_text)
+        except json.JSONDecodeError:
+            raise SurveyManagementError(502, "llm returned non-json output")
+
+        difficulty = payload.get("difficulty_level")
+        estimated_minutes = payload.get("estimated_time_minutes")
+
+        if difficulty is None or estimated_minutes is None:
+            raise SurveyManagementError(502, "llm output missing required fields")
+
+        try:
+            difficulty = int(difficulty)
+            estimated_minutes = int(estimated_minutes)
+        except (ValueError, TypeError):
+            raise SurveyManagementError(502, "llm output fields have invalid types")
+
+        return {
+            "difficulty_level": max(1, min(5, difficulty)),
+            "estimated_time_minutes": max(1, estimated_minutes),
+        }
+
     def _load_ai_config(self):
         project_root = Path(__file__).resolve().parents[2]
         config_path = project_root / "deploy" / "ai_config.json"
@@ -597,9 +744,25 @@ class SurveyManagementService:
                 ).strip(),
             }
 
+        difficulties_cfg_raw = data.get("diffculties")
+        difficulties_cfg = flat.copy()
+        if isinstance(difficulties_cfg_raw, dict):
+            difficulties_cfg = {
+                "api_key": str(
+                    difficulties_cfg_raw.get("api_key") or difficulties_cfg["api_key"]
+                ).strip(),
+                "model": str(
+                    difficulties_cfg_raw.get("model") or difficulties_cfg["model"]
+                ).strip(),
+                "base_url": str(
+                    difficulties_cfg_raw.get("base_url") or difficulties_cfg["base_url"]
+                ).strip(),
+            }
+
         return {
             "survey_generation": survey_cfg,
             "embedding": embedding_cfg,
+            "difficulties": difficulties_cfg,
         }
 
     def _extract_json(self, text):

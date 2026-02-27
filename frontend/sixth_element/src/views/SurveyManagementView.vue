@@ -7,7 +7,8 @@ import {
   deleteSurvey,
   pauseSurvey,
   resumeSurvey,
-  publishSurvey
+  publishSurvey,
+  evaluateSurvey
 } from '@/utils/surveyManagementApi'
 
 const router = useRouter()
@@ -18,13 +19,15 @@ const showDeleteModal = ref(false)
 const deleteTarget = ref(null)
 const showPublishModal = ref(false)
 const showPublishConfigModal = ref(false)
+const isEvaluating = ref(false)
 const publishTarget = ref(null)
 const publishConfig = ref({
   rewardPoints: 3,
   targetCount: 30,
   promptConstraint: '',
   speedBoostPoints: 0,
-  estimatedMinutes: 5
+  estimatedMinutes: 5,
+  difficulty: 1.0
 })
 
 // 计算建议的加速积分（20%）
@@ -91,16 +94,31 @@ const closePublishModal = () => {
   router.replace({ query: {} })
 }
 
-const openPublishConfig = (survey) => {
+const openPublishConfig = async (survey) => {
   publishTarget.value = survey
   publishConfig.value = {
     rewardPoints: 3,
     targetCount: 30,
     promptConstraint: '',
     speedBoostPoints: 0,
-    estimatedMinutes: 5
+    estimatedMinutes: 5,
+    difficultyLevel: 3
   }
   showPublishConfigModal.value = true
+  
+  try {
+    isEvaluating.value = true
+    const evaluation = await evaluateSurvey(survey.id)
+    publishConfig.value.estimatedMinutes = evaluation.estimated_time_minutes || 5
+    publishConfig.value.difficultyLevel = evaluation.difficulty_level || 3
+    // 自动映射积分
+    publishConfig.value.rewardPoints = publishConfig.value.difficultyLevel
+  } catch (err) {
+    console.error('Failed to evaluate survey:', err)
+    // 评估失败不影响发布，使用默认值
+  } finally {
+    isEvaluating.value = false
+  }
 }
 
 const closePublishConfig = () => {
@@ -116,7 +134,9 @@ const confirmPublish = async () => {
     const boostPoints = publishConfig.value.speedBoostPoints || 0
     await publishSurvey(publishTarget.value.id, {
       budget_points: publishConfig.value.rewardPoints * publishConfig.value.targetCount + boostPoints,
-      target: publishConfig.value.targetCount
+      target: publishConfig.value.targetCount,
+      estimated_minutes: publishConfig.value.estimatedMinutes,
+      difficulty: publishConfig.value.difficultyLevel
     })
     
     // 刷新问卷列表
@@ -367,11 +387,23 @@ onUnmounted(() => {
   <div v-if="showPublishConfigModal" class="modal-backdrop" @click.self="closePublishConfig">
     <div class="modal config-modal">
       <h3>发布问卷配置</h3>
-      <div class="config-form">
+      
+      <div v-if="isEvaluating" class="evaluating-state">
+        <div class="spinner"></div>
+        <p>AI 正在评估问卷难度和预估时间...</p>
+      </div>
+      
+      <div v-else class="config-form">
         <div class="form-group">
-          <label>奖励积分（每份）</label>
-          <input v-model.number="publishConfig.rewardPoints" type="number" min="1" max="10" />
-          <span class="hint">每份问卷给填写者的积分</span>
+          <label>问卷难度与奖励</label>
+          <div class="difficulty-display">
+            <span class="difficulty-stars">
+              <i v-for="n in 5" :key="n" class="star" :class="{ active: n <= publishConfig.difficultyLevel }">★</i>
+            </span>
+            <span class="difficulty-value">{{ publishConfig.difficultyLevel }} 级</span>
+            <span class="reward-points-badge">自动奖励 {{ publishConfig.rewardPoints }} 积分/份</span>
+          </div>
+          <span class="hint">本结果由 系统智能评估，如有明显不合理可提交反馈。</span>
         </div>
         <div class="form-group">
           <label>目标份数</label>
@@ -381,7 +413,7 @@ onUnmounted(() => {
         <div class="form-group">
           <label>预估时间（分钟）</label>
           <input v-model.number="publishConfig.estimatedMinutes" type="number" min="1" max="60" />
-          <span class="hint">填写问卷需要的时间</span>
+          <span class="hint">填写问卷需要的时间，该时间将由系统根据问卷结构智能评估，通常较为准确。建议保持默认值，以保障填写者体验与积分公平性。如有特殊情况可自行调整。</span>
         </div>
         <div class="form-group">
           <label>人群锁定（可选）</label>
@@ -412,8 +444,8 @@ onUnmounted(() => {
         </div>
       </div>
       <div class="modal-actions">
-        <button class="ghost-button" type="button" @click="closePublishConfig">取消</button>
-        <button class="primary-button" type="button" @click="confirmPublish">确认发布</button>
+        <button class="ghost-button" type="button" @click="closePublishConfig" :disabled="isEvaluating">取消</button>
+        <button class="primary-button" type="button" @click="confirmPublish" :disabled="isEvaluating">确认发布</button>
       </div>
     </div>
   </div>
@@ -1008,6 +1040,70 @@ onUnmounted(() => {
 .cost-row.total strong {
   color: #1e4fb4;
   font-size: 18px;
+}
+
+.evaluating-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 0;
+  gap: 16px;
+  color: #415673;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #e5edf8;
+  border-top-color: #1e4fb4;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.difficulty-display {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.difficulty-value {
+  font-size: 18px;
+  font-weight: 600;
+  color: #0d1b37;
+}
+
+.difficulty-stars {
+  display: flex;
+  gap: 4px;
+}
+
+.star {
+  color: #cbd5e1;
+  font-size: 18px;
+  font-style: normal;
+}
+
+.star.active {
+  color: #f59e0b;
+}
+
+.reward-points-badge {
+  margin-left: auto;
+  background: #eef2ff;
+  color: #1e4fb4;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 @media (max-width: 768px) {

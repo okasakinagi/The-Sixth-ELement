@@ -324,3 +324,33 @@ export async function aiGenerateDraftQuestions(draftId, data) {
 
   return await response.json();
 }
+
+/**
+ * 评估问卷难度和预计时间
+ * GET /surveys/{survey_id}/evaluate
+ * @param {string} surveyId 问卷ID
+ */
+export async function evaluateSurvey(surveyId) {
+  const token = getAuthToken();
+  if (!token) {
+    throw new Error('未登录，请先登录');
+  }
+
+  const response = await fetch(`${API_BASE_URL}/surveys/${surveyId}/evaluate`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      throw new Error('登录已过期，请重新登录');
+    }
+    const error = await response.json();
+    throw new Error(error.error || '评估问卷失败');
+  }
+
+  return await response.json();
+}
