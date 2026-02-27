@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { createSurveyDraft } from '../utils/surveyManagementApi'
 
 const router = useRouter()
 const title = ref('')
@@ -11,18 +12,34 @@ const goBack = () => {
   router.back()
 }
 
-const goDirect = () => {
+const goDirect = async () => {
   if (!canProceed.value) return
-  sessionStorage.setItem(
-    'survey-draft',
-    JSON.stringify({
+  
+  try {
+    // 1. 先调用后端 API 创建草稿，获取 draft_id
+    const created = await createSurveyDraft({
       title: title.value.trim(),
-      description: '',
-      questions: [],
-      source: 'manual',
-    }),
-  )
-  router.push({ name: 'survey-editor' })
+      subtitle: '',
+    })
+    
+    // 2. 将包含 id 的完整数据存入 sessionStorage
+    sessionStorage.setItem(
+      'survey-draft',
+      JSON.stringify({
+        id: created.id,
+        title: title.value.trim(),
+        description: '',
+        questions: [],
+        source: 'manual',
+      }),
+    )
+    
+    // 3. 携带 draft_id 跳转到编辑器
+    router.push({ name: 'survey-editor', query: { draft_id: created.id } })
+  } catch (error) {
+    console.error('创建草稿失败:', error)
+    alert(error.message || '创建草稿失败，请稍后重试')
+  }
 }
 
 const goAi = () => {
