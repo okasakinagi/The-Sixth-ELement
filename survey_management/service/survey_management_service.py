@@ -8,6 +8,7 @@ from urllib import request as url_request
 from django.utils import timezone
 
 from core.models import Questionnaire
+from django.db import transaction
 from survey_management.mapper.survey_management_mapper import SurveyManagementMapper
 
 
@@ -106,6 +107,56 @@ class SurveyManagementService:
         survey.save(update_fields=["status"])
         return {"id": self._public_survey_id(survey.id), "status": "live"}
 
+    def cancel_publish(self, user, survey_id):
+        survey = self.mapper.get_owner_survey(user, survey_id)
+        if not survey:
+            raise SurveyManagementError(404, "survey not found")
+        # Only live/paused surveys can be cancelled
+        if survey.status not in self.STATUS_LIVE_INTERNAL and survey.status != "paused":
+            raise SurveyManagementError(409, "survey cannot be cancelled")
+
+        # compute completed counts and refunds
+        completed_counts = self.mapper.get_completed_counts([survey.id])
+        completed = completed_counts.get(survey.id, survey.completed or 0)
+
+        total_paid = survey.publish_cost_points or 0
+        reward = survey.reward_points or 0
+        target = survey.target or 0
+
+        spent = completed * reward
+        remaining = max(0, total_paid - spent)
+
+        # infer speed boost portion if present: assume total_paid = reward*target + speed_boost
+        inferred_speed_boost = 0
+        if target:
+            inferred_speed_boost = max(0, total_paid - (reward * target))
+
+        # refund should not include inferred speed boost
+        refund = max(0, remaining - inferred_speed_boost)
+
+        # update survey status to ended (keep data for view/edit)
+        survey.status = "ended"
+        survey.updated_at = timezone.now()
+        survey.save(update_fields=["status", "updated_at"])
+
+        # refund points to owner if any
+        if refund > 0:
+            user.points += refund
+            user.save(update_fields=["points"])
+            self.mapper.create_points_log(
+                user=user,
+                delta=refund,
+                reason="取消发布退还",
+                ref_type="survey",
+                ref_id=survey.id,
+            )
+
+        return {
+            "id": self._public_survey_id(survey.id),
+            "status": "ended",
+            "refund": refund,
+        }
+
     def publish_survey(self, user, survey_id, data):
         survey = self.mapper.get_owner_survey(user, survey_id)
         if not survey:
@@ -151,19 +202,30 @@ class SurveyManagementService:
 
         survey.target = target
         survey.publish_cost_points = budget_points
+        # Ensure survey and its active questionnaire are updated atomically
         survey.status = "published"
         survey.updated_at = timezone.now()
-        survey.save(
-            update_fields=[
-                "target",
-                "publish_cost_points",
-                "reward_points",
-                "status",
-                "updated_at",
-                "estimated_minutes",
-                "difficulty",
-            ]
-        )
+        try:
+            with transaction.atomic():
+                survey.save(
+                    update_fields=[
+                        "target",
+                        "publish_cost_points",
+                        "reward_points",
+                        "status",
+                        "updated_at",
+                        "estimated_minutes",
+                        "difficulty",
+                    ]
+                )
+                # If there is an active questionnaire, mark it as published as well
+                q = survey.active_questionnaire
+                if q and q.status != "published":
+                    q.status = "published"
+                    q.save(update_fields=["status"])
+        except Exception:
+            # Bubble up as management error
+            raise SurveyManagementError(500, "failed to publish survey")
 
         if budget_points > 0:
             user.points -= budget_points

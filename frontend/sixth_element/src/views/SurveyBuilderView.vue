@@ -1,7 +1,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { aiGenerateDraftQuestions, createSurveyDraft } from '../utils/surveyManagementApi'
+import { aiGenerateDraftQuestions, createSurveyDraft, getSurveyDetail, updateDraft } from '../utils/surveyManagementApi'
 
 const router = useRouter()
 const route = useRoute()
@@ -110,7 +110,12 @@ const state = reactive({
   templateInput: DEFAULT_TEMPLATE,
   exampleInput: DEFAULT_EXAMPLE,
   source: 'manual', // 默认来源，'manual' 或 'ai'
+  // 编辑已发布/已结束问卷时显示提示：编辑将另存为新草稿
+  saveAsNewNotice: false,
+  lastSaveWasNew: false,
 })
+
+const saveButtonLabel = computed(() => (state.saveAsNewNotice ? '保存为新问卷' : '保存'))
 
 const formatTime = (value) => {
   if (!value) return ''
@@ -154,7 +159,7 @@ const setQuestions = (questions) => {
   state.questions = normalizeQuestions(questions)
 }
 
-const loadDraft = () => {
+const loadDraft = async () => {
   const raw = sessionStorage.getItem('survey-draft')
   if (raw) {
     try {
@@ -172,13 +177,56 @@ const loadDraft = () => {
   }
 
   if (route.params.id) {
-    state.title = '城市通勤满意度问卷'
-    state.description = '本问卷用于了解城市通勤体验，请根据实际情况填写。'
-    setQuestions([
-      { type: 'single', title: '您常用的通勤方式是？', options: ['地铁', '公交', '自驾', '骑行'], required: true },
-      { type: 'single', title: '通勤时间是否可接受？', options: ['非常可接受', '还可以', '一般', '不可接受'], required: true },
-      { type: 'text', title: '您希望改善的通勤环节是？', options: [], required: false },
-    ])
+    // 尝试从后端加载问卷详情与题目：草稿走 /surveys/drafts/{id}，已发布走 /surveys/{id}/fill
+    try {
+      const detail = await getSurveyDetail(route.params.id)
+      state.title = detail.title || state.title
+      state.description = detail.description || detail.subtitle || state.description
+
+      // 如果源问卷不是草稿，提醒用户编辑将另存为新草稿
+      if (detail.status && detail.status !== 'draft') {
+        state.saveAsNewNotice = true
+      } else {
+        state.saveAsNewNotice = false
+      }
+
+      // 根据状态选择加载题目
+      if (detail.status === 'draft') {
+        const token = localStorage.getItem('access_token')
+        const res = await fetch(`/api/v1/surveys/drafts/${route.params.id}`, {
+          method: 'GET',
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (res.ok) {
+          const data = await res.json()
+          if (Array.isArray(data.questions)) {
+            setQuestions(
+              data.questions.map((q) => ({ id: q.id, type: q.type, title: q.title, options: q.options || [], required: q.required, is_ai: q.is_ai }))
+            )
+            return
+          }
+        }
+      } else {
+        // 已发布问卷，从填报接口加载题目
+        const token = localStorage.getItem('access_token')
+        const res = await fetch(`/api/v1/surveys/${route.params.id}/fill`, {
+          method: 'GET',
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (res.ok) {
+          const data = await res.json()
+          if (Array.isArray(data.questions)) {
+            setQuestions(
+              data.questions.map((q) => ({ id: q.id, type: q.type, title: q.title, options: q.options || [], required: q.required, is_ai: q.is_ai }))
+            )
+            return
+          }
+        }
+      }
+    } catch (err) {
+      // 如果后端加载失败，保持现有草稿/默认行为
+      console.error('加载问卷内容失败:', err)
+    }
   }
 }
 
@@ -272,9 +320,84 @@ const markEdited = (question) => {
   question.isAi = false
 }
 
-const openSaveModal = () => {
-  state.saveModalOpen = true
-  saveDraft()
+const openSaveModal = async () => {
+  // 先保存到后端（若存在草稿 id 或 route params），再打开保存确认/发布弹窗
+  let result = { createdNew: false }
+  try {
+    result = await persistDraftToServer()
+  } catch (err) {
+    console.error('保存草稿到后端时发生错误：', err)
+    result = { createdNew: false }
+  } finally {
+    state.lastSaveWasNew = !!result.createdNew
+    state.saveModalOpen = true
+    saveDraft()
+  }
+}
+
+// 将当前编辑内容序列化为后端预期的 questions 格式
+const buildQuestionsPayload = () => {
+  return state.questions.map((q, idx) => {
+    const base = {
+      order: idx + 1,
+      type: q.type,
+      title: q.title || `问题${idx + 1}`,
+      required: !!q.required,
+    }
+    if (q.type === 'single' || q.type === 'multi' || q.type === 'multi-text') {
+      base.options = Array.isArray(q.options) ? q.options : []
+    } else {
+      base.options = []
+    }
+    return base
+  })
+}
+
+// 持久化草稿到后端：若无草稿 id 则自动创建
+const persistDraftToServer = async () => {
+  let createdNew = false
+  try {
+    const raw = sessionStorage.getItem('survey-draft')
+    const stored = raw ? JSON.parse(raw) : {}
+    let draftId = stored.id || route.params.id
+
+    // 如果当前页面是编辑已有问卷（route.params.id 存在），我们需要确保最终的 draftId 指向一个 draft。
+    // 情况：sessionStorage 中可能已有 id（但指向已发布问卷），因此无论 stored.id 是否存在，若 route.params.id 与 stored.id 不同或 stored.id 为空，都应检查源问卷状态并在必要时创建草稿副本。
+    if (route.params.id) {
+      try {
+        const info = await getSurveyDetail(route.params.id)
+        // 如果 sessionStorage 没有 id，或者 sessionStorage 的 id 就是原始问卷 id（说明未创建草稿），或 info 不是 draft，则创建草稿副本
+        const storedIdMatchesSource = stored.id && stored.id === route.params.id
+        if (!storedIdMatchesSource && info && info.status !== 'draft') {
+          const created = await createSurveyDraft({ title: state.title || info.title || '未命名问卷', subtitle: state.description || info.description || '' })
+          draftId = created.id
+          createdNew = true
+        } else if (!storedIdMatchesSource && info && info.status === 'draft') {
+          // 源问卷本身就是 draft（可能是之前在其它地方创建的），则使用其 id
+          draftId = route.params.id
+        }
+      } catch (err) {
+        // 如果获取详情失败，继续使用现有 draftId（可能会在后续 update 调用中失败并被捕获）
+        console.error('检查源问卷状态失败，继续尝试保存：', err)
+      }
+    }
+
+    const payload = {
+      title: state.title || '',
+      subtitle: state.description || '',
+      questions: buildQuestionsPayload(),
+    }
+
+    // 调用更新草稿 API（若 draftId 指向已发布问卷则后端会返回错误）
+    await updateDraft(draftId, payload)
+
+    // 更新本地 sessionStorage
+    sessionStorage.setItem('survey-draft', JSON.stringify({ ...stored, id: draftId, title: state.title, description: state.description, questions: state.questions }))
+    return { draftId, createdNew }
+  } catch (err) {
+    console.error('保存草稿到后端失败:', err)
+    throw err
+  }
 }
 
 const closeSaveModal = () => {
@@ -486,6 +609,9 @@ const parseQuestionCount = (input) => {
           />
           <span class="status-pill">自动保存</span>
         </div>
+        <div v-if="state.saveAsNewNotice" class="save-notice">
+          注意：当前问卷已发布，编辑内容将另存为新的草稿，不会覆盖已发布版本。
+        </div>
       </div>
     </header>
 
@@ -648,7 +774,7 @@ const parseQuestionCount = (input) => {
       </div>
       <div class="toolbar-right">
         <button class="ghost-button" type="button">预览</button>
-        <button class="primary-button" type="button" @click="openSaveModal">保存</button>
+        <button class="primary-button" type="button" @click="openSaveModal">{{ saveButtonLabel }}</button>
         <div class="add-menu">
           <button class="add-button" type="button" @click="state.addMenuOpen = !state.addMenuOpen">+</button>
           <div v-if="state.addMenuOpen" class="add-panel">
@@ -702,8 +828,10 @@ const parseQuestionCount = (input) => {
 
   <div v-if="state.saveModalOpen" class="modal-backdrop" @click.self="closeSaveModal">
     <div class="modal">
-      <h3>问卷保存成功，是否立即发布？</h3>
-      <p>发布后将进入问卷管理并进行积分结算确认。</p>
+      <h3 v-if="state.lastSaveWasNew">问卷已保存为新的草稿，是否立即发布？</h3>
+      <h3 v-else>问卷保存成功，是否立即发布？</h3>
+      <p v-if="state.lastSaveWasNew">系统已为已发布问卷创建新的草稿并保存当前修改；已发布版本不会被覆盖。</p>
+      <p v-else>发布后将进入问卷管理并进行积分结算确认。</p>
       <div class="modal-actions">
         <button class="ghost-button" type="button" @click="closeSaveModal">继续编辑</button>
         <button class="primary-button" type="button" @click="publishSurvey">发布调查</button>

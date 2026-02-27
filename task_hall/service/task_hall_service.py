@@ -47,6 +47,8 @@ class TaskHallService:
             .exclude(response__user=user)
             .distinct()
         )
+        # 只返回当前有已发布问卷内容的可填写任务
+        queryset = queryset.filter(active_questionnaire__status="published")
         total = queryset.count()
 
         page = max(normalized.get("page", 1), 1)
@@ -69,6 +71,8 @@ class TaskHallService:
             .exclude(response__user=user)
             .distinct()
         )
+        # 只返回当前有已发布问卷内容的可填写任务
+        queryset = queryset.filter(active_questionnaire__status="published")
 
         size = max(batch_size or 0, 0)
         items = self._list_personalized_items(
@@ -91,8 +95,12 @@ class TaskHallService:
         )
 
         if not ranked:
-            fallback = list(queryset.order_by("-created_at")[offset : offset + page_size])
-            filled_counts = self.mapper.get_filled_counts([survey.id for survey in fallback])
+            fallback = list(
+                queryset.order_by("-created_at")[offset : offset + page_size]
+            )
+            filled_counts = self.mapper.get_filled_counts(
+                [survey.id for survey in fallback]
+            )
             return [
                 self._to_task_card(survey, filled_counts.get(survey.id, 0))
                 for survey in fallback
@@ -121,7 +129,11 @@ class TaskHallService:
         return items
 
     def _get_summary(self):
-        queryset = self.mapper.base_queryset().filter(status__in=self.STATUS_LIVE_INTERNAL)
+        # 仅统计那些处于可投放且有已发布问卷内容的问卷
+        queryset = self.mapper.base_queryset().filter(
+            status__in=self.STATUS_LIVE_INTERNAL,
+            active_questionnaire__status="published",
+        )
         total = queryset.count()
         today = timezone.now().date()
         new_today = queryset.filter(created_at__date=today).count()

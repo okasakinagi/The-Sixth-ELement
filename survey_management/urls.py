@@ -26,6 +26,9 @@ urlpatterns = [
         "surveys/<str:survey_id>/publish", survey_management_controller.publish_survey
     ),
     path(
+        "surveys/<str:survey_id>/cancel", survey_management_controller.cancel_publish
+    ),
+    path(
         "surveys/<str:survey_id>/evaluate",
         survey_management_controller.survey_evaluate_handler,
     ),

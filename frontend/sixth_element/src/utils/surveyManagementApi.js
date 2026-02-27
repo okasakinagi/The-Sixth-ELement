@@ -226,6 +226,35 @@ export async function publishSurvey(surveyId, data) {
 }
 
 /**
+ * 取消发布问卷（退还剩余积分但不退还加速积分）
+ * POST /surveys/{survey_id}/cancel
+ */
+export async function cancelPublish(surveyId) {
+  const token = getAuthToken();
+  if (!token) {
+    throw new Error('未登录，请先登录');
+  }
+
+  const response = await fetch(`${API_BASE_URL}/surveys/${surveyId}/cancel`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      throw new Error('登录已过期，请重新登录');
+    }
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || '取消发布失败');
+  }
+
+  return await response.json();
+}
+
+/**
  * 获取单个问卷详情
  * GET /surveys/{survey_id}
  * @param {string} surveyId 问卷ID
@@ -286,6 +315,41 @@ export async function createSurveyDraft(data) {
     }
     const error = await response.json();
     throw new Error(error.error || '创建草稿失败');
+  }
+
+  return await response.json();
+}
+
+/**
+ * 更新问卷草稿
+ * PATCH /surveys/drafts/{draft_id}
+ * @param {string} draftId 草稿ID
+ * @param {Object} data 更新数据 { title, subtitle, questions }
+ */
+export async function updateDraft(draftId, data) {
+  const token = getAuthToken();
+  if (!token) {
+    throw new Error('未登录，请先登录');
+  }
+
+  const response = await fetch(`${API_BASE_URL}/surveys/drafts/${draftId}`, {
+    method: 'PATCH',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      throw new Error('登录已过期，请重新登录');
+    }
+    if (response.status === 404) {
+      throw new Error('草稿不存在');
+    }
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || '保存草稿失败');
   }
 
   return await response.json();

@@ -16,7 +16,7 @@
     </header>
 
     <section class="task-grid">
-      <article v-for="task in filteredTasks" :key="task.id" class="task-card">
+      <article v-for="task in filteredTasks" :key="task.id" class="task-card" @click="openTaskFill(task)">
         <div class="card-top">
           <div class="card-titles">
             <h3>{{ task.title }}</h3>
@@ -55,7 +55,7 @@
           <div class="match-indicator" :class="getMatchClass(task)">
             {{ getMatchText(task) }}
           </div>
-          <button class="delete-btn" @click="handleDelete(task.id)" aria-label="删除问卷">
+          <button class="delete-btn" @click.stop="handleDelete(task.id)" aria-label="删除问卷">
             ×
           </button>
         </div>
@@ -287,6 +287,36 @@ const filteredTasks = computed(() => {
 function progressPercent(task) {
   if (!task.total) return 0
   return Math.min(100, Math.round((task.filled / task.total) * 100))
+}
+
+function extractRawId(publicId) {
+  if (!publicId || typeof publicId !== 'string') return publicId
+  const m = publicId.match(/^s_(\d+)$/)
+  return m ? m[1] : publicId
+}
+
+async function openTaskFill(task) {
+  const rawId = extractRawId(task.id)
+  if (!rawId) return
+
+  // 在导航前尝试请求问卷填写数据以确认问卷已准备好
+  const token = localStorage.getItem('access_token')
+  try {
+    const res = await fetch(`/api/v1/surveys/${rawId}/fill`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      const msg = data.error || '问卷尚未准备好或已不可用'
+      window.alert(msg)
+      return
+    }
+    // 可用 -> 导航到填写页（路由内会再次加载数据）
+    router.push({ name: 'survey-fill', params: { id: String(rawId) } })
+  } catch (err) {
+    console.error('检查问卷可用性失败:', err)
+    window.alert('无法连接到服务器，请稍后重试')
+  }
 }
 
 function getMatchClass(task) {

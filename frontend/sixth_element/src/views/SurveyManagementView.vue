@@ -8,8 +8,10 @@ import {
   pauseSurvey,
   resumeSurvey,
   publishSurvey,
-  evaluateSurvey
+  evaluateSurvey,
+  getSurveyDetail,
 } from '@/utils/surveyManagementApi'
+import { cancelPublish } from '@/utils/surveyManagementApi'
 
 const router = useRouter()
 const route = useRoute()
@@ -17,6 +19,9 @@ const route = useRoute()
 const hideCompleted = ref(false)
 const showDeleteModal = ref(false)
 const deleteTarget = ref(null)
+const showCancelModal = ref(false)
+const cancelTarget = ref(null)
+const cancelEstimate = ref(null)
 const showPublishModal = ref(false)
 const showPublishConfigModal = ref(false)
 const isEvaluating = ref(false)
@@ -83,6 +88,32 @@ const openDeleteModal = (survey) => {
   showDeleteModal.value = true
 }
 
+const openCancelModal = async (survey) => {
+  // 获取问卷详情以计算预估退还积分（仅估算基础预算，不含加速积分）
+  try {
+    loading.value = true
+    const detail = await getSurveyDetail(survey.id)
+    const completed = detail.completed || 0
+    const target = detail.target || 0
+    const reward = detail.reward_points || 0
+    const remaining = Math.max(0, target - completed)
+    // 估算退还：剩余份数 * 每份奖励；注意：若存在加速积分，实际退还会更少
+    cancelEstimate.value = remaining * reward
+  } catch (err) {
+    console.error('获取问卷详情失败，无法估算退还积分：', err)
+    cancelEstimate.value = null
+  } finally {
+    loading.value = false
+    cancelTarget.value = survey
+    showCancelModal.value = true
+  }
+}
+
+const closeCancelModal = () => {
+  cancelTarget.value = null
+  showCancelModal.value = false
+}
+
 const closeDeleteModal = () => {
   showDeleteModal.value = false
   deleteTarget.value = null
@@ -93,6 +124,37 @@ const closePublishModal = () => {
   router.replace({ query: {} })
 }
 
+const handleConfirmPublishFromBuilder = () => {
+  // 尝试从 sessionStorage 读取编辑器保存的草稿并直接进入发布配置
+  const raw = sessionStorage.getItem('survey-draft')
+  if (!raw) {
+    showPublishModal.value = false
+    router.replace({ query: {} })
+    error.value = '未找到待发布的问卷草稿'
+    setTimeout(() => {
+      error.value = ''
+    }, 3000)
+    return
+  }
+
+  let draft = null
+  try {
+    draft = JSON.parse(raw)
+  } catch (e) {
+    showPublishModal.value = false
+    router.replace({ query: {} })
+    error.value = '读取问卷草稿失败'
+    setTimeout(() => {
+      error.value = ''
+    }, 3000)
+    return
+  }
+
+  // 将草稿作为发布目标，并打开发布配置弹窗以便用户调整参数
+  publishTarget.value = draft
+  showPublishModal.value = false
+  showPublishConfigModal.value = true
+}
 const openPublishConfig = async (survey) => {
   publishTarget.value = survey
   publishConfig.value = {
@@ -201,6 +263,27 @@ const togglePause = async (survey) => {
     setTimeout(() => {
       error.value = ''
     }, 3000)
+  } finally {
+    loading.value = false
+  }
+}
+
+const confirmCancel = async () => {
+  if (!cancelTarget.value) return
+  try {
+    loading.value = true
+    const resp = await cancelPublish(cancelTarget.value.id)
+    await loadSurveys()
+    closeCancelModal()
+    error.value = `已取消发布，退还积分：${resp.refund}（不含加速积分）`
+    setTimeout(() => { error.value = '' }, 4000)
+  } catch (err) {
+    if (err.message.includes('登录已过期')) {
+      handleTokenExpired(router)
+      return
+    }
+    error.value = err.message
+    setTimeout(() => { error.value = '' }, 4000)
   } finally {
     loading.value = false
   }
@@ -330,7 +413,15 @@ onUnmounted(() => {
                 {{ survey.status === 'paused' ? '继续发布' : '暂停发布' }}
               </button>
               <button
-                v-if="survey.status === 'ended'"
+                v-if="survey.status === 'live' || survey.status === 'paused'"
+                class="danger-button small"
+                type="button"
+                @click="openCancelModal(survey)"
+              >
+                取消发布
+              </button>
+              <button
+                v-if="survey.status !== 'draft'"
                 class="primary-button small"
                 type="button"
                 @click="openAnalytics(survey)"
@@ -338,15 +429,6 @@ onUnmounted(() => {
                 数据分析
               </button>
               <button
-                v-if="survey.status !== 'ended'"
-                class="ghost-button"
-                type="button"
-                @click="openSurvey(survey)"
-              >
-                编辑/查看问卷
-              </button>
-              <button
-                v-if="survey.status === 'ended'"
                 class="ghost-button"
                 type="button"
                 @click="openSurvey(survey)"
@@ -370,13 +452,27 @@ onUnmounted(() => {
     </div>
   </div>
 
+  <div v-if="showCancelModal" class="modal-backdrop" @click.self="closeCancelModal">
+    <div class="modal">
+      <h3>确认取消发布</h3>
+      <p>取消发布则问卷将不能在被填写，并退还剩余的基础预算积分（不退还加速积分）。</p>
+      <p v-if="cancelEstimate !== null">预估可退还积分：<strong>{{ cancelEstimate }}</strong>（仅为预估，实际结果以返还积分为准）</p>
+      <p v-else>正在获取预估退还积分，或无法获取详情。</p>
+      <p>确定要取消发布吗？</p>
+      <div class="modal-actions">
+        <button class="ghost-button" type="button" @click="closeCancelModal">取消</button>
+        <button class="danger-button" type="button" @click="confirmCancel">确认取消</button>
+      </div>
+    </div>
+  </div>
+
   <div v-if="showPublishModal" class="modal-backdrop" @click.self="closePublishModal">
     <div class="modal">
       <h3>发问卷确认</h3>
       <p>发布将进行积分结算并进入投放流程，确认现在发布吗？</p>
       <div class="modal-actions">
         <button class="ghost-button" type="button" @click="closePublishModal">稍后再说</button>
-        <button class="primary-button" type="button" @click="closePublishModal">确认发布</button>
+        <button class="primary-button" type="button" @click="handleConfirmPublishFromBuilder">确认发布</button>
       </div>
     </div>
   </div>
@@ -421,6 +517,7 @@ onUnmounted(() => {
             <span class="boost-suggest">建议：{{ suggestedBoostPoints }} 积分</span>
           </div>
           <span class="hint">使用积分进行额外曝光，更高效地收集您问卷的结果，使用的积分越多效果越显著噢~</span>
+          <span class="hint" style="color:#b16112">加速积分不予退还，取消发布时只会退还剩余的基础预算积分。</span>
         </div>
         <div class="cost-summary">
           <div class="cost-row">

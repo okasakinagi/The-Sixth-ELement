@@ -23,15 +23,15 @@ class SurveyFillService:
     def get_survey_fill(self, survey_id):
         survey_pk = self._parse_int_id(survey_id)
         if survey_pk is None:
-            raise SurveyFillError(422, "invalid survey id")
+            raise SurveyFillError(422, "无效的问卷ID")
         survey = self.mapper.get_survey(survey_pk)
         if not survey:
-            raise SurveyFillError(404, "survey not found")
+            raise SurveyFillError(404, "未找到该问卷")
         if survey.status != "published":
-            raise SurveyFillError(422, "survey not active")
+            raise SurveyFillError(422, "问卷未处于可填写状态")
         questionnaire = survey.active_questionnaire
         if not questionnaire or questionnaire.status != "published":
-            raise SurveyFillError(422, "survey questionnaire not ready")
+            raise SurveyFillError(422, "问卷内容尚未准备好，请稍后再试")
 
         questions = list(self.mapper.get_questions(questionnaire.id))
         question_payloads = [self._question_payload(q) for q in questions]
@@ -45,34 +45,34 @@ class SurveyFillService:
     def submit_survey_fill(self, survey_id, user, data):
         survey_pk = self._parse_int_id(survey_id)
         if survey_pk is None:
-            raise SurveyFillError(422, "invalid survey id")
+            raise SurveyFillError(422, "无效的问卷ID")
         survey = self.mapper.get_survey(survey_pk)
         if not survey:
-            raise SurveyFillError(404, "survey not found")
+            raise SurveyFillError(404, "未找到该问卷")
         if survey.status != "published":
-            raise SurveyFillError(422, "survey not active")
+            raise SurveyFillError(422, "问卷未处于可填写状态")
         if survey.owner_id == user.id:
-            raise SurveyFillError(422, "cannot fill your own survey")
+            raise SurveyFillError(422, "不能填写自己发布的问卷")
         if self.mapper.response_exists(survey.id, user.id):
-            raise SurveyFillError(422, "already filled")
+            raise SurveyFillError(422, "您已提交过该问卷")
 
         questionnaire = survey.active_questionnaire
         if not questionnaire or questionnaire.status != "published":
-            raise SurveyFillError(422, "survey questionnaire not ready")
+            raise SurveyFillError(422, "问卷内容尚未准备好，请稍后再试")
 
         duration_seconds = data.get("duration_seconds")
         if duration_seconds is None:
-            raise SurveyFillError(422, "duration_seconds required")
+            raise SurveyFillError(422, "需要提供填写时长(duration_seconds)")
         try:
             duration_seconds = int(duration_seconds)
         except (TypeError, ValueError):
-            raise SurveyFillError(422, "duration_seconds must be a number")
+            raise SurveyFillError(422, "填写时长必须为数字")
         if duration_seconds < 10:
-            raise SurveyFillError(422, "fill duration too short")
+            raise SurveyFillError(422, "填写时长过短，请完整填写后提交")
 
         answers = data.get("answers")
         if not isinstance(answers, list):
-            raise SurveyFillError(422, "answers required")
+            raise SurveyFillError(422, "需要提供答案列表(answers)")
 
         questions = list(self.mapper.get_questions(questionnaire.id))
         question_map = {q.id: q for q in questions}
@@ -81,13 +81,13 @@ class SurveyFillService:
         answer_map = {}
         for item in answers:
             if not isinstance(item, dict):
-                raise SurveyFillError(422, "invalid answers payload")
+                raise SurveyFillError(422, "答案格式无效")
             question_id = self._parse_question_id(item.get("question_id"))
             if question_id is None:
-                raise SurveyFillError(422, "invalid question id")
+                raise SurveyFillError(422, "无效的问题ID")
             if question_id not in question_map:
                 raise SurveyFillError(
-                    422, f"question {self._public_qid(question_id)} not found"
+                    422, f"未找到问题 {self._public_qid(question_id)}"
                 )
             answer_map[question_id] = item.get("value")
 
@@ -95,7 +95,7 @@ class SurveyFillService:
             qid = question.id
             value = answer_map.get(qid)
             if question.is_required and self._is_empty_answer(value):
-                raise SurveyFillError(422, f"question {self._public_qid(qid)} is required")
+                raise SurveyFillError(422, f"问题 {self._public_qid(qid)} 为必答题")
 
         answer_payloads = []
         for question in questions:
@@ -162,42 +162,41 @@ class SurveyFillService:
         if qtype == "single":
             if isinstance(value, list):
                 raise SurveyFillError(
-                    422, f"invalid option for question {self._public_qid(question.id)}"
+                    422, f"问题 {self._public_qid(question.id)} 的答案无效"
                 )
             value_str = str(value)
             if allowed and value_str not in allowed:
                 raise SurveyFillError(
-                    422, f"invalid option for question {self._public_qid(question.id)}"
+                    422, f"问题 {self._public_qid(question.id)} 的答案无效"
                 )
         elif qtype == "multi":
             if not isinstance(value, list):
                 raise SurveyFillError(
-                    422, f"invalid option for question {self._public_qid(question.id)}"
+                    422, f"问题 {self._public_qid(question.id)} 的答案无效"
                 )
             for item in value:
                 item_str = str(item)
                 if allowed and item_str not in allowed:
                     raise SurveyFillError(
-                        422,
-                        f"invalid option for question {self._public_qid(question.id)}",
+                        422, f"问题 {self._public_qid(question.id)} 的答案无效"
                     )
         elif qtype == "multi-text":
             if not isinstance(value, list):
                 raise SurveyFillError(
-                    422, f"invalid option for question {self._public_qid(question.id)}"
+                    422, f"问题 {self._public_qid(question.id)} 的答案无效"
                 )
             if options.get("labels") and len(value) != len(options.get("labels")):
                 raise SurveyFillError(
-                    422,
-                    f"invalid option for question {self._public_qid(question.id)}",
+                    422, f"问题 {self._public_qid(question.id)} 的答案无效"
                 )
         elif qtype == "text":
             if isinstance(value, list):
                 raise SurveyFillError(
-                    422, f"invalid option for question {self._public_qid(question.id)}"
+                    422, f"问题 {self._public_qid(question.id)} 的答案无效"
                 )
         else:
             return
+        return
 
     def _normalize_answer_value(self, question, value):
         qtype = (question.type or "").lower()
