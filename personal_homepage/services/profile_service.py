@@ -110,6 +110,10 @@ class UserProfileService:
         errors = {}
         validated = {}
 
+        # 兼容历史字段名：career_intentions -> career_intention
+        if "career_intentions" in data and "career_intention" not in data:
+            data = {**data, "career_intention": data.get("career_intentions")}
+
         # 验证gender（支持中文和英文）
         if "gender" in data:
             valid_genders = [
@@ -149,8 +153,6 @@ class UserProfileService:
             "grade": 10,
             "college": 50,
             "major": 50,
-            "interests": 200,
-            "organizations": 200,
             "current_status": 100,
         }
 
@@ -191,18 +193,40 @@ class UserProfileService:
                 validated["mbti"] = mbti if mbti else None
 
         # 验证数组字段
-        array_fields = ["consumption_preferences", "career_intention", "skills"]
+        array_fields = [
+            "interests",
+            "organizations",
+            "consumption_preferences",
+            "career_intention",
+            "skills",
+        ]
         for field in array_fields:
             if field in data:
                 value = data[field]
-                if not isinstance(value, list):
+                if value is None:
+                    validated[field] = []
+                    continue
+
+                if isinstance(value, str):
+                    normalized_items = [
+                        item.strip()
+                        for item in value.replace("，", ",").split(",")
+                        if item and item.strip()
+                    ]
+                elif isinstance(value, list):
+                    normalized_items = [
+                        str(item).strip() for item in value if str(item).strip()
+                    ]
+                else:
                     errors[field] = "Must be an array"
-                elif len(value) > 20:
+                    continue
+
+                if len(normalized_items) > 20:
                     errors[field] = "Array length must be <= 20"
-                elif any(len(str(item)) > 20 for item in value):
+                elif any(len(item) > 20 for item in normalized_items):
                     errors[field] = "Each item must be <= 20 characters"
                 else:
-                    validated[field] = value
+                    validated[field] = normalized_items
 
         if errors:
             raise ValueError(errors)

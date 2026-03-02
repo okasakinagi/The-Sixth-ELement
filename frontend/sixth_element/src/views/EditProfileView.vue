@@ -520,11 +520,15 @@ const toggleTag = (fieldName, tag) => {
 }
 
 // 添加自定义标签
-const addCustomTag = (fieldName, inputRef) => {
-  const value = inputRef.value.trim()
+const addCustomTag = (fieldName, inputValue) => {
+  const value = String(inputValue || '').trim()
   if (value && !formData.value[fieldName].includes(value)) {
     formData.value[fieldName].push(value)
-    inputRef.value = ''
+    if (fieldName === 'interests') customInterestInput.value = ''
+    if (fieldName === 'organizations') customOrganizationInput.value = ''
+    if (fieldName === 'consumptionPreferences') customConsumptionInput.value = ''
+    if (fieldName === 'careerIntention') customCareerInput.value = ''
+    if (fieldName === 'skills') customSkillInput.value = ''
   }
 }
 
@@ -558,7 +562,7 @@ const saveProfile = async () => {
       current_status: formData.value.currentStatus || null
     }
     
-    // 调用API（使用PUT完整替换）
+    // 调用API（PATCH 更新）
     await updateUserProfile(payload)
     
     toastMessage.value = '信息已保存，正在返回...'

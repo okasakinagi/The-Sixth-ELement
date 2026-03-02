@@ -157,9 +157,12 @@ class UserProfileMapper:
 
             tags = []
             if tag_names:
+                seen = set()
                 for tag_name in tag_names:
-                    if tag_name:
-                        tag, _ = Tag.objects.get_or_create(name=tag_name, type=tag_type)
+                    normalized_name = str(tag_name).strip() if tag_name is not None else ""
+                    if normalized_name and normalized_name not in seen:
+                        seen.add(normalized_name)
+                        tag, _ = Tag.objects.get_or_create(name=normalized_name, type=tag_type)
                         UserTag.objects.create(user=user, tag=tag)
                         tags.append(tag)
             return tags

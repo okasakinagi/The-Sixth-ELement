@@ -252,10 +252,32 @@ class Tag(models.Model):
     TYPE_SURVEY = "survey_type"
     TYPE_INTEREST = "interest"
     TYPE_SCHOOL = "school"
+    TYPE_GENDER = "gender"
+    TYPE_AGE = "age"
+    TYPE_GRADE = "grade"
+    TYPE_COLLEGE = "college"
+    TYPE_MAJOR = "major"
+    TYPE_MBTI = "mbti"
+    TYPE_ORGANIZATION = "organization"
+    TYPE_CONSUMPTION = "consumption"
+    TYPE_CAREER = "career"
+    TYPE_SKILL = "skill"
+    TYPE_STATUS = "status"
     TYPE_CHOICES = (
         (TYPE_SURVEY, "Survey Type"),
         (TYPE_INTEREST, "Interest"),
         (TYPE_SCHOOL, "School"),
+        (TYPE_GENDER, "Gender"),
+        (TYPE_AGE, "Age"),
+        (TYPE_GRADE, "Grade"),
+        (TYPE_COLLEGE, "College"),
+        (TYPE_MAJOR, "Major"),
+        (TYPE_MBTI, "MBTI"),
+        (TYPE_ORGANIZATION, "Organization"),
+        (TYPE_CONSUMPTION, "Consumption"),
+        (TYPE_CAREER, "Career"),
+        (TYPE_SKILL, "Skill"),
+        (TYPE_STATUS, "Status"),
     )
     name = models.CharField(max_length=64)
     type = models.CharField(max_length=32, choices=TYPE_CHOICES)
