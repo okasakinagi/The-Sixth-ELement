@@ -3,6 +3,7 @@ import { RouterView, useRouter, useRoute } from 'vue-router'
 import { ref, computed, watch } from 'vue'
 import ProfileCompletionModal from './components/ProfileCompletionModal.vue'
 import AppSidebar from './components/AppSidebar.vue'
+import GlobalFloatingMenu from './components/GlobalFloatingMenu.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -39,6 +40,11 @@ const showSidebar = computed(() => {
   return routeName !== 'auth' && routeName !== 'forgot-password'
 })
 
+const showGlobalFloatingMenu = computed(() => {
+  const routeName = route.name
+  return routeName !== 'auth' && routeName !== 'forgot-password'
+})
+
 const showGlobalModal = computed(() => {
   const routeName = route.name
   if (routeName === 'auth' || routeName === 'forgot-password') {
@@ -55,6 +61,7 @@ const showGlobalModal = computed(() => {
   <template v-else>
     <RouterView :key="router.currentRoute.value.fullPath" />
   </template>
+  <GlobalFloatingMenu v-if="showGlobalFloatingMenu" />
   <ProfileCompletionModal :visible="showGlobalModal" @close="handleModalClose" />
 </template>
 
