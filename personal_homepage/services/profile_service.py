@@ -114,6 +114,18 @@ class UserProfileService:
         if "career_intentions" in data and "career_intention" not in data:
             data = {**data, "career_intention": data.get("career_intentions")}
 
+        # 兼容前端 camelCase 字段名
+        camel_to_snake_map = {
+            "consumptionPreferences": "consumption_preferences",
+            "careerIntention": "career_intention",
+            "currentStatus": "current_status",
+        }
+        normalized_data = dict(data)
+        for camel_key, snake_key in camel_to_snake_map.items():
+            if camel_key in normalized_data and snake_key not in normalized_data:
+                normalized_data[snake_key] = normalized_data.get(camel_key)
+        data = normalized_data
+
         # 验证gender（支持中文和英文）
         if "gender" in data:
             valid_genders = [
@@ -223,8 +235,8 @@ class UserProfileService:
 
                 if len(normalized_items) > 20:
                     errors[field] = "Array length must be <= 20"
-                elif any(len(item) > 20 for item in normalized_items):
-                    errors[field] = "Each item must be <= 20 characters"
+                elif any(len(item) > 64 for item in normalized_items):
+                    errors[field] = "Each item must be <= 64 characters"
                 else:
                     validated[field] = normalized_items
 
