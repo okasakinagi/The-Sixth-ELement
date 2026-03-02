@@ -1243,6 +1243,7 @@ onUnmounted(() => {
   }
 
   .primary-button.small,
+  .danger-button.small,
   .ghost-button {
     padding: 6px 12px;
     font-size: 12px;
