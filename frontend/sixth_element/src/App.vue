@@ -1,11 +1,11 @@
 <script setup>
-import { RouterView, useRouter } from 'vue-router'
+import { RouterView, useRouter, useRoute } from 'vue-router'
 import { ref, computed, watch } from 'vue'
 import ProfileCompletionModal from './components/ProfileCompletionModal.vue'
 import AppSidebar from './components/AppSidebar.vue'
-import GlobalFloatingMenu from './components/GlobalFloatingMenu.vue'
 
 const router = useRouter()
+const route = useRoute()
 
 const showModal = ref(false)
 const hasShownModal = ref(false)
@@ -22,6 +22,10 @@ watch(
       showModal.value = true
       hasShownModal.value = true
     }
+
+    if (newRouteName === 'auth' || newRouteName === 'forgot-password') {
+      showModal.value = false
+    }
   }
 )
 
@@ -34,17 +38,24 @@ const showSidebar = computed(() => {
   const routeName = router.currentRoute.value.name
   return routeName !== 'auth' && routeName !== 'forgot-password'
 })
+
+const showGlobalModal = computed(() => {
+  const routeName = route.name
+  if (routeName === 'auth' || routeName === 'forgot-password') {
+    return false
+  }
+  return showModal.value
+})
 </script>
 
 <template>
-  <GlobalFloatingMenu />
   <AppSidebar v-if="showSidebar">
-    <RouterView />
+    <RouterView :key="router.currentRoute.value.fullPath" />
   </AppSidebar>
   <template v-else>
-    <RouterView />
+    <RouterView :key="router.currentRoute.value.fullPath" />
   </template>
-  <ProfileCompletionModal :visible="showModal" @close="handleModalClose" />
+  <ProfileCompletionModal :visible="showGlobalModal" @close="handleModalClose" />
 </template>
 
 <style>
