@@ -1,230 +1,281 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import {
+  downloadAnalyticsExport,
+  getAnalyticsQuestions,
+  getAnalyticsSummary,
+} from '../utils/analyticsApi.js'
 
 const route = useRoute()
 const router = useRouter()
 const surveyId = computed(() => route.params.id)
-
 const goBack = () => router.back()
 
-// --- Mock submissions data (示例数据) ---
-// 字段映射到数据库列：
-// id -> FillRecord.id
-// user_id, user_nickname -> AppUser.id / AppUser.nickname
-// submitted_at -> FillRecord.created_at
-// duration_seconds -> FillRecord.duration_seconds
-// status -> FillRecord.status
-// points_awarded -> FillRecord.points_awarded
-// answers_summary -> 简要答题摘要（用于列表与搜索）
-const mockSubmissions = ref([
-  { id: 'f_1001', user_id: 'u_201', user_nickname: '小明', submitted_at: '2026-02-25T10:12:00Z', duration_seconds: 190, status: 'approved', points_awarded: 5, raw_answers: { q1: 'A', q2: 'B' } },
-  { id: 'f_1002', user_id: 'u_342', user_nickname: '小华', submitted_at: '2026-02-25T11:01:00Z', duration_seconds: 260, status: 'approved', points_awarded: 4, raw_answers: { q1: 'C', q2: 'A' } },
-  { id: 'f_1003', user_id: 'u_410', user_nickname: '小红', submitted_at: '2026-02-24T21:22:00Z', duration_seconds: 98, status: 'pending', points_awarded: 0, raw_answers: { q1: 'B' } },
-  { id: 'f_1004', user_id: 'u_128', user_nickname: '小刚', submitted_at: '2026-02-23T09:45:00Z', duration_seconds: 420, status: 'rejected', points_awarded: 0, raw_answers: { q1: 'D' } },
-  { id: 'f_1005', user_id: 'u_215', user_nickname: '小丽', submitted_at: '2026-02-22T14:30:00Z', duration_seconds: 210, status: 'approved', points_awarded: 5, raw_answers: { q1: 'A', q2: 'C' } },
-  { id: 'f_1006', user_id: 'u_999', user_nickname: '小王', submitted_at: '2026-02-20T08:21:00Z', duration_seconds: 130, status: 'approved', points_awarded: 3, raw_answers: { q1: 'B' } },
-  { id: 'f_1007', user_id: 'u_501', user_nickname: '小陈', submitted_at: '2026-02-19T18:05:00Z', duration_seconds: 300, status: 'approved', points_awarded: 2, raw_answers: { q1: 'D', q2: 'D' } },
-  { id: 'f_1008', user_id: 'u_302', user_nickname: '小李', submitted_at: '2026-02-18T12:10:00Z', duration_seconds: 175, status: 'approved', points_awarded: 4, raw_answers: { q1: 'A' } },
-  { id: 'f_1009', user_id: 'u_777', user_nickname: '小赵', submitted_at: '2026-02-17T09:55:00Z', duration_seconds: 240, status: 'pending', points_awarded: 0, raw_answers: { q1: 'C' } },
-  { id: 'f_1010', user_id: 'u_888', user_nickname: '小周', submitted_at: '2026-02-16T20:12:00Z', duration_seconds: 200, status: 'approved', points_awarded: 5, raw_answers: { q1: 'B' } },
-  { id: 'f_1011', user_id: 'u_123', user_nickname: '小孙', submitted_at: '2026-02-15T15:00:00Z', duration_seconds: 210, status: 'approved', points_awarded: 4, raw_answers: { q1: 'A' } },
-  { id: 'f_1012', user_id: 'u_456', user_nickname: '小周2', submitted_at: '2026-02-14T16:45:00Z', duration_seconds: 330, status: 'rejected', points_awarded: 0, raw_answers: { q1: 'D' } },
-])
+// ─── 加载状态 ──────────────────────────────────
+const loading = ref(true)
+const error = ref('')
 
-// Filters & pagination state
-const keyword = ref('')
-const statusFilter = ref('all')
-const page = ref(1)
-const pageSize = ref(6)
-const showSubmissionModal = ref(false)
-const selectedSubmission = ref(null)
+// ─── 数据 ─────────────────────────────────────
+const overview = ref(null)
+const questions = ref([])
 
-function openSubmission(s) { selectedSubmission.value = s; showSubmissionModal.value = true }
-function closeSubmissionModal() { selectedSubmission.value = null; showSubmissionModal.value = false }
-
-// 状态显示映射（前端显示中文并带样式）
-function statusText(status) {
-  if (!status) return '-' 
-  switch (status) {
-    case 'pending': return '待审核'
-    case 'approved': return '已通过'
-    case 'rejected': return '已拒绝'
-    default: return status
+// ─── 初始加载 ─────────────────────────────────
+onMounted(async () => {
+  try {
+    const [summaryData, questionsData] = await Promise.all([
+      getAnalyticsSummary(surveyId.value),
+      getAnalyticsQuestions(surveyId.value, 1, 50),
+    ])
+    overview.value = summaryData
+    questions.value = questionsData.items || []
+  } catch (e) {
+    error.value = e.message || '数据加载失败'
+  } finally {
+    loading.value = false
   }
+})
+
+// ─── 题型中文标签 ──────────────────────────────
+const TYPE_LABEL = {
+  single:       '单选题',
+  multi:        '多选题',
+  text:         '填空题',
+  'multi-text': '多项填空',
+}
+function typeLabel(type) { return TYPE_LABEL[type] || type }
+
+// ─── 文本题分页（客户端，每次加载 50 条本地分页） ──
+const textPage = ref({})
+const TEXT_PAGE_SIZE = 4
+
+function getTextPage(qid) { return textPage.value[qid] || 1 }
+function setTextPage(qid, p) { textPage.value = { ...textPage.value, [qid]: p } }
+function pagedTexts(q) {
+  const p = getTextPage(q.question_id)
+  const start = (p - 1) * TEXT_PAGE_SIZE
+  return (q.texts || []).slice(start, start + TEXT_PAGE_SIZE)
+}
+function textPages(q) {
+  return Math.max(1, Math.ceil((q.texts_total || 0) / TEXT_PAGE_SIZE))
 }
 
-function statusBadgeClass(status) {
-  switch (status) {
-    case 'pending': return 'badge-pending'
-    case 'approved': return 'badge-approved'
-    case 'rejected': return 'badge-rejected'
-    default: return 'badge-unknown'
-  }
+// ─── 格式化工具 ────────────────────────────────
+function fmtDate(iso) {
+  if (!iso) return '-'
+  const d = new Date(iso)
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+}
+function fmtDuration(secs) {
+  if (!secs && secs !== 0) return '-'
+  const m = Math.floor(secs / 60)
+  const s = secs % 60
+  return m > 0 ? `${m} 分 ${s} 秒` : `${s} 秒`
+}
+function pct(ratio) {
+  if (ratio == null) return '-'
+  return `${(ratio * 100).toFixed(1)}%`
 }
 
-const filtered = computed(() => {
-  const kw = (keyword.value || '').trim().toLowerCase()
-  return mockSubmissions.value.filter((s) => {
-    if (statusFilter.value !== 'all' && s.status !== statusFilter.value) return false
-    if (!kw) return true
-    return (s.id && s.id.toLowerCase().includes(kw)) || (s.user_nickname && s.user_nickname.toLowerCase().includes(kw))
-  })
-})
+// ─── 导出 ─────────────────────────────────────
+const exporting = ref({ csv: false, xlsx: false })
 
-const total = computed(() => filtered.value.length)
-const pages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
-const paginated = computed(() => {
-  const start = (page.value - 1) * pageSize.value
-  return filtered.value.slice(start, start + pageSize.value)
-})
+function buildFilename(ext) {
+  const titleSlug = (overview.value?.title || surveyId.value || 'survey')
+    .replace(/[\\/:*?"<>|\s]+/g, '_')
+    .slice(0, 40)
+  const ts = new Date().toISOString().slice(0, 16).replace('T', '_').replace(':', '')
+  return `${titleSlug}_${ts}.${ext}`
+}
 
-const submissionCount = computed(() => mockSubmissions.value.length)
-const approvedCount = computed(() => mockSubmissions.value.filter(s => s.status === 'approved').length)
-const approvedRate = computed(() => {
-  const total = submissionCount.value || 1
-  return Math.round((approvedCount.value / total) * 100)
-})
-
-function prevPage() { if (page.value > 1) page.value-- }
-function nextPage() { if (page.value < pages.value) page.value++ }
-
-// CSV download (当前筛选结果)
-function downloadCSV() {
-  const rows = [['填报ID', '用户ID', '用户名', '提交时间', '用时(秒)', '状态', '奖励积分']]
-  filtered.value.forEach((s) => {
-    rows.push([s.id, s.user_id, s.user_nickname, s.submitted_at, String(s.duration_seconds), statusText(s.status), String(s.points_awarded || 0)])
-  })
-  const csvBody = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n')
-  // 增加 BOM 避免 Excel 中文乱码
-  const csv = '\uFEFF' + csvBody
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `survey_${surveyId.value || 'unknown'}_submissions.csv`
-  a.click()
-  URL.revokeObjectURL(url)
+async function handleExport(format) {
+  exporting.value[format] = true
+  try {
+    await downloadAnalyticsExport(surveyId.value, format, buildFilename(format))
+  } catch (e) {
+    alert(e.message || '导出失败')
+  } finally {
+    exporting.value[format] = false
+  }
 }
 </script>
 
 <template>
   <div class="analytics">
-    <header>
-      <button class="back" type="button" @click="goBack">← 返回</button>
-      <h1>数据分析</h1>
-      <p>问卷 {{ surveyId }} 的概览数据（示例）</p>
+
+    <!-- ── 页头 ── -->
+    <header class="page-header">
+      <button class="back-btn" type="button" @click="goBack">← 返回</button>
+      <div>
+        <h1>数据分析</h1>
+        <p class="subtitle">{{ overview ? overview.title : '加载中...' }}</p>
+      </div>
     </header>
 
-    <section class="grid">
-      <article class="card">
-        <h2>完成率</h2>
-        <p class="metric">100%</p>
-        <p class="hint">采集份数已达标（示例）</p>
-      </article>
-      <article class="card">
-        <h2>平均用时</h2>
-        <p class="metric">3'12"</p>
-        <p class="hint">高于同类问卷 12%（示例）</p>
-      </article>
-      <article class="card">
-        <h2>通过率</h2>
-        <p class="metric">{{ approvedRate }}%</p>
-        <p class="hint">已通过 {{ approvedCount }} / {{ submissionCount }}（示例）</p>
-      </article>
-    </section>
-
-    <!-- 答卷列表与筛选 -->
-    <section class="submissions">
-      <div class="submissions-header">
-        <h2>答卷列表（示例数据）</h2>
-        <div class="actions">
-          <input v-model="keyword" placeholder="搜索 ID / 用户名" />
-          <select v-model="statusFilter">
-            <option value="all">全部状态</option>
-            <option value="approved">已通过</option>
-            <option value="pending">待审核</option>
-            <option value="rejected">已拒绝</option>
-          </select>
-          <button class="primary-button" type="button" @click="downloadCSV">导出当前筛选结果</button>
-        </div>
-      </div>
-
-      <table class="submissions-table">
-        <thead>
-          <tr>
-            <th>填报ID</th>
-            <th>用户名</th>
-            <th>提交时间</th>
-            <th>用时(秒)</th>
-            <th>状态</th>
-            <th>满意度</th>
-            <th>奖励积分</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="s in paginated" :key="s.id" @click="openSubmission(s)" class="clickable-row">
-            <td>{{ s.id }}</td>
-            <td>{{ s.user_nickname }}</td>
-            <td>{{ s.submitted_at }}</td>
-            <td>{{ s.duration_seconds }}</td>
-            <td><span :class="['status-badge', statusBadgeClass(s.status)]">{{ statusText(s.status) }}</span></td>
-            <td>{{ s.points_awarded }}</td>
-          </tr>
-          <tr v-if="paginated.length === 0">
-            <td colspan="6">没有符合筛选条件的答卷（示例数据）</td>
-          </tr>
-        </tbody>
-      </table>
-
-      <div class="pagination">
-        <button class="ghost-button" @click="prevPage" :disabled="page <= 1">上一页</button>
-        <span>第 {{ page }} / {{ pages }} 页 · 共 {{ total }} 条</span>
-        <button class="ghost-button" @click="nextPage" :disabled="page >= pages">下一页</button>
-      </div>
-    </section>
-    
-    <!-- 提交详情模态（示例） -->
-    <div v-if="showSubmissionModal" class="modal-backdrop" @click.self="closeSubmissionModal">
-      <div class="modal detail-modal">
-        <h3>答卷详情：{{ selectedSubmission?.id || '' }}</h3>
-        <p><strong>用户ID：</strong> {{ selectedSubmission?.user_id }}</p>
-        <p><strong>用户名：</strong> {{ selectedSubmission?.user_nickname }}</p>
-        <p><strong>提交时间：</strong> {{ selectedSubmission?.submitted_at }}</p>
-        <p><strong>用时：</strong> {{ selectedSubmission?.duration_seconds }} 秒</p>
-          <p><strong>状态：</strong> {{ statusText(selectedSubmission?.status) }}</p>
-        <p><strong>奖励积分：</strong> {{ selectedSubmission?.points_awarded }}</p>
-        <div style="margin-top:8px">
-          <strong>原始答案：</strong>
-          <pre style="white-space:pre-wrap;background:#f7f9fc;padding:8px;border-radius:6px">{{ selectedSubmission?.raw_answers ? JSON.stringify(selectedSubmission.raw_answers, null, 2) : '-' }}</pre>
-        </div>
-        <div class="modal-actions">
-          <button class="ghost-button" type="button" @click="closeSubmissionModal">关闭</button>
-        </div>
-      </div>
+    <!-- ── 加载中 ── -->
+    <div v-if="loading" class="state-block">
+      <div class="spinner"></div>
+      <p>数据加载中，请稍候…</p>
     </div>
+
+    <!-- ── 错误 ── -->
+    <div v-else-if="error" class="state-block error-block">
+      <p>⚠️ {{ error }}</p>
+      <button class="ghost-btn" type="button" @click="() => router.go(0)">重新加载</button>
+    </div>
+
+    <template v-else>
+      <!-- ══════════════════════════════════════
+           区域一：总览 Overview
+      ══════════════════════════════════════ -->
+      <section class="section">
+        <div class="overview-header">
+          <h2 class="section-title">📋 总览</h2>
+          <div class="export-btns">
+            <button
+              class="primary-btn"
+              type="button"
+              :disabled="exporting.csv"
+              @click="handleExport('csv')"
+            >{{ exporting.csv ? '导出中…' : '导出 CSV' }}</button>
+            <button
+              class="ghost-btn"
+              type="button"
+              :disabled="exporting.xlsx"
+              @click="handleExport('xlsx')"
+            >{{ exporting.xlsx ? '导出中…' : '导出 Excel' }}</button>
+          </div>
+        </div>
+        <p class="survey-title-display">{{ overview.title }}</p>
+
+        <div class="overview-grid">
+          <article class="ov-card">
+            <span class="ov-label">发布时间</span>
+            <span class="ov-value">{{ fmtDate(overview.published_at) }}</span>
+          </article>
+          <article class="ov-card">
+            <span class="ov-label">填写人数</span>
+            <span class="ov-value accent">{{ overview.responses_count }}</span>
+            <span class="ov-sub">目标 {{ overview.target ?? '-' }} 份</span>
+          </article>
+          <article class="ov-card">
+            <span class="ov-label">完成率</span>
+            <span class="ov-value accent">{{ overview.completion_rate != null ? pct(overview.completion_rate) : '-' }}</span>
+            <div v-if="overview.completion_rate != null" class="progress-track">
+              <div class="progress-fill" :style="{ width: pct(overview.completion_rate) }"></div>
+            </div>
+          </article>
+          <article class="ov-card">
+            <span class="ov-label">平均用时</span>
+            <span class="ov-value">{{ fmtDuration(overview.average_duration_seconds) }}</span>
+          </article>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════
+           区域二：单题分析
+      ══════════════════════════════════════ -->
+      <section class="section">
+        <h2 class="section-title">📊 单题分析</h2>
+
+        <div v-if="questions.length === 0" class="no-data">暂无题目数据</div>
+
+        <div v-for="q in questions" :key="q.question_id" class="q-block">
+          <div class="q-header">
+            <span class="q-no">Q{{ q.order_no }}</span>
+            <span class="q-type-badge" :class="'type-' + q.type">{{ typeLabel(q.type) }}</span>
+            <span class="q-title">{{ q.title }}</span>
+          </div>
+
+          <!-- 单选题：水平柱状图 -->
+          <div v-if="q.type === 'single'" class="chart-area">
+            <div v-for="opt in q.options" :key="opt.label" class="bar-row">
+              <span class="bar-label">{{ opt.label }}</span>
+              <div class="bar-track">
+                <div class="bar-fill bar-single" :style="{ width: pct(opt.ratio) }"></div>
+              </div>
+              <span class="bar-stat">{{ opt.count }} 人 · {{ pct(opt.ratio) }}</span>
+            </div>
+            <p class="chart-note">共 {{ overview.responses_count }} 份，各选项百分比已标注</p>
+          </div>
+
+          <!-- 多选题：水平柱状图（百分比 = 选人/总人，可 > 100%） -->
+          <div v-else-if="q.type === 'multi'" class="chart-area">
+            <div v-for="opt in q.options" :key="opt.label" class="bar-row">
+              <span class="bar-label">{{ opt.label }}</span>
+              <div class="bar-track">
+                <div class="bar-fill bar-multi" :style="{ width: Math.min(100, opt.ratio * 100) + '%' }"></div>
+              </div>
+              <span class="bar-stat">{{ opt.count }} 人 · {{ pct(opt.ratio) }}</span>
+            </div>
+            <p class="chart-note">多选题：百分比 = 选择该项人数 / 总填写人数，总和可超过 100%</p>
+          </div>
+
+          <!-- 填空题：分页文本列表 -->
+          <div v-else-if="q.type === 'text'" class="text-area">
+            <div v-if="!q.texts || q.texts.length === 0" class="no-data">暂无填写数据</div>
+            <ul v-else class="text-list">
+              <li v-for="t in pagedTexts(q)" :key="t.response_id" class="text-item">
+                <span class="text-anon">{{ t.anonymous_id }}</span>
+                <span class="text-body">{{ t.value }}</span>
+                <span class="text-time">{{ fmtDate(t.submitted_at) }}</span>
+              </li>
+            </ul>
+            <div class="text-pagination">
+              <button class="ghost-btn" :disabled="getTextPage(q.question_id) <= 1"
+                @click="setTextPage(q.question_id, getTextPage(q.question_id) - 1)">上一页</button>
+              <span>第 {{ getTextPage(q.question_id) }} / {{ textPages(q) }} 页 · 共 {{ q.texts_total }} 条</span>
+              <button class="ghost-btn" :disabled="getTextPage(q.question_id) >= textPages(q)"
+                @click="setTextPage(q.question_id, getTextPage(q.question_id) + 1)">下一页</button>
+            </div>
+          </div>
+
+          <!-- 多项填空题：分页文本列表，value 为数组 -->
+          <div v-else-if="q.type === 'multi-text'" class="text-area">
+            <div v-if="!q.texts || q.texts.length === 0" class="no-data">暂无填写数据</div>
+            <ul v-else class="text-list">
+              <li v-for="t in pagedTexts(q)" :key="t.response_id" class="text-item">
+                <span class="text-anon">{{ t.anonymous_id }}</span>
+                <span class="text-body">{{ Array.isArray(t.value) ? t.value.join(' / ') : t.value }}</span>
+                <span class="text-time">{{ fmtDate(t.submitted_at) }}</span>
+              </li>
+            </ul>
+            <div class="text-pagination">
+              <button class="ghost-btn" :disabled="getTextPage(q.question_id) <= 1"
+                @click="setTextPage(q.question_id, getTextPage(q.question_id) - 1)">上一页</button>
+              <span>第 {{ getTextPage(q.question_id) }} / {{ textPages(q) }} 页 · 共 {{ q.texts_total }} 条</span>
+              <button class="ghost-btn" :disabled="getTextPage(q.question_id) >= textPages(q)"
+                @click="setTextPage(q.question_id, getTextPage(q.question_id) + 1)">下一页</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </template>
+
   </div>
 </template>
 
 <style scoped>
 .analytics {
   min-height: 100vh;
-  padding: 48px;
+  padding: 40px 48px;
   background: radial-gradient(circle at top left, #edf3ff 0%, #f7f9ff 45%, #ffffff 100%);
 }
 
-header {
-  display: grid;
-  gap: 10px;
-  margin-bottom: 32px;
+/* ── 页头 ── */
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 36px;
 }
-
-h1 {
+.page-header h1 {
   font-family: 'Newsreader', serif;
-  font-size: 32px;
+  font-size: 30px;
+  margin: 0 0 4px;
 }
-
-.back {
+.subtitle { color: #7a8fa8; font-size: 13px; margin: 0; }
+.back-btn {
   color: #1e4fb4;
   font-weight: 600;
   background: none;
@@ -233,147 +284,246 @@ h1 {
   font-size: 15px;
   padding: 8px 12px;
   border-radius: 8px;
-  transition: all 0.2s ease;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+  white-space: nowrap;
+  transition: background 0.2s;
 }
+.back-btn:hover { background: rgba(30,79,180,0.08); }
 
-.back:hover {
-  background: rgba(30, 79, 180, 0.1);
-  transform: translateX(-2px);
-}
-
-.grid {
-  display: grid;
-  gap: 20px;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-}
-
-.card {
-  background: #ffffff;
-  padding: 24px;
+/* ── 区域通用 ── */
+.section {
+  background: #fff;
   border-radius: 20px;
-  box-shadow: 0 14px 30px rgba(16, 35, 63, 0.12);
-  display: grid;
-  gap: 10px;
+  padding: 28px 32px;
+  margin-bottom: 28px;
+  box-shadow: 0 8px 24px rgba(16,35,63,0.08);
+}
+.section-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: #1a2f54;
+  margin: 0 0 20px;
 }
 
-.metric {
-  font-size: 28px;
-  font-weight: 600;
-  color: #1e4fb4;
-}
-
-.hint {
-  color: #6a7d95;
-}
-
-.submissions {
-  margin-top: 28px;
-}
-.submissions-header {
+/* ── 总览头部 ── */
+.overview-header {
   display: flex;
+  align-items: center;
   justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.overview-header .section-title { margin: 0; }
+.export-btns { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+
+/* ── 总览 ── */
+.survey-title-display {
+  font-size: 20px;
+  font-weight: 600;
+  color: #1e3a6e;
+  margin: 0 0 20px;
+}
+.overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+}
+.ov-card {
+  background: #f4f8ff;
+  border-radius: 14px;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ov-label { font-size: 12px; color: #7a8fa8; }
+.ov-value { font-size: 26px; font-weight: 700; color: #1a2f54; }
+.ov-value.accent { color: #1e4fb4; }
+.ov-sub { font-size: 12px; color: #9aaec4; }
+.progress-track {
+  height: 8px;
+  background: #dce8ff;
+  border-radius: 99px;
+  overflow: hidden;
+  margin-top: 4px;
+}
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #2b63d6, #60a5fa);
+  border-radius: 99px;
+  transition: width 0.6s ease;
+}
+
+/* ── 单题块 ── */
+.q-block {
+  border: 1px solid #e8f0fe;
+  border-radius: 14px;
+  padding: 20px 24px;
+  margin-bottom: 18px;
+}
+.q-block:last-child { margin-bottom: 0; }
+.q-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+.q-no {
+  background: #1e4fb4;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 99px;
+}
+.q-type-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 99px;
+}
+.type-single  { background: #e8f4fd; color: #0369a1; }
+.type-multi   { background: #f0fdf4; color: #166534; }
+.type-text    { background: #fef9ec; color: #92400e; }
+.type-multi-text { background: #fdf4ff; color: #6b21a8; }
+.q-title { font-size: 15px; font-weight: 600; color: #1a2f54; }
+
+/* ── 柱状图 ── */
+.chart-area { display: flex; flex-direction: column; gap: 12px; }
+.bar-row {
+  display: grid;
+  grid-template-columns: 120px 1fr 120px;
   align-items: center;
   gap: 12px;
-  margin-bottom: 12px;
 }
-.submissions-header .actions {
+.bar-label { font-size: 13px; color: #3d5170; text-align: right; }
+.bar-track {
+  height: 20px;
+  background: #eef3fb;
+  border-radius: 99px;
+  overflow: hidden;
+}
+.bar-fill {
+  height: 100%;
+  border-radius: 99px;
+  transition: width 0.5s ease;
+}
+.bar-single { background: linear-gradient(90deg, #2b63d6, #60a5fa); }
+.bar-multi  { background: linear-gradient(90deg, #059669, #34d399); }
+.bar-stat { font-size: 12px; color: #6a7d95; }
+.chart-note { font-size: 12px; color: #9aaec4; margin-top: 4px; }
+
+/* ── 文本列表 ── */
+.text-area { display: flex; flex-direction: column; gap: 12px; }
+.text-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.text-item {
+  display: grid;
+  grid-template-columns: 60px 1fr 88px;
+  gap: 10px;
+  align-items: start;
+  padding: 10px 14px;
+  background: #f8faff;
+  border-radius: 10px;
+  font-size: 13px;
+}
+.text-anon { color: #9aaec4; font-size: 12px; }
+.text-body { color: #253354; line-height: 1.5; }
+.text-time { color: #b8c8db; font-size: 11px; text-align: right; }
+.text-pagination {
   display: flex;
-  gap: 8px;
+  gap: 12px;
   align-items: center;
+  font-size: 13px;
+  color: #6a7d95;
 }
-.submissions-header .actions input,
-.submissions-header .actions select {
-  height: 38px;
-  padding: 6px 10px;
-  border: 1px solid #e6eefc;
-  border-radius: 8px;
-  background: #fff;
-}
-.primary-button {
-  background: linear-gradient(180deg,#2b63d6,#1e4fb4);
+.no-data { color: #b8c8db; font-size: 14px; padding: 12px 0; }
+
+.primary-btn {
+  background: linear-gradient(180deg, #2b63d6, #1e4fb4);
   color: #fff;
   border: none;
-  padding: 8px 14px;
-  border-radius: 8px;
+  padding: 10px 22px;
+  border-radius: 10px;
   font-weight: 600;
+  font-size: 14px;
   cursor: pointer;
-  box-shadow: 0 6px 18px rgba(30,79,180,0.12);
+  box-shadow: 0 6px 18px rgba(30,79,180,0.18);
+  transition: transform 0.15s;
 }
-.primary-button:hover{ transform: translateY(-1px) }
-.ghost-button{
+.primary-btn:hover { transform: translateY(-1px); }
+.ghost-btn {
   background: transparent;
   border: 1px solid #dce8ff;
   color: #1e4fb4;
-  padding: 6px 10px;
-  border-radius: 8px;
+  padding: 9px 18px;
+  border-radius: 10px;
+  font-size: 13px;
   cursor: pointer;
+  transition: background 0.15s;
 }
-.submissions-table {
-  width: 100%;
-  border-collapse: collapse;
-  background: #fff;
-  border-radius: 8px;
-  overflow: hidden;
-}
-.submissions-table th,
-.submissions-table td {
-  padding: 12px 10px;
-  border-bottom: 1px solid #eef3fb;
-  text-align: left;
-}
-.pagination {
-  margin-top: 12px;
-  display: flex;
-  gap: 12px;
-  align-items: center;
-}
-.submissions-table tr.clickable-row {
-  cursor: pointer;
-}
-.submissions-table tr.clickable-row:hover {
-  background: linear-gradient(90deg, rgba(38,101,212,0.03), rgba(38,101,212,0.02));
-}
+.ghost-btn:hover:not(:disabled) { background: #f0f6ff; }
+.ghost-btn:disabled, .disabled-btn { opacity: 0.45; cursor: not-allowed; }
 
-/* 状态 Badge 样式 */
-.status-badge{
-  display:inline-block;
-  padding:4px 8px;
-  border-radius:999px;
-  font-size:12px;
-  font-weight:600;
+/* ── 加载 / 错误状态 ── */
+.state-block {
+  text-align: center;
+  padding: 80px 20px;
+  color: #6a7d95;
+  font-size: 15px;
 }
-.badge-pending{ background:#fff7e6; color:#b86b00; border:1px solid rgba(184,107,0,0.08) }
-.badge-approved{ background:#ecfbf3; color:#0b7a3a; border:1px solid rgba(11,122,58,0.08) }
-.badge-rejected{ background:#fff1f1; color:#9b1e1e; border:1px solid rgba(155,30,30,0.06) }
-.badge-unknown{ background:#f4f6f8; color:#536170; border:1px solid rgba(83,97,112,0.06) }
+.error-block { color: #c0392b; }
+.spinner {
+  width: 36px;
+  height: 36px;
+  border: 4px solid #dce8ff;
+  border-top-color: #1e4fb4;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin: 0 auto 16px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 
-/* 模态样式（简洁） */
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.35);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1200;
-}
-.modal.detail-modal {
-  background: #ffffff;
-  padding: 20px;
-  border-radius: 12px;
-  width: 520px;
-  box-shadow: 0 10px 40px rgba(13,27,55,0.2);
-}
-.modal.detail-modal h3 {
-  margin-top: 0;
-}
-.modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 16px;
+/* ─────────────────────────────────────
+   移动端适配 ≤ 640px
+───────────────────────────────────── */
+@media (max-width: 640px) {
+  .analytics { padding: 20px 16px; }
+
+  .page-header { flex-direction: column; gap: 6px; }
+  .page-header h1 { font-size: 24px; }
+
+  .section { padding: 18px 16px; }
+  .section-title { font-size: 15px; }
+
+  /* 总览头部：导出按钟折行到标题下方 */
+  .overview-header { flex-direction: column; align-items: flex-start; }
+  .export-btns { width: 100%; }
+  .export-btns .primary-btn,
+  .export-btns .ghost-btn { flex: 1; text-align: center; font-size: 13px; padding: 9px 10px; }
+
+  /* 总览卡片：2 列 */
+  .overview-grid { grid-template-columns: 1fr 1fr; }
+  .ov-value { font-size: 22px; }
+
+  /* 柱状图：标签和数据同行，柱子占满宽 */
+  .bar-row {
+    grid-template-columns: 1fr auto;
+    grid-template-rows: auto auto;
+    row-gap: 4px;
+  }
+  .bar-label { text-align: left; grid-column: 1; grid-row: 1; }
+  .bar-stat  { grid-column: 2; grid-row: 1; font-size: 11px; white-space: nowrap; }
+  .bar-track { grid-column: 1 / -1; grid-row: 2; }
+
+  /* 文本题：时间占满行 */
+  .text-item {
+    grid-template-columns: 52px 1fr;
+    grid-template-rows: auto auto;
+  }
+  .text-time { grid-column: 1 / -1; text-align: left; }
+
+  .text-pagination { flex-wrap: wrap; justify-content: center; font-size: 12px; }
+  .ghost-btn { padding: 7px 12px; font-size: 12px; }
 }
 </style>

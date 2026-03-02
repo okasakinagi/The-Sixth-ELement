@@ -1,6 +1,9 @@
 from django.urls import path
 
-from survey_management.controller import survey_management_controller
+from survey_management.controller import (
+    analytics_controller,
+    survey_management_controller,
+)
 
 
 urlpatterns = [
@@ -25,11 +28,22 @@ urlpatterns = [
     path(
         "surveys/<str:survey_id>/publish", survey_management_controller.publish_survey
     ),
-    path(
-        "surveys/<str:survey_id>/cancel", survey_management_controller.cancel_publish
-    ),
+    path("surveys/<str:survey_id>/cancel", survey_management_controller.cancel_publish),
     path(
         "surveys/<str:survey_id>/evaluate",
         survey_management_controller.survey_evaluate_handler,
+    ),
+    # ── 数据分析 ──
+    path(
+        "surveys/<str:survey_id>/analytics/summary",
+        analytics_controller.analytics_summary,
+    ),
+    path(
+        "surveys/<str:survey_id>/analytics/questions",
+        analytics_controller.analytics_questions,
+    ),
+    path(
+        "surveys/<str:survey_id>/analytics/export",
+        analytics_controller.analytics_export,
     ),
 ]
