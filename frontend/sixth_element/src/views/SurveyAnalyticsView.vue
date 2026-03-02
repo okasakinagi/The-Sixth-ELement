@@ -189,26 +189,36 @@ async function handleExport(format) {
 
           <!-- 单选题：水平柱状图 -->
           <div v-if="q.type === 'single'" class="chart-area">
-            <div v-for="opt in q.options" :key="opt.label" class="bar-row">
-              <span class="bar-label">{{ opt.label }}</span>
-              <div class="bar-track">
-                <div class="bar-fill bar-single" :style="{ width: pct(opt.ratio) }"></div>
+            <div v-if="!q.options || q.options.length === 0" class="no-data">暂无选项数据</div>
+            <template v-else>
+              <div v-for="opt in q.options" :key="opt.label" class="bar-row">
+                <span class="bar-label">{{ opt.label }}</span>
+                <div class="bar-track">
+                  <div class="bar-fill bar-single"
+                    :style="{ width: opt.ratio > 0 ? pct(opt.ratio) : '0%', minWidth: opt.ratio > 0 ? '4px' : '0' }"
+                  ></div>
+                </div>
+                <span class="bar-stat" :class="{ 'zero-count': opt.count === 0 }">{{ opt.count }} 人 · {{ pct(opt.ratio) }}</span>
               </div>
-              <span class="bar-stat">{{ opt.count }} 人 · {{ pct(opt.ratio) }}</span>
-            </div>
-            <p class="chart-note">共 {{ overview.responses_count }} 份，各选项百分比已标注</p>
+              <p class="chart-note">共 {{ overview.responses_count }} 份，各选项百分比已标注</p>
+            </template>
           </div>
 
           <!-- 多选题：水平柱状图（百分比 = 选人/总人，可 > 100%） -->
           <div v-else-if="q.type === 'multi'" class="chart-area">
-            <div v-for="opt in q.options" :key="opt.label" class="bar-row">
-              <span class="bar-label">{{ opt.label }}</span>
-              <div class="bar-track">
-                <div class="bar-fill bar-multi" :style="{ width: Math.min(100, opt.ratio * 100) + '%' }"></div>
+            <div v-if="!q.options || q.options.length === 0" class="no-data">暂无选项数据</div>
+            <template v-else>
+              <div v-for="opt in q.options" :key="opt.label" class="bar-row">
+                <span class="bar-label">{{ opt.label }}</span>
+                <div class="bar-track">
+                  <div class="bar-fill bar-multi"
+                    :style="{ width: opt.ratio > 0 ? Math.min(100, opt.ratio * 100) + '%' : '0%', minWidth: opt.ratio > 0 ? '4px' : '0' }"
+                  ></div>
+                </div>
+                <span class="bar-stat" :class="{ 'zero-count': opt.count === 0 }">{{ opt.count }} 人 · {{ pct(opt.ratio) }}</span>
               </div>
-              <span class="bar-stat">{{ opt.count }} 人 · {{ pct(opt.ratio) }}</span>
-            </div>
-            <p class="chart-note">多选题：百分比 = 选择该项人数 / 总填写人数，总和可超过 100%</p>
+              <p class="chart-note">多选题：百分比 = 选择该项人数 / 总填写人数，总和可超过 100%</p>
+            </template>
           </div>
 
           <!-- 填空题：分页文本列表 -->
@@ -412,6 +422,7 @@ async function handleExport(format) {
 .bar-single { background: linear-gradient(90deg, #2b63d6, #60a5fa); }
 .bar-multi  { background: linear-gradient(90deg, #059669, #34d399); }
 .bar-stat { font-size: 12px; color: #6a7d95; }
+.bar-stat.zero-count { color: #b8c8db; }
 .chart-note { font-size: 12px; color: #9aaec4; margin-top: 4px; }
 
 /* ── 文本列表 ── */

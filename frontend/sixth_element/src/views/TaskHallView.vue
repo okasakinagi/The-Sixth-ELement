@@ -277,9 +277,13 @@ async function handleDelete(taskId) {
 }
 
 const filteredTasks = computed(() => {
-  if (!keyword.value.trim()) return visibleTasks.value
+  // 过滤掉已达到目标收集量（100% 完成）的问卷
+  const notFull = visibleTasks.value.filter(
+    (task) => !(task.total > 0 && task.filled >= task.total)
+  )
+  if (!keyword.value.trim()) return notFull
   const q = keyword.value.trim().toLowerCase()
-  return visibleTasks.value.filter((task) =>
+  return notFull.filter((task) =>
     [task.title, task.subtitle, task.sender, task.type].some((field) => field.toLowerCase().includes(q))
   )
 })

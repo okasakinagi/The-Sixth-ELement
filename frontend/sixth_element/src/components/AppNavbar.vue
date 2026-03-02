@@ -1,8 +1,14 @@
 <script setup>
+import { computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 
 const router = useRouter()
 const route = useRoute()
+
+const userInitial = computed(() => {
+  const nickname = localStorage.getItem('user_nickname') || ''
+  return nickname.charAt(0).toUpperCase() || '?'
+})
 
 function handleLogout() {
   localStorage.removeItem('access_token')
@@ -48,9 +54,10 @@ function isActive(routeName) {
     <div class="navbar-right">
       <RouterLink
         to="/profile"
-        :class="['navbar-link', { active: isActive('profile') }]"
+        :class="['navbar-link', 'profile-link', { active: isActive('profile') }]"
       >
-        👤 个人资料
+        <span class="navbar-avatar">{{ userInitial }}</span>
+        个人资料
       </RouterLink>
       <button class="navbar-logout" @click="handleLogout">登出</button>
     </div>
@@ -145,6 +152,26 @@ function isActive(routeName) {
   border-color: #d32f2f;
 }
 
+.navbar-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #42a5f5, #1976d2);
+  color: white;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.profile-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 @media (max-width: 768px) {
   .app-navbar {
     padding: 12px 16px;
@@ -175,10 +202,22 @@ function isActive(routeName) {
     padding: 8px 12px;
   }
 
+  /* 第 2 行：个人资料 + 登出，确保登出按钮可见 */
+  .navbar-right {
+    order: 2;
+    width: 100%;
+    justify-content: flex-end;
+    border-top: 1px solid #e8eef5;
+    padding-top: 6px;
+  }
+
+  /* 第 3 行：导航链接 */
   .navbar-center {
     order: 3;
     width: 100%;
     flex-wrap: wrap;
+    border-top: 1px solid #e8eef5;
+    padding-top: 6px;
   }
 
   .navbar-link {
@@ -190,6 +229,11 @@ function isActive(routeName) {
 
   .navbar-logo {
     font-size: 13px;
+  }
+
+  .navbar-logout {
+    padding: 5px 12px;
+    font-size: 12px;
   }
 }
 </style>

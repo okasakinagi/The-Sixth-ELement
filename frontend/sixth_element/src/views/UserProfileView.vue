@@ -295,7 +295,7 @@
       </div>
       <div class="floating-body">
         <div class="circular-progress small">
-          <svg class="progress-ring" width="84" height="84">
+          <svg class="progress-ring" width="84" height="84" viewBox="0 0 84 84">
             <circle
               class="progress-ring-circle-bg"
               stroke="#e3f2fd"
@@ -404,12 +404,12 @@ const studyStatuses = [
   { value: '刚下课', label: '刚下课', emoji: '🎒' }
 ]
 
-// 当前显示的状态（主状态 + 描述）
+// 当前显示的状态（主状态 + 描述，第3段为时间戳不显示）
 const currentStatusDisplay = computed(() => {
   if (!userData.value.currentStatus) return ''
-  // 解析存储的状态格式: "主状态|描述" 或 纯主状态
+  // 存储格式: "主状态|描述|timestamp" 或 "主状态|描述" 或 "主状态"
   const parts = userData.value.currentStatus.split('|')
-  if (parts.length > 1 && parts[1]) {
+  if (parts[1]) {
     return `${parts[0]} · ${parts[1]}`
   }
   return parts[0]
@@ -451,6 +451,16 @@ const loadProfile = async () => {
       skills: profile.skills || [],
       currentStatus: profile.current_status || '',
       profile_completion: profile.profile_completion || 0
+    }
+    // 24小时自动清除状态（时间戳存在后端状态字符串第3段，多端通用）
+    if (userData.value.currentStatus) {
+      const parts = userData.value.currentStatus.split('|')
+      const timestamp = parts[2] ? parseInt(parts[2]) : null
+      if (timestamp && Date.now() - timestamp > 24 * 60 * 60 * 1000) {
+        updateUserProfile({ current_status: '' }).then(() => {
+          userData.value.currentStatus = ''
+        }).catch(err => console.error('自动清除状态失败:', err))
+      }
     }
   } catch (error) {
     console.error('加载画像失败:', error)
@@ -494,7 +504,7 @@ const completionMessage = computed(() => {
 
 // 打开状态弹窗
 const openStatusModal = () => {
-  // 解析当前状态
+  // 解析当前状态（格式: 主状态|描述|timestamp）
   if (userData.value.currentStatus) {
     const parts = userData.value.currentStatus.split('|')
     selectedStatus.value = parts[0] || ''
@@ -522,10 +532,11 @@ const selectStatus = (status) => {
 const confirmStatus = async () => {
   if (!selectedStatus.value) return
   
-  // 组合状态字符串: "主状态|描述"
-  const statusValue = statusDescription.value.trim() 
-    ? `${selectedStatus.value}|${statusDescription.value.trim()}`
-    : selectedStatus.value
+  // 组合状态字符串: "主状态|描述|timestamp"（时间戳随状态存后端，多端通用）
+  const ts = Date.now()
+  const statusValue = statusDescription.value.trim()
+    ? `${selectedStatus.value}|${statusDescription.value.trim()}|${ts}`
+    : `${selectedStatus.value}||${ts}`
   
   try {
     await updateUserProfile({ current_status: statusValue })

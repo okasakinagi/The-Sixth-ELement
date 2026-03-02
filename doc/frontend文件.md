@@ -176,7 +176,73 @@
 
 ---
 
-## 四、设计一致性约定（前端实现参考）
+## 四、GlobalFloatingMenu 悬浮控件说明
+
+`src/components/GlobalFloatingMenu.vue` — 全局可拖动悬浮菜单
+
+### 功能
+
+- 显示当前登录用户的 **积分余额**（实时从 `/api/v1/users/me` 获取，每 30 秒刷新一次）
+- 显示用户 **昵称首字母** 圆形头像，点击跳转个人资料页
+- 可在屏幕任意位置拖拽，位置持久化存储到 `localStorage('floating_menu_position')`
+
+### 头像逻辑
+
+头像显示昵称首字母（大写）：
+1. **初始值**：从 `localStorage('user_nickname')` 读取（登录时写入）
+2. **动态更新**：每次 `fetchUserPoints()` 成功后，从 API 响应中同步 `data.nickname`，同时更新 `localStorage`
+3. **页面可见性恢复**：`syncAuthState()` 会重新读取 `localStorage` 中的昵称
+
+---
+
+## 五、用户状态（currentStatus）存储方案
+
+### 存储位置
+
+状态存储在后端数据库 `UserProfile.current_status` 字段，通过 PATCH `/api/v1/profile/me` 接口读写。
+
+### 字符串格式
+
+```
+主状态|补充描述|时间戳(毫秒)
+```
+
+示例：
+- `😊 心情不错||1740000000000`（无描述，带时间戳）
+- `赶ddl|还有2小时|1740000000000`（有描述，带时间戳）
+
+各段含义：
+
+| 段 | 内容 | 说明 |
+|---|---|---|
+| `parts[0]` | 主状态文本 | 必填，来自预设状态选项 |
+| `parts[1]` | 补充描述 | 可为空字符串 |
+| `parts[2]` | 设置时间戳（`Date.now()`） | 毫秒级 Unix 时间戳 |
+
+### 24 小时自动过期
+
+在 `UserProfileView.vue` 的 `loadProfile()` 中：
+
+```js
+const parts = userData.value.currentStatus.split('|')
+const timestamp = parts[2] ? parseInt(parts[2]) : null
+if (timestamp && Date.now() - timestamp > 24 * 60 * 60 * 1000) {
+  // 调用后端清除，并更新前端状态
+  updateUserProfile({ current_status: '' })
+}
+```
+
+### 多端兼容性
+
+时间戳存在 **后端**，不依赖 `localStorage`，因此用户在任意设备登录均可正确判断状态是否过期。
+
+### 前端显示（`currentStatusDisplay` computed）
+
+只取 `parts[0]`（主状态）和 `parts[1]`（描述）拼接显示，时间戳不展示给用户。
+
+---
+
+## 六、设计一致性约定（前端实现参考）
 
 - **任务中心 / 问卷管理**
 

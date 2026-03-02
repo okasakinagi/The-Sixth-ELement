@@ -480,7 +480,7 @@ function handleSuccessReturn() {
           <p class="success-message">感谢你的用心填答</p>
           <div class="success-reward">
             <span class="reward-text">+{{ awardedPoints }} 积分</span>
-            <span class="reward-sub">审核中</span>
+            <span class="reward-sub">积分已到账</span>
           </div>
           <p class="success-redirect">即将返回任务大厅...</p>
           <button class="btn-secondary" @click="handleSuccessReturn">提前返回</button>
@@ -493,7 +493,7 @@ function handleSuccessReturn() {
       <div v-if="showErrorModal" class="success-modal-overlay">
         <div class="success-modal">
           <div class="error-icon">⚠️</div>
-          <h2 class="success-title">操作失败</h2>
+          <h2 class="success-title">提交失败</h2>
           <p class="success-message">{{ errorMessage }}</p>
           <button class="btn-secondary" @click="closeErrorModal">我知道了</button>
         </div>

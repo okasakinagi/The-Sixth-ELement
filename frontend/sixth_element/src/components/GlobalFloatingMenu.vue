@@ -22,7 +22,7 @@
       aria-label="个人信息"
       @click="handleLinkClick"
     >
-      <span>U</span>
+      <span>{{ userInitial }}</span>
     </RouterLink>
   </div>
 </template>
@@ -35,6 +35,8 @@ const router = useRouter()
 
 // 状态
 const userPoints = ref(0)
+const userNickname = ref(localStorage.getItem('user_nickname') || '')
+const userInitial = computed(() => userNickname.value.charAt(0).toUpperCase() || '?')
 const menuRef = ref(null)
 const menuPosition = ref({ x: 0, y: 0 })
 const dragState = ref({ isDragging: false, startX: 0, startY: 0, initialX: 0, initialY: 0 })
@@ -47,6 +49,7 @@ const isLoggedIn = computed(() => {
 
 function syncAuthState() {
   authToken.value = localStorage.getItem('access_token') || ''
+  userNickname.value = localStorage.getItem('user_nickname') || ''
 }
 
 function getDefaultPosition() {
@@ -115,6 +118,11 @@ async function fetchUserPoints() {
         return
       }
       userPoints.value = data.points || 0
+      // 同步昵称
+      if (data.nickname) {
+        userNickname.value = data.nickname
+        localStorage.setItem('user_nickname', data.nickname)
+      }
       
       // 同步更新localStorage
       const profile = localStorage.getItem('sixth_element_profile')
