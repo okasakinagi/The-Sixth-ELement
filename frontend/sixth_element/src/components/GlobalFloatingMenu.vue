@@ -1,6 +1,5 @@
 <template>
   <div
-    v-if="isLoggedIn"
     class="global-floating-menu"
     :class="{ 'is-dragging': dragState.isDragging }"
     ref="menuRef"
@@ -29,7 +28,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
@@ -39,11 +38,53 @@ const userPoints = ref(0)
 const menuRef = ref(null)
 const menuPosition = ref({ x: 0, y: 0 })
 const dragState = ref({ isDragging: false, startX: 0, startY: 0, initialX: 0, initialY: 0 })
+const authToken = ref(localStorage.getItem('access_token') || '')
 
 // 检查是否登录
 const isLoggedIn = computed(() => {
-  return !!localStorage.getItem('access_token')
+  return !!authToken.value
 })
+
+function syncAuthState() {
+  authToken.value = localStorage.getItem('access_token') || ''
+}
+
+function getDefaultPosition() {
+  return {
+    x: Math.max(8, window.innerWidth - 220),
+    y: 60,
+  }
+}
+
+function clampPosition(position) {
+  const menuWidth = menuRef.value?.offsetWidth || 200
+  const menuHeight = menuRef.value?.offsetHeight || 60
+  const maxX = Math.max(8, window.innerWidth - menuWidth - 8)
+  const maxY = Math.max(8, window.innerHeight - menuHeight - 8)
+
+  return {
+    x: Math.max(8, Math.min(Number(position?.x) || 0, maxX)),
+    y: Math.max(8, Math.min(Number(position?.y) || 0, maxY)),
+  }
+}
+
+function restoreMenuPosition() {
+  const savedPosition = localStorage.getItem('floating_menu_position')
+  if (savedPosition) {
+    try {
+      const parsed = JSON.parse(savedPosition)
+      menuPosition.value = clampPosition(parsed)
+      return
+    } catch {
+      // ignore parse error and fallback
+    }
+  }
+  menuPosition.value = clampPosition(getDefaultPosition())
+}
+
+function handleWindowResize() {
+  menuPosition.value = clampPosition(menuPosition.value)
+}
 
 // 从API获取积分
 async function fetchUserPoints() {
@@ -169,6 +210,7 @@ function stopDrag() {
   }
 
   // 停止拖动时才保存位置（避免频繁写localStorage）
+  menuPosition.value = clampPosition(menuPosition.value)
   localStorage.setItem('floating_menu_position', JSON.stringify(menuPosition.value))
 
   document.removeEventListener('mousemove', onDrag)
@@ -188,6 +230,7 @@ function handleLinkClick(e) {
 
 // 页面可见性变化时刷新积分
 function handleVisibilityChange() {
+  syncAuthState()
   if (!document.hidden && isLoggedIn.value) {
     fetchUserPoints()
   }
@@ -197,23 +240,19 @@ function handleVisibilityChange() {
 let refreshTimer = null
 
 onMounted(() => {
-  // 恢复保存的位置，如果没有则使用默认位置（右上角）
-  const savedPosition = localStorage.getItem('floating_menu_position')
-  if (savedPosition) {
-    try {
-      menuPosition.value = JSON.parse(savedPosition)
-    } catch {
-      menuPosition.value = { x: window.innerWidth - 220, y: 60 }
-    }
-  } else {
-    menuPosition.value = { x: window.innerWidth - 220, y: 60 }
-  }
+  syncAuthState()
+
+  nextTick(() => {
+    restoreMenuPosition()
+  })
 
   // 初始获取积分
   fetchUserPoints()
 
   // 监听页面可见性变化
   document.addEventListener('visibilitychange', handleVisibilityChange)
+  window.addEventListener('resize', handleWindowResize)
+  window.addEventListener('storage', syncAuthState)
 
   // 定时刷新积分
   refreshTimer = setInterval(() => {
@@ -229,6 +268,8 @@ onUnmounted(() => {
   document.removeEventListener('touchmove', onDrag)
   document.removeEventListener('touchend', stopDrag)
   document.removeEventListener('visibilitychange', handleVisibilityChange)
+  window.removeEventListener('resize', handleWindowResize)
+  window.removeEventListener('storage', syncAuthState)
 
   if (refreshTimer) {
     clearInterval(refreshTimer)
