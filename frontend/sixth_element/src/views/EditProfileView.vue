@@ -401,7 +401,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, unref } from 'vue'
 import { useRouter } from 'vue-router'
 import { handleTokenExpired } from '@/utils/authHelper'
 import { getUserProfile, updateUserProfile } from '@/utils/profileApi'
@@ -521,8 +521,27 @@ const toggleTag = (fieldName, tag) => {
 
 // 添加自定义标签
 const addCustomTag = (fieldName, inputValue) => {
-  const value = String(inputValue || '').trim()
-  if (value && !formData.value[fieldName].includes(value)) {
+  const rawValue = unref(inputValue)
+  const value = String(rawValue || '').trim()
+
+  if (!Array.isArray(formData.value[fieldName])) {
+    formData.value[fieldName] = []
+  }
+
+  if (!value) {
+    return
+  }
+
+  if (value.length > 64) {
+    toastMessage.value = '自定义标签最多 64 个字符'
+    showToast.value = true
+    setTimeout(() => {
+      showToast.value = false
+    }, 2000)
+    return
+  }
+
+  if (!formData.value[fieldName].includes(value)) {
     formData.value[fieldName].push(value)
     if (fieldName === 'interests') customInterestInput.value = ''
     if (fieldName === 'organizations') customOrganizationInput.value = ''
