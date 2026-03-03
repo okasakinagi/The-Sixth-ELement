@@ -261,6 +261,8 @@ onMounted(() => {
   document.addEventListener('visibilitychange', handleVisibilityChange)
   window.addEventListener('resize', handleWindowResize)
   window.addEventListener('storage', syncAuthState)
+  // 监听积分变动事件（如答卷提交后）
+  window.addEventListener('points-updated', fetchUserPoints)
 
   // 定时刷新积分
   refreshTimer = setInterval(() => {
@@ -278,6 +280,7 @@ onUnmounted(() => {
   document.removeEventListener('visibilitychange', handleVisibilityChange)
   window.removeEventListener('resize', handleWindowResize)
   window.removeEventListener('storage', syncAuthState)
+  window.removeEventListener('points-updated', fetchUserPoints)
 
   if (refreshTimer) {
     clearInterval(refreshTimer)

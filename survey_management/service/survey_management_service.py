@@ -84,8 +84,39 @@ class SurveyManagementService:
         survey = self.mapper.get_owner_survey(user, survey_id)
         if not survey:
             raise SurveyManagementError(404, "survey not found")
+
+        # 如果问卷处于已发布/暂停状态，需先结算并退还未消耗的积分
+        refund = 0
+        if survey.status in self.STATUS_LIVE_INTERNAL or survey.status == "paused":
+            completed_counts = self.mapper.get_completed_counts([survey.id])
+            completed = completed_counts.get(survey.id, survey.completed or 0)
+
+            total_paid = survey.publish_cost_points or 0
+            reward = survey.reward_points or 0
+            target = survey.target or 0
+
+            spent = completed * reward
+            remaining = max(0, total_paid - spent)
+
+            inferred_speed_boost = 0
+            if target:
+                inferred_speed_boost = max(0, total_paid - (reward * target))
+
+            refund = max(0, remaining - inferred_speed_boost)
+
+            if refund > 0:
+                user.points += refund
+                user.save(update_fields=["points"])
+                self.mapper.create_points_log(
+                    user=user,
+                    delta=refund,
+                    reason="删除问卷退还",
+                    ref_type="survey",
+                    ref_id=survey.id,
+                )
+
         self.mapper.delete_survey(survey)
-        return {"success": True}
+        return {"success": True, "refund": refund}
 
     def pause_survey(self, user, survey_id):
         survey = self.mapper.get_owner_survey(user, survey_id)

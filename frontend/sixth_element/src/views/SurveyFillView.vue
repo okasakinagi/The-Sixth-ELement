@@ -228,9 +228,12 @@ async function handleSubmit() {
     // 显示成功弹窗
     const result = await res.json()
     awardedPoints.value = Number(
-      result?.points_expected ?? result?.points_awarded ?? survey.value?.reward_points ?? 0,
+      result?.points_awarded ?? result?.points_expected ?? survey.value?.reward_points ?? 0,
     )
     showSuccessModal.value = true
+
+    // 通知全局浮动菜单刷新积分显示
+    window.dispatchEvent(new CustomEvent('points-updated'))
     
     // 6秒后跳转
     setTimeout(() => {

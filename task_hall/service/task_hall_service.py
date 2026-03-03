@@ -94,7 +94,13 @@ class TaskHallService:
             exclude_ids=exclude_task_ids,
         )
 
-        if not ranked:
+        # 当 ranked 为空，或全部结果 score == 0（无有效个性化信息）时，降级走 fallback
+        # 这样与"换一批"在排除所有已见问卷后走 fallback 的体验保持一致
+        has_meaningful_rank = ranked and any(
+            item.get("score", 0.0) > 0.0 for item in ranked
+        )
+
+        if not has_meaningful_rank:
             fallback = list(
                 queryset.order_by("-created_at")[offset : offset + page_size]
             )

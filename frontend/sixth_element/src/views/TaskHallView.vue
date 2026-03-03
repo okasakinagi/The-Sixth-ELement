@@ -80,7 +80,7 @@
 <script setup>
 import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { getTaskHallTasks, refreshTaskHallBatch, dismissSurvey } from '@/utils/taskHallApi'
+import { refreshTaskHallBatch, dismissSurvey } from '@/utils/taskHallApi'
 
 const keyword = ref('')
 const router = useRouter()
@@ -191,15 +191,8 @@ function addSeenTaskIds(ids = []) {
 async function loadInitialTasks() {
   try {
     loading.value = true
-    const response = await getTaskHallTasks(
-      {
-        status: 'active',
-        sort: 'recommend',
-        page: 1,
-        page_size: fixedBatchSize,
-      },
-      router
-    )
+    // 与"换一批"使用同一接口，保证个性化评估和排序逻辑一致
+    const response = await refreshTaskHallBatch([], fixedBatchSize, router)
     const items = Array.isArray(response.items) ? response.items : []
     visibleTasks.value = items
     seenTaskIds.value = []

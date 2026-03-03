@@ -124,7 +124,7 @@ const closePublishModal = () => {
   router.replace({ query: {} })
 }
 
-const handleConfirmPublishFromBuilder = () => {
+const handleConfirmPublishFromBuilder = async () => {
   // 尝试从 sessionStorage 读取编辑器保存的草稿并直接进入发布配置
   const raw = sessionStorage.getItem('survey-draft')
   if (!raw) {
@@ -150,10 +150,33 @@ const handleConfirmPublishFromBuilder = () => {
     return
   }
 
-  // 将草稿作为发布目标，并打开发布配置弹窗以便用户调整参数
+  // 将草稿作为发布目标，初始化配置并打开发布配置弹窗
   publishTarget.value = draft
   showPublishModal.value = false
+  publishConfig.value = {
+    rewardPoints: 3,
+    targetCount: 30,
+    speedBoostPoints: 0,
+    estimatedMinutes: 5,
+    difficultyLevel: 3
+  }
   showPublishConfigModal.value = true
+
+  // AI 评估问卷难度（与从问卷列表点击发布的流程保持一致）
+  if (draft.id) {
+    try {
+      isEvaluating.value = true
+      const evaluation = await evaluateSurvey(draft.id)
+      publishConfig.value.estimatedMinutes = evaluation.estimated_time_minutes || 5
+      publishConfig.value.difficultyLevel = evaluation.difficulty_level || 3
+      publishConfig.value.rewardPoints = publishConfig.value.difficultyLevel
+    } catch (err) {
+      console.error('Failed to evaluate survey:', err)
+      // 评估失败不影响发布，使用默认值
+    } finally {
+      isEvaluating.value = false
+    }
+  }
 }
 const openPublishConfig = async (survey) => {
   publishTarget.value = survey
@@ -202,6 +225,8 @@ const confirmPublish = async () => {
     // 刷新问卷列表
     await loadSurveys()
     closePublishConfig()
+    // 通知浮动菜单刷新积分（发布消耗积分）
+    window.dispatchEvent(new CustomEvent('points-updated'))
   } catch (err) {
     // 检查是否是登录过期
     if (err.message.includes('登录已过期')) {
@@ -222,11 +247,17 @@ const confirmDelete = async () => {
   
   try {
     loading.value = true
-    await deleteSurvey(deleteTarget.value.id)
+    const delResp = await deleteSurvey(deleteTarget.value.id)
     
     // 刷新问卷列表
     await loadSurveys()
     closeDeleteModal()
+    // 通知浮动菜单刷新积分（删除已发布问卷时可能退还积分）
+    window.dispatchEvent(new CustomEvent('points-updated'))
+    if (delResp?.refund > 0) {
+      error.value = `问卷已删除，退还积分：${delResp.refund}`
+      setTimeout(() => { error.value = '' }, 4000)
+    }
   } catch (err) {
     // 检查是否是登录过期
     if (err.message.includes('登录已过期')) {
@@ -275,6 +306,8 @@ const confirmCancel = async () => {
     const resp = await cancelPublish(cancelTarget.value.id)
     await loadSurveys()
     closeCancelModal()
+    // 通知浮动菜单刷新积分（取消发布退还积分）
+    window.dispatchEvent(new CustomEvent('points-updated'))
     error.value = `已取消发布，退还积分：${resp.refund}（不含加速积分）`
     setTimeout(() => { error.value = '' }, 4000)
   } catch (err) {

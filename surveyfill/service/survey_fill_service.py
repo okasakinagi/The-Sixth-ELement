@@ -4,8 +4,10 @@ SurveyFill Service - 业务逻辑层
 """
 
 import re
+from django.db import transaction
 from django.utils import timezone
 
+from core.models import PointsLog
 from surveyfill.mapper.survey_fill_mapper import SurveyFillMapper
 
 
@@ -125,11 +127,31 @@ class SurveyFillService:
         response.submitted_at = timezone.now()
         response.save(update_fields=["submitted_at"])
 
+        # 提交即时发放积分（已取消审核机制）
+        reward = survey.reward_points or 0
+        if reward > 0:
+            with transaction.atomic():
+                user_obj = user.__class__.objects.select_for_update().get(pk=user.pk)
+                user_obj.points += reward
+                user_obj.activity_points += reward
+                user_obj.save(update_fields=["points", "activity_points"])
+                PointsLog.objects.create(
+                    user=user_obj,
+                    points_type="fill_reward",
+                    delta=reward,
+                    reason=f"填写问卷《{survey.title}》奖励",
+                    ref_type="survey",
+                    ref_id=survey.id,
+                )
+            points_awarded = reward
+        else:
+            points_awarded = 0
+
         return {
             "id": str(response.id),
             "status": response.status,
-            "points_awarded": 0,
-            "points_expected": survey.reward_points or 0,
+            "points_awarded": points_awarded,
+            "points_expected": reward,
         }
 
     def _question_payload(self, question):
