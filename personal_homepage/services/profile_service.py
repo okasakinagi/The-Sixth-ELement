@@ -233,8 +233,8 @@ class UserProfileService:
                     errors[field] = "Must be an array"
                     continue
 
-                if len(normalized_items) > 20:
-                    errors[field] = "Array length must be <= 20"
+                if len(normalized_items) > 8:
+                    errors[field] = "Array length must be <= 8"
                 elif any(len(item) > 64 for item in normalized_items):
                     errors[field] = "Each item must be <= 64 characters"
                 else:

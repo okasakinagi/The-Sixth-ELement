@@ -164,7 +164,7 @@
 
           <!-- 研究方向/兴趣课程 -->
           <div class="form-item full-width">
-            <label class="form-label">研究方向 / 兴趣课程</label>
+            <label class="form-label">研究方向 / 兴趣课程（已选 {{ formData.interests.length }}/8）</label>
             <div class="tag-section">
               <div class="tag-group">
                 <span
@@ -208,7 +208,7 @@
 
           <!-- 社团/组织经历 -->
           <div class="form-item full-width">
-            <label class="form-label">社团 / 组织经历</label>
+            <label class="form-label">社团 / 组织经历（已选 {{ formData.organizations.length }}/8）</label>
             <div class="tag-section">
               <div class="tag-group">
                 <span
@@ -252,7 +252,7 @@
 
           <!-- 消费偏好 -->
           <div class="form-item full-width">
-            <label class="form-label">消费偏好</label>
+            <label class="form-label">消费偏好（已选 {{ formData.consumptionPreferences.length }}/8）</label>
             <div class="tag-section">
               <div class="tag-group">
                 <span
@@ -296,7 +296,7 @@
 
           <!-- 职业意向 -->
           <div class="form-item full-width">
-            <label class="form-label">职业意向</label>
+            <label class="form-label">职业意向（已选 {{ formData.careerIntention.length }}/8）</label>
             <div class="tag-section">
               <div class="tag-group">
                 <span
@@ -340,7 +340,7 @@
 
           <!-- 软硬技能 -->
           <div class="form-item full-width">
-            <label class="form-label">软硬技能</label>
+            <label class="form-label">软硬技能（已选 {{ formData.skills.length }}/8）</label>
             <div class="tag-section">
               <div class="tag-group">
                 <span
@@ -508,13 +508,30 @@ const completionRate = computed(() => {
 
 const floatingCircumference = 2 * Math.PI * 34
 const floatingOffset = computed(() => floatingCircumference - (completionRate.value / 100) * floatingCircumference)
+const MAX_TAGS_PER_TYPE = 8
+
+const showTagLimitToast = () => {
+  toastMessage.value = `每类标签最多选择 ${MAX_TAGS_PER_TYPE} 个`
+  showToast.value = true
+  setTimeout(() => {
+    showToast.value = false
+  }, 2000)
+}
 
 // 切换标签选择
 const toggleTag = (fieldName, tag) => {
+  if (!Array.isArray(formData.value[fieldName])) {
+    formData.value[fieldName] = []
+  }
+
   const index = formData.value[fieldName].indexOf(tag)
   if (index > -1) {
     formData.value[fieldName].splice(index, 1)
   } else {
+    if (formData.value[fieldName].length >= MAX_TAGS_PER_TYPE) {
+      showTagLimitToast()
+      return
+    }
     formData.value[fieldName].push(tag)
   }
 }
@@ -542,6 +559,10 @@ const addCustomTag = (fieldName, inputValue) => {
   }
 
   if (!formData.value[fieldName].includes(value)) {
+    if (formData.value[fieldName].length >= MAX_TAGS_PER_TYPE) {
+      showTagLimitToast()
+      return
+    }
     formData.value[fieldName].push(value)
     if (fieldName === 'interests') customInterestInput.value = ''
     if (fieldName === 'organizations') customOrganizationInput.value = ''
