@@ -6,6 +6,7 @@ import csv
 import io
 from datetime import timezone as dt_timezone
 
+from django.core.cache import cache
 from django.utils import timezone
 
 from survey_management.mapper.analytics_mapper import AnalyticsMapper
@@ -56,33 +57,68 @@ class AnalyticsService:
     # ─── 总览 ─────────────────────────────────────────
 
     def get_summary(self, user, survey_id):
+        # 生成缓存键
+        cache_key = f"analytics:summary:{survey_id}"
+        
+        # 尝试从缓存获取
+        cached_data = cache.get(cache_key)
+        if cached_data:
+            # 权限检查仍然需要
+            survey = self.mapper.get_survey(survey_id)
+            if not survey:
+                raise AnalyticsError(404, "survey not found")
+            self._authorize(user, survey)
+            return cached_data
+        
+        # 缓存未命中，计算数据
         survey = self.mapper.get_survey(survey_id)
         if not survey:
             raise AnalyticsError(404, "survey not found")
         self._authorize(user, survey)
 
         responses_count = self.mapper.get_responses_count(survey_id)
+        total_started_count = self.mapper.get_total_started_count(survey_id)
         target = survey.target or None
 
-        # 完成率 = 已填写份数 / 目标份数
-        if target:
-            completion_rate = round(responses_count / target, 2)
+        # 完成率 = 完整提交问卷数 / 总开始填写人数
+        if total_started_count > 0:
+            completion_rate = round(responses_count / total_started_count, 2)
         else:
             completion_rate = None
 
-        return {
+        result = {
             "survey_id": str(survey.id),
             "title": survey.title,
             "published_at": _iso(survey.updated_at),
             "responses_count": responses_count,
+            "total_started_count": total_started_count,
             "target": target,
             "completion_rate": completion_rate,
             "average_duration_seconds": self.mapper.get_avg_duration(survey_id),
         }
+        
+        # 缓存结果，设置过期时间
+        cache.set(cache_key, result, 300)  # 5分钟过期
+        
+        return result
 
     # ─── 单题统计 ─────────────────────────────────────
 
     def get_questions_stats(self, user, survey_id, text_page=1, text_page_size=20):
+        # 生成缓存键（文本题需要包含分页参数）
+        cache_key = f"analytics:questions:{survey_id}:{text_page}:{text_page_size}"
+        
+        # 尝试从缓存获取
+        cached_data = cache.get(cache_key)
+        if cached_data:
+            # 权限检查仍然需要
+            survey = self.mapper.get_survey(survey_id)
+            if not survey:
+                raise AnalyticsError(404, "survey not found")
+            self._authorize(user, survey)
+            return cached_data
+        
+        # 缓存未命中，计算数据
         survey = self.mapper.get_survey(survey_id)
         if not survey:
             raise AnalyticsError(404, "survey not found")
@@ -109,7 +145,7 @@ class AnalyticsService:
                 "texts_total": None,
             }
 
-            if qtype in ("single", "multi"):
+            if qtype in ("single", "multi", "scale"):
                 item["options"] = self._count_options(q, responses_count)
 
             elif qtype in ("text", "multi-text"):
@@ -122,7 +158,12 @@ class AnalyticsService:
 
             items.append(item)
 
-        return {"items": items}
+        result = {"items": items}
+        
+        # 缓存结果，设置过期时间
+        cache.set(cache_key, result, 300)  # 5分钟过期
+        
+        return result
 
     def _count_options(self, question, responses_count):
         """统计单选/多选题各选项的人数和百分比。
@@ -131,18 +172,27 @@ class AnalyticsService:
         则从实际答案中动态归集标签（向后兼容旧数据/跳过选项录入的问卷）。
         """
         opts = question._prefetched_options
+        qtype = (question.type or "").lower()
+        
         # 预设选项的有序标签列表（可能为空）
         predefined_labels = [opt.label for opt in opts]
         # 用 dict 维持插入顺序：先填入预设标签（count=0），答案计数时再累加
         counts: dict[str, int] = {label: 0 for label in predefined_labels}
+        
+        # 为量表题创建 value 到 label 的映射
+        value_to_label = {opt.value: opt.label for opt in opts} if opts else {}
 
         raw_answers = self.mapper.get_choice_answers(question.id)
-        qtype = (question.type or "").lower()
 
         for ans in raw_answers:
-            if qtype == "single":
-                label = (ans.get("value_text") or "").strip()
-                if label:
+            if qtype in ("single", "scale"):
+                value = (ans.get("value_text") or "").strip()
+                if value:
+                    # 对于量表题，使用 value 查找对应的 label
+                    if qtype == "scale" and value in value_to_label:
+                        label = value_to_label[value]
+                    else:
+                        label = value
                     counts[label] = counts.get(label, 0) + 1
             elif qtype == "multi":
                 selected = ans.get("value_json") or []

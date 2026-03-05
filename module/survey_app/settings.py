@@ -110,3 +110,15 @@ DEBUG_PROPAGATE_EXCEPTIONS = True
 # 推荐模式：'personalized' 使用相似度推荐，'random' 使用纯随机候选
 # 可通过环境变量 RECOMMENDATION_MODE 修改（修改后需要重启服务以生效）
 RECOMMENDATION_MODE = os.environ.get("RECOMMENDATION_MODE", "personalized")
+
+# 缓存配置
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'analytics-cache',
+        'TIMEOUT': 3600,  # 1小时
+        'OPTIONS': {
+            'MAX_ENTRIES': 1000
+        }
+    }
+}
