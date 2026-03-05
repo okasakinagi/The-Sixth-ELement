@@ -42,6 +42,7 @@ const TYPE_LABEL = {
   multi:        '多选题',
   text:         '填空题',
   'multi-text': '多项填空',
+  scale:        '量表题',
 }
 function typeLabel(type) { return TYPE_LABEL[type] || type }
 
@@ -156,7 +157,12 @@ async function handleExport(format) {
           <article class="ov-card">
             <span class="ov-label">填写人数</span>
             <span class="ov-value accent">{{ overview.responses_count }}</span>
-            <span class="ov-sub">目标 {{ overview.target ?? '-' }} 份</span>
+            <span class="ov-sub">总开始填写 {{ overview.total_started_count ?? 0 }} 份</span>
+          </article>
+          <article class="ov-card">
+            <span class="ov-label">目标份数</span>
+            <span class="ov-value accent">{{ overview.target ?? '-' }}</span>
+            <span class="ov-sub">设定的目标填写数量</span>
           </article>
           <article class="ov-card">
             <span class="ov-label">完成率</span>
@@ -257,6 +263,23 @@ async function handleExport(format) {
               <button class="ghost-btn" :disabled="getTextPage(q.question_id) >= textPages(q)"
                 @click="setTextPage(q.question_id, getTextPage(q.question_id) + 1)">下一页</button>
             </div>
+          </div>
+
+          <!-- 量表题：水平柱状图 -->
+          <div v-else-if="q.type === 'scale'" class="chart-area">
+            <div v-if="!q.options || q.options.length === 0" class="no-data">暂无选项数据</div>
+            <template v-else>
+              <div v-for="opt in q.options" :key="opt.label" class="bar-row">
+                <span class="bar-label">{{ opt.label }}</span>
+                <div class="bar-track">
+                  <div class="bar-fill bar-scale"
+                    :style="{ width: opt.ratio > 0 ? pct(opt.ratio) : '0%', minWidth: opt.ratio > 0 ? '4px' : '0' }"
+                  ></div>
+                </div>
+                <span class="bar-stat" :class="{ 'zero-count': opt.count === 0 }">{{ opt.count }} 人 · {{ pct(opt.ratio) }}</span>
+              </div>
+              <p class="chart-note">共 {{ overview.responses_count }} 份，各分值分布已标注</p>
+            </template>
           </div>
         </div>
       </section>
@@ -397,6 +420,7 @@ async function handleExport(format) {
 .type-multi   { background: #f0fdf4; color: #166534; }
 .type-text    { background: #fef9ec; color: #92400e; }
 .type-multi-text { background: #fdf4ff; color: #6b21a8; }
+.type-scale   { background: #f0f2ff; color: #4f46e5; }
 .q-title { font-size: 15px; font-weight: 600; color: #1a2f54; }
 
 /* ── 柱状图 ── */
@@ -421,6 +445,7 @@ async function handleExport(format) {
 }
 .bar-single { background: linear-gradient(90deg, #2b63d6, #60a5fa); }
 .bar-multi  { background: linear-gradient(90deg, #059669, #34d399); }
+.bar-scale  { background: linear-gradient(90deg, #4f46e5, #818cf8); }
 .bar-stat { font-size: 12px; color: #6a7d95; }
 .bar-stat.zero-count { color: #b8c8db; }
 .chart-note { font-size: 12px; color: #9aaec4; margin-top: 4px; }
