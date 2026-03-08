@@ -24,12 +24,23 @@
     >
       <span>{{ userInitial }}</span>
     </RouterLink>
+    <button
+      class="intro-btn"
+      :class="{ flash: isFlashing }"
+      ref="introButtonRef"
+      @click="handleIntroBtnClick"
+      @mousedown.stop
+      @touchstart.stop
+      aria-label="平台介绍"
+    >📖</button>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
+
+const emit = defineEmits(['open-intro'])
 
 const router = useRouter()
 
@@ -236,6 +247,13 @@ function handleLinkClick(e) {
   }
 }
 
+// 介绍按钮点击
+const introButtonRef = ref(null)
+function handleIntroBtnClick() {
+  if (dragState.value.hasMoved) return
+  emit('open-intro')
+}
+
 // 页面可见性变化时刷新积分
 function handleVisibilityChange() {
   syncAuthState()
@@ -287,9 +305,18 @@ onUnmounted(() => {
   }
 })
 
-// 暴露刷新方法供外部调用
+// 按钮闪光反馈
+const isFlashing = ref(false)
+function triggerFlash() {
+  isFlashing.value = true
+  setTimeout(() => { isFlashing.value = false }, 700)
+}
+
+// 暴露刷新方法及介绍按钮 ref 供外部调用
 defineExpose({
-  fetchUserPoints
+  fetchUserPoints,
+  introButtonRef,
+  triggerFlash,
 })
 </script>
 
@@ -396,5 +423,36 @@ defineExpose({
 
 .avatar span {
   font-size: 16px;
+}
+
+.intro-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #e8f0fe, #d0e0ff);
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  cursor: pointer;
+  box-shadow: 0 4px 10px rgba(30, 79, 180, 0.12);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  flex-shrink: 0;
+}
+.intro-btn:hover {
+  transform: scale(1.1);
+  box-shadow: 0 6px 14px rgba(30, 79, 180, 0.22);
+}
+.intro-btn:active { transform: scale(0.95); }
+
+@keyframes btn-flash {
+  0%   { box-shadow: 0 0 0 0 rgba(30, 79, 180, 0.55); transform: scale(1); }
+  35%  { box-shadow: 0 0 0 8px rgba(30, 79, 180, 0.18); transform: scale(1.18); }
+  70%  { box-shadow: 0 0 0 14px rgba(30, 79, 180, 0); transform: scale(1.06); }
+  100% { box-shadow: 0  0 0 0 rgba(30, 79, 180, 0); transform: scale(1); }
+}
+.intro-btn.flash {
+  animation: btn-flash 0.65s ease-out;
 }
 </style>

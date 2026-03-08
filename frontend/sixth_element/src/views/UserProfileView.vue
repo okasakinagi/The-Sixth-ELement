@@ -293,7 +293,7 @@
         <span class="floating-title">画像完成度</span>
         <div class="floating-header-right">
           <button v-if="completionRate < 100" class="floating-action" @click="goToEdit">去完善</button>
-          <button v-if="completionRate < 100" class="floating-close" @click="dismissFloating" aria-label="关闭">×</button>
+          <button class="floating-close" @click="dismissFloating" aria-label="关闭">×</button>
         </div>
       </div>
       <div class="floating-body">
@@ -497,6 +497,7 @@ const loadProfile = async () => {
       currentStatus: profile.current_status || '',
       profile_completion: profile.profile_completion || 0
     }
+    localStorage.setItem('sixth_element_profile_completion', String(profile.profile_completion || 0))
     // 检查是否展示悬浮完成度窗口
     checkFloatingVisibility()
     // 24小时自动清除状态（时间戳存在后端状态字符串第3段，多端通用）

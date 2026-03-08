@@ -109,3 +109,19 @@ def task_hall_refresh_batch(request):
         return error(exc.status, exc.message)
     except Exception as exc:
         return error(500, f"Internal server error: {str(exc)}")
+
+
+@csrf_exempt
+def task_hall_guest_tasks(request):
+    """无需认证的访客随机任务接口，不调用 AI 推荐。"""
+    if request.method != "GET":
+        return error(405, "Method not allowed")
+    size = _parse_int(request.GET.get("size"), default=15)
+    size = max(1, min(size or 15, 30))  # 限制在 1-30 之间
+    try:
+        payload = service.get_guest_tasks(size)
+        return JsonResponse(payload, status=200)
+    except TaskHallError as exc:
+        return error(exc.status, exc.message)
+    except Exception as exc:
+        return error(500, f"Internal server error: {str(exc)}")

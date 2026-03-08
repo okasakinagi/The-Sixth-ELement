@@ -1,57 +1,83 @@
 <script setup>
 import { RouterView, useRouter, useRoute } from 'vue-router'
-import { ref, computed, watch } from 'vue'
-import ProfileCompletionModal from './components/ProfileCompletionModal.vue'
+import { ref, computed, watch, onMounted, nextTick } from 'vue'
+import IntroModal from './components/IntroModal.vue'
 import AppSidebar from './components/AppSidebar.vue'
 import GlobalFloatingMenu from './components/GlobalFloatingMenu.vue'
 
 const router = useRouter()
 const route = useRoute()
 
-const showModal = ref(false)
-const hasShownModal = ref(false)
+// ---- IntroModal 状态 ----
+const showIntroModal = ref(false)
+const introShowLoginGuide = ref(false)
+const introStartAtProfile = ref(false)
+const globalMenuRef = ref(null)
 
-// 监听路由变化，登录后显示弹窗
-watch(
-  () => router.currentRoute.value.name,
-  (newRouteName) => {
-    const token = localStorage.getItem('access_token')
-    const justLoggedIn = router.currentRoute.value.query.justLoggedIn === 'true'
+// 将 GlobalFloatingMenu 中的介绍按钮 DOM 元素传给 IntroModal，用于关闭飞行动画
+const introTargetEl = computed(() => globalMenuRef.value?.introButtonRef?.value || null)
 
-    // 仅在从登录页跳转到主页且未显示过时，才显示弹窗
-    if (newRouteName === 'task-hall' && token && justLoggedIn && !hasShownModal.value) {
-      showModal.value = true
-      hasShownModal.value = true
-    }
-
-    if (newRouteName === 'auth' || newRouteName === 'forgot-password') {
-      showModal.value = false
-    }
-  }
-)
-
-function handleModalClose() {
-  showModal.value = false
+function isAuthPage(name) {
+  return name === 'auth' || name === 'forgot-password'
 }
 
-// 判断是否需要显示侧边栏（登录页和忘记密码页不显示）
-const showSidebar = computed(() => {
-  const routeName = router.currentRoute.value.name
-  return routeName !== 'auth' && routeName !== 'forgot-password'
-})
+function tryShowIntro() {
+  const name = route.name
+  if (isAuthPage(name)) return
 
-const showGlobalFloatingMenu = computed(() => {
-  const routeName = route.name
-  return routeName !== 'auth' && routeName !== 'forgot-password'
-})
+  const newUser = route.query.newUser === '1'
+  const hasSeenIntro = !!localStorage.getItem('sixth_element_intro_shown')
+  const token = localStorage.getItem('access_token')
 
-const showGlobalModal = computed(() => {
-  const routeName = route.name
-  if (routeName === 'auth' || routeName === 'forgot-password') {
-    return false
+  if (newUser) {
+    // 新注册/首次登录用户：显示引导并定位到完善资料区域
+    introShowLoginGuide.value = false
+    introStartAtProfile.value = true
+    showIntroModal.value = true
+  } else if (!hasSeenIntro && !showIntroModal.value) {
+    // 首次访问该设备：显示引导，未登录时附带注册按钮
+    introShowLoginGuide.value = !token
+    introStartAtProfile.value = false
+    showIntroModal.value = true
   }
-  return showModal.value
+}
+
+onMounted(() => {
+  // 初始化时检查
+  tryShowIntro()
 })
+
+// 路由变化时重新检查（如从登录页跳回来）
+watch(() => route.name, (newName) => {
+  if (isAuthPage(newName)) {
+    showIntroModal.value = false
+    return
+  }
+  tryShowIntro()
+})
+
+function handleIntroClose() {
+  showIntroModal.value = false
+  // 记录已阅读，后续不再自动弹出
+  localStorage.setItem('sixth_element_intro_shown', '1')
+  // 关闭后触发按钮闪光反馈
+  nextTick(() => { globalMenuRef.value?.triggerFlash?.() })
+  // 清理 newUser query 参数
+  if (route.query.newUser) {
+    const { newUser: _, ...rest } = route.query
+    router.replace({ query: rest })
+  }
+}
+
+function handleOpenIntro() {
+  introShowLoginGuide.value = false
+  introStartAtProfile.value = false
+  showIntroModal.value = true
+}
+
+// ---- 侧边栏 & 浮动菜单显示逻辑 ----
+const showSidebar = computed(() => !isAuthPage(route.name))
+const showGlobalFloatingMenu = computed(() => !isAuthPage(route.name))
 </script>
 
 <template>
@@ -61,8 +87,18 @@ const showGlobalModal = computed(() => {
   <template v-else>
     <RouterView :key="router.currentRoute.value.fullPath" />
   </template>
-  <GlobalFloatingMenu v-if="showGlobalFloatingMenu" />
-  <ProfileCompletionModal :visible="showGlobalModal" @close="handleModalClose" />
+  <GlobalFloatingMenu
+    v-if="showGlobalFloatingMenu"
+    ref="globalMenuRef"
+    @open-intro="handleOpenIntro"
+  />
+  <IntroModal
+    :visible="showIntroModal"
+    :show-login-guide="introShowLoginGuide"
+    :start-at-profile="introStartAtProfile"
+    :target-el="introTargetEl"
+    @close="handleIntroClose"
+  />
 </template>
 
 <style>

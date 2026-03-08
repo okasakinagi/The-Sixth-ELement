@@ -68,6 +68,7 @@
       ref="fabRef"
       :style="{ right: fabPosition.x + 'px', bottom: fabPosition.y + 'px' }"
       @mousedown.stop="startDrag($event, 'fab')"
+      @click="handleFabClick"
       to="/survey/new"
       aria-label="新建问卷"
     >
@@ -80,12 +81,20 @@
 <script setup>
 import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { refreshTaskHallBatch, dismissSurvey } from '@/utils/taskHallApi'
+import { refreshTaskHallBatch, dismissSurvey, getGuestTasks } from '@/utils/taskHallApi'
 
 const keyword = ref('')
 const router = useRouter()
 const loading = ref(false)
-const fixedBatchSize = 15
+const fixedBatchSize = computed(() => window.innerWidth < 768 ? 5 : 15)
+
+// Guest 模式：未登录用户
+const isGuest = computed(() => !localStorage.getItem('access_token'))
+
+function showLoginPrompt() {
+  const ok = window.confirm('该功能需要登录，是否前往登录？')
+  if (ok) router.push('/login')
+}
 
 // 拖拽相关
 const fabRef = ref(null)
@@ -191,12 +200,20 @@ function addSeenTaskIds(ids = []) {
 async function loadInitialTasks() {
   try {
     loading.value = true
-    // 与"换一批"使用同一接口，保证个性化评估和排序逻辑一致
-    const response = await refreshTaskHallBatch([], fixedBatchSize, router)
-    const items = Array.isArray(response.items) ? response.items : []
-    visibleTasks.value = items
-    seenTaskIds.value = []
-    addSeenTaskIds(items.map((task) => task.id))
+    if (isGuest.value) {
+      // 未登录用户：使用公开 guest 接口，随机展示问卷，不调用 AI
+      const response = await getGuestTasks(fixedBatchSize.value)
+      const items = Array.isArray(response.items) ? response.items : []
+      visibleTasks.value = items
+      seenTaskIds.value = []
+    } else {
+      // 已登录用户：个性化推荐
+      const response = await refreshTaskHallBatch([], fixedBatchSize.value, router)
+      const items = Array.isArray(response.items) ? response.items : []
+      visibleTasks.value = items
+      seenTaskIds.value = []
+      addSeenTaskIds(items.map((task) => task.id))
+    }
   } catch (error) {
     console.error('加载任务大厅失败:', error)
     visibleTasks.value = []
@@ -207,13 +224,17 @@ async function loadInitialTasks() {
 }
 
 async function refreshBatch() {
+  if (isGuest.value) {
+    showLoginPrompt()
+    return
+  }
   const confirm = window.confirm('确认要换一批问卷吗？当前页面的问卷将被替换。')
   if (!confirm) return
   try {
     loading.value = true
     const response = await refreshTaskHallBatch(
       seenTaskIds.value,
-      fixedBatchSize,
+      fixedBatchSize.value,
       router
     )
     const items = Array.isArray(response.items) ? response.items : []
@@ -227,6 +248,10 @@ async function refreshBatch() {
 }
 
 async function handleDelete(taskId) {
+  if (isGuest.value) {
+    showLoginPrompt()
+    return
+  }
   const ok = window.confirm('确认删除该问卷吗？将自动补位新的问卷。')
   if (!ok) return
 
@@ -293,6 +318,10 @@ function extractRawId(publicId) {
 }
 
 async function openTaskFill(task) {
+  if (isGuest.value) {
+    showLoginPrompt()
+    return
+  }
   const rawId = extractRawId(task.id)
   if (!rawId) return
 
@@ -327,6 +356,13 @@ function getMatchText(task) {
   if (task.match_level === 'high') return '高匹配'
   if (task.match_level === 'medium') return '中匹配'
   return '低匹配'
+}
+
+function handleFabClick(e) {
+  if (isGuest.value) {
+    e.preventDefault()
+    showLoginPrompt()
+  }
 }
 </script>
 

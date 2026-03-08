@@ -8,7 +8,17 @@
     </div>
 
     <!-- 悬浮画像完成度 -->
-    <div class="floating-progress" :class="{ mobile: isMobile }">
+    <!-- 哨兵：跟随正常文档流，IntersectionObserver 监听它是否离开视口 -->
+    <div ref="floatingSentinelRef" style="height:1px;pointer-events:none;visibility:hidden;"></div>
+    <!-- 占位：sticky 激活时撑开原位置，防止布局跳动 -->
+    <div v-if="isMobile && floatingSticky" :style="{ height: floatingPlaceholderHeight + 'px' }"></div>
+    <!-- Teleport：sticky 时将卡片传送到 body 根节点，完全绕开所有 overflow 容器 -->
+    <Teleport to="body" :disabled="!(isMobile && floatingSticky)">
+    <div
+      class="floating-progress"
+      :class="{ mobile: isMobile, 'is-sticky': isMobile && floatingSticky }"
+      ref="floatingProgressRef"
+    >
       <div class="floating-header">
         <span class="floating-title">画像完成度</span>
         <button class="floating-action" @click="saveProfile">保存</button>
@@ -53,6 +63,7 @@
         </div>
       </div>
     </div>
+    </Teleport>
 
     <div class="content-wrapper">
       <!-- 引导文案 -->
@@ -401,7 +412,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, unref } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, unref, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { handleTokenExpired } from '@/utils/authHelper'
 import { getUserProfile, updateUserProfile } from '@/utils/profileApi'
@@ -429,8 +440,34 @@ const formData = ref({ ...defaultProfile })
 const isMobile = ref(window.innerWidth <= 768)
 const isLoading = ref(false)
 const errorMessage = ref('')
+
+// 移动端完成度卡片悬浮相关
+// 使用 IntersectionObserver + Teleport，彻底绕开 overflow-x:hidden 的限制
+const floatingProgressRef = ref(null)
+const floatingSentinelRef = ref(null)
+const floatingSticky = ref(false)
+const floatingPlaceholderHeight = ref(0)
+let stickyObserver = null
+
 const handleResize = () => {
   isMobile.value = window.innerWidth <= 768
+  if (!isMobile.value) {
+    floatingSticky.value = false
+  } else {
+    initStickyObserver()
+  }
+}
+
+function initStickyObserver() {
+  nextTick(() => {
+    if (!floatingSentinelRef.value || !isMobile.value) return
+    floatingPlaceholderHeight.value = (floatingProgressRef.value?.offsetHeight ?? 100) + 8
+    stickyObserver?.disconnect()
+    stickyObserver = new IntersectionObserver((entries) => {
+      floatingSticky.value = !entries[0].isIntersecting
+    }, { threshold: 0 })
+    stickyObserver.observe(floatingSentinelRef.value)
+  })
 }
 
 // 选项配置
@@ -603,7 +640,7 @@ const saveProfile = async () => {
     
     // 调用API（PATCH 更新）
     await updateUserProfile(payload)
-    
+    localStorage.setItem('sixth_element_profile_completion', String(completionRate.value))
     toastMessage.value = '信息已保存，正在返回...'
     showToast.value = true
     
@@ -682,10 +719,12 @@ const loadProfile = async () => {
 onMounted(() => {
   loadProfile()
   window.addEventListener('resize', handleResize)
+  if (isMobile.value) initStickyObserver()
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize)
+  stickyObserver?.disconnect()
 })
 </script>
 
@@ -1119,9 +1158,31 @@ onBeforeUnmount(() => {
 }
 
 .floating-progress.mobile {
-  right: 14px;
-  bottom: 14px;
-  width: 220px;
+  /* 移动端：在文档流中展示，由 IntersectionObserver 决定何时 Teleport 到 body */
+  position: relative;
+  right: unset;
+  bottom: unset;
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 16px;
+  border-radius: 12px;
+}
+
+/* sticky 激活时已被 Teleport 到 body，position:fixed 不受任何 overflow 约束 */
+.floating-progress.mobile.is-sticky {
+  position: fixed;
+  top: 60px;
+  right: auto;
+  left: 12px;
+  width: 260px;
+  margin-bottom: 0;
+  z-index: 999;
+  animation: floatIn 0.18s ease;
+}
+
+@keyframes floatIn {
+  from { opacity: 0.75; transform: translateY(-6px); }
+  to   { opacity: 1;    transform: translateY(0); }
 }
 
 .floating-header {

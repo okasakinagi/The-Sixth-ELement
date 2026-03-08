@@ -68,3 +68,13 @@ export async function dismissSurvey(surveyId, router = null) {
 export async function abandonBySurvey(surveyId, router = null) {
   return await post('/internal/similarity/abandon', { survey_id: surveyId }, router)
 }
+
+/**
+ * 未登录访客获取随机任务列表（不调用 AI 推荐）
+ * GET /task-hall/guest-tasks?size=N
+ */
+export async function getGuestTasks(size = 15) {
+  const res = await fetch(`/api/v1/task-hall/guest-tasks?size=${encodeURIComponent(size)}`)
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return res.json()
+}

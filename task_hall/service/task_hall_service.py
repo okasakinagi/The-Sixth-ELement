@@ -1,4 +1,6 @@
 from datetime import timezone as dt_timezone
+import random
+
 from django.utils import timezone
 
 from core.services.similarity_service import SimilarityService
@@ -225,3 +227,29 @@ class TaskHallService:
         if not dt:
             return None
         return dt.astimezone(dt_timezone.utc).isoformat().replace("+00:00", "Z")
+
+    def get_guest_tasks(self, size=15):
+        """
+        无需认证的访客接口：随机返回若干已发布问卷，不调用 AI 推荐。
+        先获取所有符合条件的 ID，再在 Python 层随机抽样，避免 ORDER BY RAND() 全表扫描。
+        """
+        queryset = self.mapper.base_queryset().filter(
+            status__in=self.STATUS_LIVE_INTERNAL,
+            active_questionnaire__status="published",
+        )
+        all_ids = list(queryset.values_list("id", flat=True))
+        if not all_ids:
+            return {"items": []}
+
+        sample_size = min(size, len(all_ids))
+        sampled_ids = random.sample(all_ids, sample_size)
+
+        surveys = {s.id: s for s in queryset.filter(id__in=sampled_ids).select_related("owner")}
+        filled_counts = self.mapper.get_filled_counts(sampled_ids)
+
+        items = [
+            self._to_task_card(surveys[sid], filled_counts.get(sid, 0))
+            for sid in sampled_ids
+            if sid in surveys
+        ]
+        return {"items": items}

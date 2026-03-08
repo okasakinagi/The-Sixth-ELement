@@ -46,7 +46,7 @@ const router = createRouter({
       path: '/task-hall',
       name: 'task-hall',
       component: TaskHallView,
-      meta: { requiresAuth: true },
+      meta: { requiresAuth: false },
     },
     {
       path: '/surveys',

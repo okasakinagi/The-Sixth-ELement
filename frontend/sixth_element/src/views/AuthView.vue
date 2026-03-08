@@ -172,9 +172,11 @@ async function handleLogin() {
     const isFirstLogin = data.user && (data.user.profile_completion === 0 || data.user.is_first_login)
     setTimeout(() => {
       if (isFirstLogin) {
-        router.push({ path: '/profile/edit', query: { first: '1' } })
+        // 首次登录：进入任务大厅并展示新手引导（定位到完善资料区域）
+        router.push({ path: '/task-hall', query: { newUser: '1' } })
       } else {
-        router.push('/surveys?justLoggedIn=true')
+        // 普通登录：直接进入任务大厅
+        router.push('/task-hall')
       }
     }, 500)
   } catch (err) {
@@ -230,9 +232,9 @@ async function handleRegister() {
       }))
     }
 
-    // 注册后一定跳转到个人资料编辑页
+    // 注册后：进入任务大厅并展示新手引导（定位到完善资料区域）
     setTimeout(() => {
-      router.push({ path: '/profile/edit', query: { first: '1' } })
+      router.push({ path: '/task-hall', query: { newUser: '1' } })
     }, 500)
   } catch (err) {
     console.error('Register error:', err)
