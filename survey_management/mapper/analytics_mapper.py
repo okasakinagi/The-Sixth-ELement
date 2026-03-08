@@ -34,6 +34,11 @@ class AnalyticsMapper:
         ).count()
 
     @staticmethod
+    def get_total_started_count(survey_id):
+        """总开始填写人数（所有创建了 Response 记录的数量）。"""
+        return Response.objects.filter(survey_id=survey_id).count()
+
+    @staticmethod
     def get_avg_duration(survey_id):
         """已提交答卷的平均作答时长（秒），无数据时返回 None。"""
         result = Response.objects.filter(

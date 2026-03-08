@@ -886,7 +886,7 @@ onUnmounted(() => {
 
 .avatar-section {
   display: flex;
-  align-items: flex-end;
+  align-items: flex-start;
   gap: 20px;
   margin-top: -60px;
 }
@@ -901,6 +901,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   box-shadow: 0 4px 12px rgba(33, 150, 243, 0.3);
+  flex-shrink: 0;
 }
 
 .avatar-text {
@@ -910,26 +911,30 @@ onUnmounted(() => {
 }
 
 .user-basic-info {
-  padding-bottom: 10px;
+  padding-bottom: 0;
+  padding-top: 45px;
 }
 
 .username {
   font-size: 28px;
   font-weight: bold;
-  color: #1f3a60;
-  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.7);
+  background: linear-gradient(135deg, #1e3a5f 0%, #2c5282 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
   letter-spacing: 0.4px;
   margin: 0 0 6px 0;
+  filter: drop-shadow(0 2px 4px rgba(30, 58, 95, 0.15));
 }
 
 .user-subtitle {
-  font-size: 16px;
+  font-size: 15px;
   color: #757575;
   margin: 0;
 }
 
 .status-row {
-  margin-top: 10px;
+  margin-top: 12px;
   display: flex;
   flex-direction: column;
   gap: 10px;
