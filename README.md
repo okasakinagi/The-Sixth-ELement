@@ -1,118 +1,141 @@
-# 问卷互填 App
+﻿# 第六元素 · SurveyFiller
 
-面向校园、社群与小型团队的问卷互填平台。用户既可以发布问卷，也可以去填写他人问卷；完成填写可获得积分，积分用于记录活跃度与解锁权益。目标是提高问卷回收率，并建立公平、可持续的互助机制。
+> 面向校园与社群的问卷互填平台——发布问卷、完成填写、赚取积分，形成公平可持续的互助闭环。
 
-## 核心目标
-- 提升问卷回收效率，降低“发了没人填”的挫败感
-- 通过积分与信用规则，形成“贡献-回报”的正循环
-- 保障问卷质量与数据可信度，减少灌水与刷分
+**线上地址：[http://www.surveyfiller.com/](http://www.surveyfiller.com/)**
+
+---
+
+## 项目简介
+
+**第六元素**是一个问卷互填交换平台。用户通过完成他人问卷赚取积分，再用积分发布自己的问卷来吸引回收。平台内置 AI 辅助题目生成、基于向量嵌入的个性化推荐、完整的积分经济体系与数据分析看板，致力于解决"发了没人填"的普遍困境。
+
+---
 
 ## 主要功能
-- 问卷发布与管理：标题、说明、预计耗时、奖励积分、截止时间、链接/内嵌表单
-- 问卷互填：任务大厅、筛选排序、填写进度记录
-- 积分体系：完成获得积分、发布消耗积分、信用分与活跃度记录
-- 反作弊与质量控制：最短时长限制、注意力检测题、重复填写识别
-- 通知与消息：新问卷提醒、填写完成、审核结果
-- 个人中心：积分明细、贡献统计、问卷状态、历史记录
-- 举报与审核：问卷违规、诱导填写、刷分行为处理
 
-## 用户角色
-- 普通用户：发布问卷、填写问卷、兑换或使用积分
-- 审核员/管理员：内容审核、违规处理、数据统计与运营配置
+| 模块 | 功能描述 |
+|------|----------|
+| **账户体系** | 注册/登录（Bearer Token）、密码重置（验证码）、用户画像与标签 |
+| **问卷制作** | 富文本问卷编辑器，支持单选、多选、填空等题型，跳转逻辑配置，版本管理 |
+| **AI 辅助** | 输入 Prompt，由大语言模型（Qwen 2.5）自动生成问卷题目 |
+| **任务大厅** | 个性化推荐列表（余弦相似度算法），访客可浏览，登录后可参与 |
+| **问卷填写** | 在线作答，提交答案，支持耗时记录与反作弊字段采集 |
+| **答卷审核** | 问卷发布方可审核填写记录，审核通过后自动发放积分 |
+| **积分体系** | 发布扣分、填写得分，积分流水全量记录，信用分独立管理 |
+| **数据分析** | 问卷统计概览、题目维度分析、原始数据导出 |
+| **举报系统** | 对问卷或用户发起举报 |
+| **个人中心** | 积分明细、问卷管理、历史填写记录、标签画像编辑 |
 
-## 关键业务规则（建议）
-- 发布问卷需消耗积分，填写问卷可获得积分
-- 新用户赠送基础积分，用于首次发布
-- 积分获取上限与每日上限可配置，防止刷分
-- 填写行为与问卷质量挂钩，异常行为会降低信用分
+---
 
-## 典型用户流程
-1. 注册并完善资料（可选：学校/领域标签）
-2. 浏览任务大厅，选择问卷填写
-3. 完成填写并提交证据或回执（可选）
-4. 获得积分与活跃度记录
-5. 发布自己的问卷，设置奖励积分与截止时间
-6. 查看回收数据与完成进度
+## 技术栈
 
-## 产品结构（信息架构）
-- 首页：推荐问卷、热点问卷、任务大厅入口
-- 任务大厅：筛选（耗时/积分/领域/截止时间）
-- 发布页：填写问卷信息，设置积分消耗
-- 问卷详情：介绍、注意事项、立即填写
-- 个人中心：积分、历史、发布管理、消息
-- 管理后台：审核、举报、配置
+| 层次 | 技术 |
+|------|------|
+| 前端 | Vue 3  Vite 7  Vue Router 4 |
+| 后端 | Django 6.0  Gunicorn |
+| 数据库 | MySQL 8.0 |
+| AI 服务 | SiliconFlow API（Qwen2.5-7B 问卷生成  Qwen3-Embedding-4B 向量推荐） |
+| 部署 | Docker  Docker Compose  Nginx |
 
-## 积分与活跃度设计
-- 积分类型：
-  - 可用积分：用于发布问卷与兑换权益
-  - 活跃度积分：仅用于记录贡献，不可交易
-- 获取方式：
-  - 完成填写获得可用积分
-  - 连续活跃奖励、贡献评价奖励
-- 消耗方式：
-  - 发布问卷设置奖励时消耗积分
-  - 兑换权益或特权
+---
 
-## 数据模型（示例）
-- User：id, nickname, email, credit_score, points, activity_points, created_at
-- Survey：id, owner_id, title, description, reward_points, status, deadline
-- FillRecord：id, user_id, survey_id, duration, status, created_at
-- PointsLog：id, user_id, type, delta, reason, created_at
-- Report：id, reporter_id, target_id, reason, status
+## 项目结构
 
-## API 设计（示例）
-- `POST /api/v1/surveys` 发布问卷
-- `GET /api/v1/surveys` 获取问卷列表
-- `GET /api/v1/surveys/{id}` 问卷详情
-- `POST /api/v1/surveys/{id}/fill` 提交填写记录
-- `GET /api/v1/users/me` 获取个人信息
-- `GET /api/v1/points/logs` 积分明细
+```
+The-Sixth-ELement/
+ core/                    # 核心 Django 应用（模型、主路由、通用视图）
+    models.py            # 全部数据模型（15+ 张表）
+    views.py             # 认证、用户、积分等基础 API
+    urls.py              # 路由注册
+    controllers/         # 相似度计算控制器
+    services/            # 相似度业务服务
+    migrations/          # 数据库迁移文件
+ task_hall/               # 任务大厅（推荐列表）子应用
+ survey_management/       # 问卷管理（CRUD、发布、分析）子应用
+ surveyfill/              # 问卷填写与审核子应用
+ points_record/           # 积分记录子应用
+ personal_homepage/       # 个人主页与用户画像子应用
+ user_profile_extractor/  # 用户画像 AI 提取子应用
+ frontend/sixth_element/  # Vue 3 前端项目
+    src/views/           # 16 个页面组件
+    src/components/      # 公共组件（导航栏、侧边栏等）
+    src/router/          # SPA 路由配置
+ module/survey_app/       # Django 配置（settings、wsgi、urls）
+ docker/                  # Dockerfile（后端 + 前端）
+ deploy/                  # Docker Compose 与部署脚本
+ doc/                     # API 文档与数据库设计文档
+ Main.py                  # 入口（注入 module/ 路径的 manage.py 封装）
+```
 
-## 反作弊与风控建议
-- 最短填写时长限制，过短不计积分
-- 重复设备/账号限制
-- 注意力检测题（可选）
-- 异常高频填写触发人工审核
+---
 
-## 技术实现建议（可选）
-- 前端：React / Vue + TypeScript
-- 后端：Node.js / Python / Go
-- 数据库：PostgreSQL / MySQL
-- 缓存：Redis
-- 消息通知：WebSocket / Push / Email
-- 部署：Docker + 云服务器
+## API 概览
 
-## 里程碑规划（建议）
-- M1：账号体系、问卷发布、填写记录、积分流水
-- M2：任务大厅、筛选排序、基础风控
-- M3：审核后台、举报系统、统计报表
-- M4：推荐算法、积分兑换、更多运营工具
+Base URL：`/api/v1/`
 
-## 运行与开发
-前端：Vue3 + Vite（位于 frontend/sixth_element）
-后端：Django（提供 /api/v1 JSON API）
-数据库：MySQL
+| 分组 | 示例端点 | 说明 |
+|------|----------|------|
+| 认证 | `POST /auth/register`  `POST /auth/login` | 注册登录，返回 Bearer Token |
+| 认证 | `POST /auth/send-reset-code`  `POST /auth/reset-password` | 验证码密码重置 |
+| 用户 | `GET /users/me`  `PATCH /users/me` | 当前用户信息与标签更新 |
+| 问卷管理 | `GET/POST /surveys`  `POST /surveys/{id}/publish` | 列表、创建、发布/暂停/关闭 |
+| 草稿 | `POST /surveys/drafts`  `POST /surveys/drafts/{id}/ai-generate` | 草稿编辑与 AI 生成题目 |
+| 数据分析 | `GET /surveys/{id}/analytics/summary`  `GET /surveys/{id}/analytics/export` | 统计与数据导出 |
+| 任务大厅 | `GET /task-hall/tasks`  `GET /task-hall/guest-tasks` | 推荐任务列表（含访客模式） |
+| 问卷填写 | `GET /surveys/{id}/fill`  `POST /surveys/{id}/fills` | 获取题目，提交答案 |
+| 答卷审核 | `POST /fills/{id}/review`  `GET /fills/me` | 审核答卷，查看我的填写 |
+| 积分 | `GET /points/logs`  `GET /points/summary` | 流水明细与积分概览 |
+| 举报 | `POST /reports` | 举报问卷或用户 |
+| 内部推荐 | `POST /internal/vector/generate`  `GET /internal/recommend` | 向量生成与相似度推荐（内部调用） |
 
-### 本地开发（建议：前后端分开跑）
+完整文档见 [doc/api/](doc/api/)。
 
-1) 启动后端（Django + MySQL）
+---
 
-确保本机 MySQL 已创建数据库 `sixth_element`，并存在用户 `sixth_element`（密码 `123456`）。
+## 数据模型
 
-然后运行：
+核心表结构（详见 [doc/数据库表.md](doc/数据库表.md)）：
+
+- **AppUser**  用户账号（积分、信用分、活跃度）
+- **AuthToken**  Bearer 令牌（1 小时有效期）
+- **Survey**  问卷任务（draft  published  closed 状态机）
+- **Questionnaire / Question / QuestionOption**  问卷内容与版本管理
+- **Response / Answer**  答卷与单题答案
+- **PointsLog**  积分流水（全量审计）
+- **Tag / SurveyTag / UserTag / UserTagWeight**  标签画像体系（14 种标签类型）
+- **IDVector / SurveyUserSimilarity**  向量推荐引擎
+- **Report**  举报记录
+- **Notification / AuditLog**  通知与审计日志
+
+---
+
+## 本地开发
+
+### 前提条件
+
+- Python 3.12+
+- Node.js 20+
+- MySQL 8.0（数据库名 `sixth_element`，用户 `sixth_element`，密码 `123456`）
+
+### 启动后端
 
 ```bash
 python -m venv .venv
-.venv\\Scripts\\activate
+# Windows
+.venv\Scripts\activate
+# macOS/Linux
+source .venv/bin/activate
+
 pip install -r requirements.txt
-python Main.py makemigrations core
 python Main.py migrate
 python Main.py runserver
 ```
 
-后端接口：`http://127.0.0.1:8000/api/v1/`
+后端运行于 `http://127.0.0.1:8000`，API 前缀 `/api/v1/`。
 
-2) 启动前端（Vite）
+### 启动前端
 
 ```bash
 cd frontend/sixth_element
@@ -120,10 +143,52 @@ npm install
 npm run dev
 ```
 
-Vite 已配置 `/api` 代理到 Django（8000），前端可直接请求 `/api/v1/...`。
+Vite 开发服务器运行于 `http://localhost:5173`，`/api` 请求自动代理到 Django。
+
+---
+
+## Docker 部署
+
+项目提供完整的容器化部署方案（3 个服务）：
+
+```
+db        MySQL 8.0（数据持久化）
+web       Django + Gunicorn（3 workers，端口 8000）
+frontend  Nginx + Vue 静态文件（端口 80，反代 /api 到 web）
+```
+
+```bash
+cd deploy
+
+# 复制并填写环境变量
+cp .env.example .env   # 设置 DJANGO_SECRET_KEY、DB 密码等
+
+# 构建并启动
+docker compose up -d --build
+
+# 初始化数据库
+docker compose exec web python Main.py migrate
+```
+
+AI 功能需在 `deploy/ai_config.json` 中填写 SiliconFlow API Key（参考 `deploy/ai_config.example.json`）。
+
+---
+
+## 典型用户流程
+
+1. 注册账号（获赠 20 初始积分）
+2. 在**任务大厅**浏览推荐问卷并填写
+3. 填写完成  等待审核  通过后获得积分
+4. 积分充足后，在**问卷制作**中创建并发布自己的问卷（支持 AI 辅助生成）
+5. 在**问卷管理**中审核他人提交、查看数据分析
+
+---
 
 ## 贡献方式
-欢迎提交功能建议、PR 或 Issue。请保持描述清晰并说明场景与预期效果。
+
+欢迎提交 Issue 或 Pull Request。请在 PR 描述中说明改动场景与预期效果。
 
 ## 版权
-本项目遵循 `LICENSE` 中的协议。
+
+本项目遵循 [LICENSE](LICENSE) 中的协议。
+
