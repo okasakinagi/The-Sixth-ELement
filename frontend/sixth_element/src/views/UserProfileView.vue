@@ -288,10 +288,13 @@
     </div>
 
     <!-- 悬浮画像完成度 -->
-    <div class="floating-progress" :class="{ mobile: isMobile }">
+    <div v-if="showFloatingProgress" class="floating-progress" :class="{ mobile: isMobile }">
       <div class="floating-header">
         <span class="floating-title">画像完成度</span>
-        <button class="floating-action" @click="goToEdit">去完善</button>
+        <div class="floating-header-right">
+          <button v-if="completionRate < 100" class="floating-action" @click="goToEdit">去完善</button>
+          <button v-if="completionRate < 100" class="floating-close" @click="dismissFloating" aria-label="关闭">×</button>
+        </div>
       </div>
       <div class="floating-body">
         <div class="circular-progress small">
@@ -366,6 +369,48 @@ const userBasicInfo = ref({ nickname: '加载中...' })
 const isMobile = ref(window.innerWidth <= 768)
 const isLoading = ref(true)
 const errorMessage = ref('')
+
+// 悬浮完成度窗口
+const showFloatingProgress = ref(false)
+const FLOATING_STATUS_KEY = 'profile_floating_status'
+
+function checkFloatingVisibility() {
+  const rate = completionRate.value
+  const stored = localStorage.getItem(FLOATING_STATUS_KEY)
+  let status = null
+  if (stored) {
+    try { status = JSON.parse(stored) } catch {}
+  }
+
+  if (rate === 100) {
+    // 100% 时：已展示过则不再显示
+    if (status?.type === '100_seen') {
+      showFloatingProgress.value = false
+      return
+    }
+    // 首次达到100%：展示并立即记录，3秒后自动关闭
+    localStorage.setItem(FLOATING_STATUS_KEY, JSON.stringify({ type: '100_seen' }))
+    showFloatingProgress.value = true
+    setTimeout(() => {
+      showFloatingProgress.value = false
+    }, 3000)
+  } else {
+    // < 100% 时：被关闭后 24h 内不再显示
+    if (status?.type === 'dismissed' && Date.now() < status.until) {
+      showFloatingProgress.value = false
+      return
+    }
+    showFloatingProgress.value = true
+  }
+}
+
+function dismissFloating() {
+  localStorage.setItem(FLOATING_STATUS_KEY, JSON.stringify({
+    type: 'dismissed',
+    until: Date.now() + 24 * 60 * 60 * 1000
+  }))
+  showFloatingProgress.value = false
+}
 
 // 状态弹窗相关
 const showStatusModal = ref(false)
@@ -452,6 +497,8 @@ const loadProfile = async () => {
       currentStatus: profile.current_status || '',
       profile_completion: profile.profile_completion || 0
     }
+    // 检查是否展示悬浮完成度窗口
+    checkFloatingVisibility()
     // 24小时自动清除状态（时间戳存在后端状态字符串第3段，多端通用）
     if (userData.value.currentStatus) {
       const parts = userData.value.currentStatus.split('|')
@@ -1530,6 +1577,12 @@ onUnmounted(() => {
   justify-content: space-between;
 }
 
+.floating-header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .floating-title {
   font-weight: 700;
   color: #0b2b66;
@@ -1546,6 +1599,29 @@ onUnmounted(() => {
   font-weight: 700;
   cursor: pointer;
   box-shadow: 0 4px 12px rgba(33, 150, 243, 0.28);
+}
+
+.floating-close {
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: #f0f4f8;
+  border-radius: 50%;
+  color: #8a97a8;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background 0.2s, color 0.2s;
+  flex-shrink: 0;
+}
+
+.floating-close:hover {
+  background: #dde5ef;
+  color: #374151;
 }
 
 .floating-body {

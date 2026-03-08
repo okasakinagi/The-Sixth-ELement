@@ -255,7 +255,7 @@ class UserProfileService:
         Returns:
             int: 完成度（0-100）
         """
-        total_fields = 12  # 总字段数
+        total_fields = 11  # 总字段数（不含状态字段）
         filled_fields = 0
 
         # 单值字段
@@ -270,8 +270,6 @@ class UserProfileService:
         if profile.get("major"):
             filled_fields += 1
         if profile.get("mbti"):
-            filled_fields += 1
-        if profile.get("current_status"):
             filled_fields += 1
 
         # 数组字段

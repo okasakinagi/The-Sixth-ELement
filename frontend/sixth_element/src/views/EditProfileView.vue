@@ -493,7 +493,6 @@ const completionRate = computed(() => {
   if (formData.value.college) filledCount++
   if (formData.value.major) filledCount++
   if (formData.value.mbti) filledCount++
-  if (formData.value.currentStatus) filledCount++
   
   // 数组字段（数组有元素即算填写）
   if (formData.value.interests && formData.value.interests.length > 0) filledCount++
@@ -502,8 +501,8 @@ const completionRate = computed(() => {
   if (formData.value.careerIntention && formData.value.careerIntention.length > 0) filledCount++
   if (formData.value.skills && formData.value.skills.length > 0) filledCount++
   
-  const totalFields = 12
-  return Math.round((filledCount / totalFields) * 100)
+  const totalFields = 11
+  return Math.floor((filledCount / totalFields) * 100)
 })
 
 const floatingCircumference = 2 * Math.PI * 34
