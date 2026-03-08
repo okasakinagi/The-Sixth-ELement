@@ -415,13 +415,13 @@ onUnmounted(() => {
 }
 
 .balance-label {
-  font-size: 14px;
+  font-size: 18px;
   opacity: 0.9;
   margin: 0;
 }
 
 .balance-value {
-  font-size: 40px;
+  font-size: 48px;
   font-weight: 700;
   margin: 4px 0 0 0;
 }
@@ -431,13 +431,13 @@ onUnmounted(() => {
 }
 
 .earned-label {
-  font-size: 12px;
+  font-size: 16px;
   opacity: 0.85;
   margin: 0;
 }
 
 .earned-value {
-  font-size: 18px;
+  font-size: 22px;
   margin: 2px 0 0 0;
   opacity: 0.95;
 }
@@ -475,11 +475,11 @@ onUnmounted(() => {
 }
 
 .badge-icon {
-  font-size: 20px;
+  font-size: 24px;
 }
 
 .badge-text {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -537,7 +537,7 @@ onUnmounted(() => {
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 20px;
   color: #666;
   font-weight: 500;
   padding: 8px 0;
@@ -595,20 +595,20 @@ onUnmounted(() => {
 }
 
 .item-reason {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 500;
   color: #1a202c;
   margin: 0 0 4px 0;
 }
 
 .item-time {
-  font-size: 12px;
+  font-size: 14px;
   color: #999;
   margin: 0;
 }
 
 .item-right {
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 600;
   width: 60px;
   text-align: right;
@@ -690,11 +690,11 @@ onUnmounted(() => {
   }
 
   .balance-value {
-    font-size: 32px;
+    font-size: 40px;
   }
 
   .earned-value {
-    font-size: 16px;
+    font-size: 20px;
   }
 
   .honor-badge {
@@ -704,7 +704,7 @@ onUnmounted(() => {
   }
 
   .badge-text {
-    font-size: 13px;
+    font-size: 15px;
   }
 
   .filter-tabs {
@@ -712,7 +712,7 @@ onUnmounted(() => {
   }
 
   .tab {
-    font-size: 13px;
+    font-size: 18px;
   }
 
   .transaction-list {
@@ -724,15 +724,15 @@ onUnmounted(() => {
   }
 
   .item-reason {
-    font-size: 13px;
+    font-size: 15px;
   }
 
   .item-time {
-    font-size: 11px;
+    font-size: 13px;
   }
 
   .item-right {
-    font-size: 15px;
+    font-size: 17px;
     width: 55px;
   }
 
