@@ -20,7 +20,11 @@ class PointsRecordMapper:
         
         # 应用类型过滤
         points_type = filters.get('type')
-        if points_type:
+        if points_type == 'earn':
+            queryset = queryset.filter(delta__gt=0)
+        elif points_type == 'spend':
+            queryset = queryset.filter(delta__lt=0)
+        elif points_type and points_type.strip():  # 确保非空字符串
             queryset = queryset.filter(points_type=points_type)
         
         # 应用时间范围过滤
