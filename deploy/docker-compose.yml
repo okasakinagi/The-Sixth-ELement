@@ -31,16 +31,23 @@ services:
     # 生产部署通常不需要把宿主目录挂载到容器，镜像内已经包含应用代码
     healthcheck:
       # 调用 web 容器内的健康端点 /healthz，要求返回 200
-      test: ["CMD-SHELL", "curl -f http://127.0.0.1:8000/healthz || exit 1"]
+      test: ["CMD", "python", "-c", "import urllib.request; resp = urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=5); assert resp.getcode() == 200"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 60s
 
   frontend:
     image: frontend:latest
     ports:
       - "80:80"
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f -s http://127.0.0.1:80/ || exit 1"]
+      interval: 10s        # 每10秒检查一次
+      timeout: 5s          # 单次检查超时5秒
+      retries: 3           # 连续3次失败标记为unhealthy
+      start_period: 30s    # 前端启动快，30秒足够
 
 volumes:
   db_data:
