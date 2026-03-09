@@ -120,37 +120,180 @@
           <!-- 年级 -->
           <div class="form-item">
             <label class="form-label">年级</label>
-            <select v-model="formData.grade" class="form-select">
-              <option value="">请选择年级</option>
-              <option v-for="grade in gradeOptions" :key="grade" :value="grade">{{ grade }}</option>
-            </select>
+            <div class="select-shell" :ref="(el) => setSelectRootRef('grade', el)">
+              <button
+                type="button"
+                class="select-trigger"
+                :class="{ open: isDesktopSelectOpen('grade'), filled: Boolean(formData.grade) }"
+                @click="toggleSelect('grade')"
+              >
+                <span class="select-trigger-copy">
+                  <span class="select-trigger-label">当前选择</span>
+                  <span class="select-trigger-value">{{ formData.grade || '请选择年级' }}</span>
+                </span>
+                <span class="select-trigger-arrow">⌄</span>
+              </button>
+
+              <transition name="select-panel">
+                <div v-if="isDesktopSelectOpen('grade')" class="select-panel">
+                  <button
+                    type="button"
+                    class="select-option select-option-clear"
+                    :class="{ active: !formData.grade }"
+                    @click="clearSingleSelect('grade')"
+                  >
+                    <span class="select-option-main">暂不填写</span>
+                    <span class="select-option-meta">保留为空</span>
+                  </button>
+                  <button
+                    v-for="grade in gradeOptions"
+                    :key="grade"
+                    type="button"
+                    class="select-option"
+                    :class="{ active: formData.grade === grade }"
+                    @click="selectSingleOption('grade', grade)"
+                  >
+                    <span class="select-option-main">{{ grade }}</span>
+                    <span class="select-option-check">{{ formData.grade === grade ? '✓' : '' }}</span>
+                  </button>
+                </div>
+              </transition>
+            </div>
           </div>
 
           <!-- 学院 -->
           <div class="form-item full-width">
             <label class="form-label">学院</label>
-            <input
-              type="text"
-              v-model="formData.college"
-              placeholder="例如：物理学院"
-              class="form-input"
-              list="college-suggestions"
-            />
-            <datalist id="college-suggestions">
-              <option v-for="college in collegeSuggestions" :key="college" :value="college" />
-            </datalist>
+            <div class="select-shell select-shell-search" :ref="(el) => setSelectRootRef('college', el)">
+              <button
+                type="button"
+                class="select-trigger search-trigger"
+                :class="{ open: isDesktopSelectOpen('college'), filled: Boolean(formData.college) }"
+                @click="toggleSelect('college')"
+              >
+                <span class="select-trigger-copy">
+                  <span class="select-trigger-label">学院信息</span>
+                  <span class="select-trigger-value">{{ formData.college || '搜索或选择学院' }}</span>
+                </span>
+                <span class="select-trigger-arrow">⌄</span>
+              </button>
+
+              <transition name="select-panel">
+                <div v-if="isDesktopSelectOpen('college')" class="select-panel select-panel-searchable">
+                  <div class="select-search-box">
+                    <input
+                      v-model.trim="collegeKeyword"
+                      type="text"
+                      placeholder="输入学院名称进行搜索"
+                      class="form-input select-search-input"
+                      @keydown.enter.prevent="applyCollegeKeyword"
+                    />
+                    <button
+                      type="button"
+                      class="select-search-action"
+                      :disabled="!collegeKeyword.trim()"
+                      @click="applyCollegeKeyword"
+                    >
+                      使用
+                    </button>
+                  </div>
+                  <div class="select-section-title">推荐学院</div>
+                  <div class="select-option-list compact">
+                    <button
+                      type="button"
+                      class="select-option select-option-clear"
+                      :class="{ active: !formData.college }"
+                      @click="clearSingleSelect('college')"
+                    >
+                      <span class="select-option-main">暂不填写</span>
+                      <span class="select-option-meta">后续仍可补充</span>
+                    </button>
+                    <button
+                      v-for="college in filteredCollegeOptions"
+                      :key="college"
+                      type="button"
+                      class="select-option"
+                      :class="{ active: formData.college === college }"
+                      @click="selectSingleOption('college', college)"
+                    >
+                      <span class="select-option-main">{{ college }}</span>
+                      <span class="select-option-check">{{ formData.college === college ? '✓' : '' }}</span>
+                    </button>
+                  </div>
+                  <div v-if="showCustomCollegeAction" class="select-custom-hint">
+                    未找到完全匹配项，可直接使用“{{ collegeKeyword.trim() }}”
+                  </div>
+                </div>
+              </transition>
+            </div>
             <span class="input-hint">请输入完整学院名称</span>
           </div>
 
           <!-- 专业 -->
           <div class="form-item full-width">
             <label class="form-label">专业</label>
-            <input
-              type="text"
-              v-model="formData.major"
-              placeholder="例如：应用物理学"
-              class="form-input"
-            />
+            <div class="select-shell select-shell-search" :ref="(el) => setSelectRootRef('major', el)">
+              <button
+                type="button"
+                class="select-trigger search-trigger"
+                :class="{ open: isDesktopSelectOpen('major'), filled: Boolean(formData.major) }"
+                @click="toggleSelect('major')"
+              >
+                <span class="select-trigger-copy">
+                  <span class="select-trigger-label">专业信息</span>
+                  <span class="select-trigger-value">{{ formData.major || '搜索或选择专业' }}</span>
+                </span>
+                <span class="select-trigger-arrow">⌄</span>
+              </button>
+
+              <transition name="select-panel">
+                <div v-if="isDesktopSelectOpen('major')" class="select-panel select-panel-searchable">
+                  <div class="select-search-box">
+                    <input
+                      v-model.trim="majorKeyword"
+                      type="text"
+                      placeholder="输入专业名称进行搜索"
+                      class="form-input select-search-input"
+                      @keydown.enter.prevent="applyMajorKeyword"
+                    />
+                    <button
+                      type="button"
+                      class="select-search-action"
+                      :disabled="!majorKeyword.trim()"
+                      @click="applyMajorKeyword"
+                    >
+                      使用
+                    </button>
+                  </div>
+                  <div class="select-section-title">常见专业</div>
+                  <div class="select-option-list compact">
+                    <button
+                      type="button"
+                      class="select-option select-option-clear"
+                      :class="{ active: !formData.major }"
+                      @click="clearSingleSelect('major')"
+                    >
+                      <span class="select-option-main">暂不填写</span>
+                      <span class="select-option-meta">后续仍可补充</span>
+                    </button>
+                    <button
+                      v-for="major in filteredMajorOptions"
+                      :key="major"
+                      type="button"
+                      class="select-option"
+                      :class="{ active: formData.major === major }"
+                      @click="selectSingleOption('major', major)"
+                    >
+                      <span class="select-option-main">{{ major }}</span>
+                      <span class="select-option-check">{{ formData.major === major ? '✓' : '' }}</span>
+                    </button>
+                  </div>
+                  <div v-if="showCustomMajorAction" class="select-custom-hint">
+                    未找到完全匹配项，可直接使用“{{ majorKeyword.trim() }}”
+                  </div>
+                </div>
+              </transition>
+            </div>
             <span class="input-hint">请输入完整专业名称</span>
           </div>
         </div>
@@ -167,10 +310,45 @@
           <!-- MBTI -->
           <div class="form-item">
             <label class="form-label">MBTI 人格</label>
-            <select v-model="formData.mbti" class="form-select">
-              <option value="">请选择您的MBTI类型</option>
-              <option v-for="mbti in mbtiOptions" :key="mbti" :value="mbti">{{ mbti }}</option>
-            </select>
+            <div class="select-shell" :ref="(el) => setSelectRootRef('mbti', el)">
+              <button
+                type="button"
+                class="select-trigger"
+                :class="{ open: isDesktopSelectOpen('mbti'), filled: Boolean(formData.mbti) }"
+                @click="toggleSelect('mbti')"
+              >
+                <span class="select-trigger-copy">
+                  <span class="select-trigger-label">人格偏好</span>
+                  <span class="select-trigger-value">{{ formData.mbti || '请选择 MBTI 类型' }}</span>
+                </span>
+                <span class="select-trigger-arrow">⌄</span>
+              </button>
+
+              <transition name="select-panel">
+                <div v-if="isDesktopSelectOpen('mbti')" class="select-panel select-panel-grid">
+                  <button
+                    type="button"
+                    class="select-option select-option-clear"
+                    :class="{ active: !formData.mbti }"
+                    @click="clearSingleSelect('mbti')"
+                  >
+                    <span class="select-option-main">暂不填写</span>
+                    <span class="select-option-meta">保持为空</span>
+                  </button>
+                  <button
+                    v-for="mbti in mbtiOptions"
+                    :key="mbti"
+                    type="button"
+                    class="select-option"
+                    :class="{ active: formData.mbti === mbti }"
+                    @click="selectSingleOption('mbti', mbti)"
+                  >
+                    <span class="select-option-main">{{ mbti }}</span>
+                    <span class="select-option-check">{{ formData.mbti === mbti ? '✓' : '' }}</span>
+                  </button>
+                </div>
+              </transition>
+            </div>
           </div>
 
           <!-- 研究方向/兴趣课程 -->
@@ -408,6 +586,89 @@
         {{ toastMessage }}
       </div>
     </transition>
+
+    <transition name="picker-fade">
+      <div v-if="mobilePickerField" class="mobile-picker-overlay" @click.self="closeSelects">
+        <div class="mobile-picker-sheet">
+          <div class="mobile-picker-header">
+            <div>
+              <div class="mobile-picker-eyebrow">资料选择</div>
+              <h3 class="mobile-picker-title">{{ mobilePickerConfig.title }}</h3>
+            </div>
+            <button type="button" class="mobile-picker-close" @click="closeSelects">×</button>
+          </div>
+
+          <p class="mobile-picker-desc">{{ mobilePickerConfig.description }}</p>
+
+          <div v-if="mobilePickerField === 'college'" class="mobile-picker-search">
+            <input
+              v-model.trim="collegeKeyword"
+              type="text"
+              placeholder="输入学院名称进行搜索"
+              class="form-input select-search-input"
+              @keydown.enter.prevent="applyCollegeKeyword"
+            />
+            <button
+              type="button"
+              class="mobile-picker-search-btn"
+              :disabled="!collegeKeyword.trim()"
+              @click="applyCollegeKeyword"
+            >
+              使用当前输入
+            </button>
+          </div>
+
+          <div v-if="mobilePickerField === 'major'" class="mobile-picker-search">
+            <input
+              v-model.trim="majorKeyword"
+              type="text"
+              placeholder="输入专业名称进行搜索"
+              class="form-input select-search-input"
+              @keydown.enter.prevent="applyMajorKeyword"
+            />
+            <button
+              type="button"
+              class="mobile-picker-search-btn"
+              :disabled="!majorKeyword.trim()"
+              @click="applyMajorKeyword"
+            >
+              使用当前输入
+            </button>
+          </div>
+
+          <div class="mobile-picker-options" :class="{ grid: mobilePickerField === 'mbti' }">
+            <button
+              type="button"
+              class="mobile-picker-option ghost"
+              :class="{ active: !mobilePickerValue }"
+              @click="clearSingleSelect(mobilePickerField)"
+            >
+              <span>暂不填写</span>
+              <span class="select-option-check">{{ !mobilePickerValue ? '✓' : '' }}</span>
+            </button>
+            <button
+              v-for="option in mobilePickerOptions"
+              :key="option"
+              type="button"
+              class="mobile-picker-option"
+              :class="{ active: mobilePickerValue === option }"
+              @click="selectSingleOption(mobilePickerField, option)"
+            >
+              <span>{{ option }}</span>
+              <span class="select-option-check">{{ mobilePickerValue === option ? '✓' : '' }}</span>
+            </button>
+          </div>
+
+          <div v-if="mobilePickerField === 'college' && showCustomCollegeAction" class="mobile-picker-tip">
+            也可以直接保存“{{ collegeKeyword.trim() }}”作为学院名称。
+          </div>
+
+          <div v-if="mobilePickerField === 'major' && showCustomMajorAction" class="mobile-picker-tip">
+            也可以直接保存“{{ majorKeyword.trim() }}”作为专业名称。
+          </div>
+        </div>
+      </div>
+    </transition>
   </div>
 </template>
 
@@ -447,14 +708,212 @@ const floatingProgressRef = ref(null)
 const floatingSentinelRef = ref(null)
 const floatingSticky = ref(false)
 const floatingPlaceholderHeight = ref(0)
+const activeDesktopSelect = ref('')
+const mobilePickerField = ref('')
+const collegeKeyword = ref('')
+const majorKeyword = ref('')
 let stickyObserver = null
+const selectRootRefs = {}
 
 const handleResize = () => {
   isMobile.value = window.innerWidth <= 768
+  closeSelects()
   if (!isMobile.value) {
     floatingSticky.value = false
   } else {
     initStickyObserver()
+  }
+}
+
+const setSelectRootRef = (field, el) => {
+  if (el) {
+    selectRootRefs[field] = el
+    return
+  }
+
+  delete selectRootRefs[field]
+}
+
+const isDesktopSelectOpen = (field) => !isMobile.value && activeDesktopSelect.value === field
+
+const syncCollegeKeyword = () => {
+  collegeKeyword.value = formData.value.college || ''
+}
+
+const syncMajorKeyword = () => {
+  majorKeyword.value = formData.value.major || ''
+}
+
+const toggleSelect = (field) => {
+  if (field === 'college') {
+    syncCollegeKeyword()
+  }
+
+  if (field === 'major') {
+    syncMajorKeyword()
+  }
+
+  if (isMobile.value) {
+    mobilePickerField.value = mobilePickerField.value === field ? '' : field
+    activeDesktopSelect.value = ''
+    return
+  }
+
+  activeDesktopSelect.value = activeDesktopSelect.value === field ? '' : field
+  mobilePickerField.value = ''
+}
+
+const closeSelects = () => {
+  activeDesktopSelect.value = ''
+  mobilePickerField.value = ''
+}
+
+const selectSingleOption = (field, value) => {
+  formData.value[field] = value
+  if (field === 'college') {
+    collegeKeyword.value = value
+  }
+  if (field === 'major') {
+    majorKeyword.value = value
+  }
+  closeSelects()
+}
+
+const clearSingleSelect = (field) => {
+  formData.value[field] = ''
+  if (field === 'college') {
+    collegeKeyword.value = ''
+  }
+  if (field === 'major') {
+    majorKeyword.value = ''
+  }
+  closeSelects()
+}
+
+const filteredCollegeOptions = computed(() => {
+  const keyword = collegeKeyword.value.trim().toLowerCase()
+  if (!keyword) {
+    return collegeSuggestions
+  }
+
+  return collegeSuggestions.filter((college) => college.toLowerCase().includes(keyword))
+})
+
+const filteredMajorOptions = computed(() => {
+  const keyword = majorKeyword.value.trim().toLowerCase()
+  if (!keyword) {
+    return majorSuggestions
+  }
+
+  return majorSuggestions.filter((major) => major.toLowerCase().includes(keyword))
+})
+
+const showCustomCollegeAction = computed(() => {
+  const keyword = collegeKeyword.value.trim()
+  return Boolean(keyword) && !filteredCollegeOptions.value.includes(keyword)
+})
+
+const showCustomMajorAction = computed(() => {
+  const keyword = majorKeyword.value.trim()
+  return Boolean(keyword) && !filteredMajorOptions.value.includes(keyword)
+})
+
+const applyCollegeKeyword = () => {
+  const keyword = collegeKeyword.value.trim()
+  if (!keyword) {
+    return
+  }
+
+  selectSingleOption('college', keyword)
+}
+
+const applyMajorKeyword = () => {
+  const keyword = majorKeyword.value.trim()
+  if (!keyword) {
+    return
+  }
+
+  selectSingleOption('major', keyword)
+}
+
+const mobilePickerConfig = computed(() => {
+  if (mobilePickerField.value === 'grade') {
+    return {
+      title: '选择年级',
+      description: '用更接近卡片风格的方式选择当前年级，手机端会以底部面板呈现。'
+    }
+  }
+
+  if (mobilePickerField.value === 'mbti') {
+    return {
+      title: '选择 MBTI',
+      description: '选择你的 MBTI 类型，也可以先留空，后续再补充。'
+    }
+  }
+
+  if (mobilePickerField.value === 'college') {
+    return {
+      title: '选择学院',
+      description: '可直接搜索推荐项，也可以保存你手动输入的学院名称。'
+    }
+  }
+
+  if (mobilePickerField.value === 'major') {
+    return {
+      title: '选择专业',
+      description: '可搜索常见专业，也可以直接保存你输入的完整专业名称。'
+    }
+  }
+
+  return {
+    title: '',
+    description: ''
+  }
+})
+
+const mobilePickerOptions = computed(() => {
+  if (mobilePickerField.value === 'grade') {
+    return gradeOptions
+  }
+
+  if (mobilePickerField.value === 'mbti') {
+    return mbtiOptions
+  }
+
+  if (mobilePickerField.value === 'college') {
+    return filteredCollegeOptions.value
+  }
+
+  if (mobilePickerField.value === 'major') {
+    return filteredMajorOptions.value
+  }
+
+  return []
+})
+
+const mobilePickerValue = computed(() => {
+  if (!mobilePickerField.value) {
+    return ''
+  }
+
+  return formData.value[mobilePickerField.value] || ''
+})
+
+const handleOutsideSelectClick = (event) => {
+  const field = activeDesktopSelect.value
+  if (!field) {
+    return
+  }
+
+  const root = selectRootRefs[field]
+  if (root && !root.contains(event.target)) {
+    activeDesktopSelect.value = ''
+  }
+}
+
+const handleEscClose = (event) => {
+  if (event.key === 'Escape') {
+    closeSelects()
   }
 }
 
@@ -489,7 +948,66 @@ const mbtiOptions = [
   'ISTP', 'ISFP', 'ESTP', 'ESFP'
 ]
 
-const collegeSuggestions = [
+const collegeSuggestions = Array.from(new Set([
+  '计算机学院',
+  '软件学院',
+  '人工智能学院',
+  '数据科学与大数据学院',
+  '信息工程学院',
+  '电子信息学院',
+  '通信工程学院',
+  '自动化学院',
+  '电气工程学院',
+  '机械工程学院',
+  '材料科学与工程学院',
+  '环境科学与工程学院',
+  '土木工程学院',
+  '建筑学院',
+  '化学化工学院',
+  '生命科学学院',
+  '生物医学工程学院',
+  '医学院',
+  '药学院',
+  '公共卫生学院',
+  '数学与统计学院',
+  '物理学院',
+  '天文与空间科学学院',
+  '地理科学学院',
+  '海洋学院',
+  '资源与环境学院',
+  '经济学院',
+  '经济管理学院',
+  '管理学院',
+  '商学院',
+  '工商管理学院',
+  '金融学院',
+  '法学院',
+  '马克思主义学院',
+  '新闻与传播学院',
+  '文学与新闻传播学院',
+  '外文学院',
+  '人文学院',
+  '哲学学院',
+  '历史学院',
+  '教育学院',
+  '心理学院',
+  '社会学院',
+  '国际关系学院',
+  '艺术学院',
+  '艺术设计学院',
+  '音乐学院',
+  '体育学院',
+  '农业与生物学院',
+  '园艺学院',
+  '食品科学与工程学院',
+  '旅游学院',
+  '公共管理学院',
+  '网络空间安全学院',
+  '信息学院',
+  '电影学院',
+  '国际中文教育学院',
+  '航空航天学院',
+  '海洋与地球学院',
   '物理学院',
   '计算机科学学院',
   '数学学院',
@@ -498,7 +1016,85 @@ const collegeSuggestions = [
   '经济管理学院',
   '人文学院',
   '外国语学院'
-]
+]))
+
+const majorSuggestions = Array.from(new Set([
+  '计算机科学与技术',
+  '软件工程',
+  '网络工程',
+  '信息安全',
+  '人工智能',
+  '数据科学与大数据技术',
+  '电子信息工程',
+  '通信工程',
+  '自动化',
+  '电气工程及其自动化',
+  '机械设计制造及其自动化',
+  '智能制造工程',
+  '材料科学与工程',
+  '新能源材料与器件',
+  '土木工程',
+  '建筑学',
+  '环境工程',
+  '化学工程与工艺',
+  '应用化学',
+  '生物工程',
+  '生物科学',
+  '临床医学',
+  '口腔医学',
+  '药学',
+  '护理学',
+  '预防医学',
+  '数学与应用数学',
+  '统计学',
+  '信息与计算科学',
+  '应用物理学',
+  '物理学',
+  '天文学',
+  '地理信息科学',
+  '海洋科学',
+  '经济学',
+  '国际经济与贸易',
+  '金融学',
+  '财政学',
+  '工商管理',
+  '市场营销',
+  '会计学',
+  '财务管理',
+  '人力资源管理',
+  '电子商务',
+  '法学',
+  '知识产权',
+  '社会学',
+  '社会工作',
+  '心理学',
+  '应用心理学',
+  '教育学',
+  '学前教育',
+  '汉语言文学',
+  '新闻学',
+  '传播学',
+  '广告学',
+  '英语',
+  '日语',
+  '翻译',
+  '历史学',
+  '哲学',
+  '行政管理',
+  '公共事业管理',
+  '国际政治',
+  '数字媒体技术',
+  '数字媒体艺术',
+  '视觉传达设计',
+  '环境设计',
+  '产品设计',
+  '音乐表演',
+  '体育教育',
+  '食品科学与工程',
+  '园林',
+  '农学',
+  '旅游管理'
+]))
 
 const consumptionTags = ['数码', '美妆', '奶茶', '户外', '运动', '阅读', '游戏', '音乐', '影视', '美食']
 const careerTags = ['考公', '大厂', '学术', '创业', '出国', '考研', '自由职业']
@@ -719,11 +1315,15 @@ const loadProfile = async () => {
 onMounted(() => {
   loadProfile()
   window.addEventListener('resize', handleResize)
+  document.addEventListener('mousedown', handleOutsideSelectClick)
+  document.addEventListener('keydown', handleEscClose)
   if (isMobile.value) initStickyObserver()
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize)
+  document.removeEventListener('mousedown', handleOutsideSelectClick)
+  document.removeEventListener('keydown', handleEscClose)
   stickyObserver?.disconnect()
 })
 </script>
@@ -911,6 +1511,350 @@ onBeforeUnmount(() => {
   font-size: 12px;
   color: #9e9e9e;
   margin-top: -4px;
+}
+
+.select-shell {
+  position: relative;
+}
+
+.select-trigger {
+  width: 100%;
+  min-height: 64px;
+  padding: 14px 16px;
+  border: 2px solid #dbe7f5;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  box-shadow: 0 6px 14px rgba(19, 85, 151, 0.06);
+}
+
+.select-trigger:hover {
+  border-color: #90caf9;
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px rgba(33, 150, 243, 0.12);
+}
+
+.select-trigger.open,
+.select-trigger:focus-visible {
+  outline: none;
+  border-color: #2196f3;
+  box-shadow: 0 0 0 4px rgba(33, 150, 243, 0.12);
+}
+
+.select-trigger.filled {
+  background: linear-gradient(135deg, #eef6ff 0%, #ffffff 100%);
+}
+
+.select-trigger-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.select-trigger-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #6a86a8;
+  letter-spacing: 0.02em;
+}
+
+.select-trigger-value {
+  font-size: 15px;
+  font-weight: 600;
+  color: #183b63;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.select-trigger-arrow {
+  flex-shrink: 0;
+  font-size: 18px;
+  color: #4a89c7;
+  transition: transform 0.25s ease;
+}
+
+.select-trigger.open .select-trigger-arrow {
+  transform: rotate(180deg);
+}
+
+.search-trigger {
+  min-height: 70px;
+}
+
+.select-panel {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 0;
+  right: 0;
+  z-index: 25;
+  padding: 12px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.98);
+  border: 1px solid #d9e8f7;
+  box-shadow: 0 18px 40px rgba(15, 61, 112, 0.18);
+  backdrop-filter: blur(10px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: min(360px, 60vh);
+  overflow-y: auto;
+}
+
+.select-panel-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.select-panel-searchable {
+  gap: 12px;
+}
+
+.select-option-list.compact {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.select-option {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #d9e7f5;
+  border-radius: 12px;
+  background: #f8fbff;
+  color: #183b63;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.select-option:hover {
+  border-color: #90caf9;
+  background: #eef6ff;
+}
+
+.select-option.active {
+  border-color: #2196f3;
+  background: linear-gradient(135deg, #2196f3 0%, #42a5f5 100%);
+  color: #ffffff;
+  box-shadow: 0 10px 20px rgba(33, 150, 243, 0.2);
+}
+
+.select-option-main {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.select-option-meta {
+  font-size: 12px;
+  color: #6b7a90;
+}
+
+.select-option.active .select-option-meta {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.select-option-check {
+  min-width: 16px;
+  text-align: right;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.select-option-clear {
+  border-style: dashed;
+}
+
+.select-search-box {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.select-search-input {
+  flex: 1;
+  margin: 0;
+}
+
+.select-search-action,
+.mobile-picker-search-btn {
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #42a5f5, #2196f3);
+  color: #fff;
+  padding: 12px 16px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.select-search-action:disabled,
+.mobile-picker-search-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.select-search-action:not(:disabled):hover,
+.mobile-picker-search-btn:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+
+.select-section-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #6a86a8;
+  letter-spacing: 0.04em;
+}
+
+.select-custom-hint,
+.mobile-picker-tip {
+  font-size: 12px;
+  color: #5d7698;
+  background: #f5f9ff;
+  border-radius: 12px;
+  padding: 10px 12px;
+  border: 1px dashed #c6dcf5;
+}
+
+.select-panel-enter-active,
+.select-panel-leave-active {
+  transition: all 0.2s ease;
+}
+
+.select-panel-enter-from,
+.select-panel-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
+.mobile-picker-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: rgba(15, 30, 55, 0.44);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 16px 12px calc(16px + env(safe-area-inset-bottom));
+}
+
+.mobile-picker-sheet {
+  width: min(100%, 560px);
+  max-height: 82vh;
+  border-radius: 24px 24px 18px 18px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  padding: 18px 16px 16px;
+  box-shadow: 0 -12px 36px rgba(15, 61, 112, 0.24);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.mobile-picker-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.mobile-picker-eyebrow {
+  font-size: 12px;
+  font-weight: 700;
+  color: #6a86a8;
+}
+
+.mobile-picker-title {
+  margin: 4px 0 0;
+  font-size: 20px;
+  color: #163962;
+}
+
+.mobile-picker-close {
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  background: #eef6ff;
+  color: #3d6f9f;
+  font-size: 22px;
+  cursor: pointer;
+}
+
+.mobile-picker-desc {
+  margin: 0;
+  color: #5d7698;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.mobile-picker-search {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mobile-picker-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.mobile-picker-options.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.mobile-picker-option {
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid #d7e6f6;
+  border-radius: 14px;
+  background: #ffffff;
+  color: #183b63;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mobile-picker-option.active {
+  background: linear-gradient(135deg, #2196f3, #42a5f5);
+  color: #ffffff;
+  border-color: #2196f3;
+}
+
+.mobile-picker-option.ghost {
+  background: #f6faff;
+  border-style: dashed;
+}
+
+.picker-fade-enter-active,
+.picker-fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.picker-fade-enter-from,
+.picker-fade-leave-to {
+  opacity: 0;
 }
 
 /* 单选按钮组 */
@@ -1353,8 +2297,23 @@ onBeforeUnmount(() => {
   }
 
   .form-input,
-  .form-select {
+  .form-select,
+  .select-trigger,
+  .mobile-picker-option {
     font-size: 16px; /* 防止 iOS 自动缩放 */
+  }
+
+  .select-panel {
+    display: none;
+  }
+
+  .select-search-box {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .search-trigger {
+    min-height: 74px;
   }
 
   .save-button {
@@ -1408,6 +2367,15 @@ onBeforeUnmount(() => {
     padding: 5px 12px;
   }
 
+  .mobile-picker-sheet {
+    border-radius: 22px 22px 16px 16px;
+    padding: 16px 14px 14px;
+  }
+
+  .mobile-picker-options.grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
   .tag {
     padding: 6px 12px;
     font-size: 12px;
@@ -1420,6 +2388,10 @@ onBeforeUnmount(() => {
 
   .action-bar {
     margin-top: 20px;
+  }
+
+  .mobile-picker-options.grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>
