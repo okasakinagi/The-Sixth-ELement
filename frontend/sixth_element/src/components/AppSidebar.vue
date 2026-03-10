@@ -128,6 +128,7 @@ function toggleMobileMenu() {
   left: 0;
   top: 0;
   height: 100vh;
+  height: 100dvh;
   box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
   overflow-y: auto;
   z-index: 1000;
@@ -211,6 +212,7 @@ function toggleMobileMenu() {
 
 .sidebar-footer {
   padding: 12px;
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
   border-top: 1px solid rgba(255, 255, 255, 0.2);
 }
 
