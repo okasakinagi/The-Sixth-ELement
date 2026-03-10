@@ -111,6 +111,18 @@ DEBUG_PROPAGATE_EXCEPTIONS = True
 # 可通过环境变量 RECOMMENDATION_MODE 修改（修改后需要重启服务以生效）
 RECOMMENDATION_MODE = os.environ.get("RECOMMENDATION_MODE", "personalized")
 
+# 邮件配置（腾讯企业邮 SMTP，双账户 fallback）
+# 所有敏感信息通过环境变量注入，不在此硬编码
+EMAIL_BACKEND = "core.email_backend.FallbackEmailBackend"
+EMAIL_HOST = os.environ.get("EMAIL_HOST", "smtp.exmail.qq.com")
+EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "465"))
+EMAIL_USE_SSL = os.environ.get("EMAIL_USE_SSL", "true").lower() == "true"
+EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "false").lower() == "true"
+# 以下两项由 FallbackEmailBackend 按账户动态设置，此处仅作 Django 默认值
+EMAIL_HOST_USER = os.environ.get("EMAIL_PRIMARY_USER", "")
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_PRIMARY_PASSWORD", "")
+DEFAULT_FROM_EMAIL = os.environ.get("EMAIL_PRIMARY_USER", "noreply@example.com")
+
 # 缓存配置
 CACHES = {
     'default': {

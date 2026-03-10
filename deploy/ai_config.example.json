@@ -1,11 +1,11 @@
 {
   "survey_generation": {
-    "api_key": "sk-your-survey-generation-api-key",
+    "api_key": "",
     "model": "Qwen/Qwen2.5-7B-Instruct",
     "base_url": "https://api.siliconflow.cn/v1/chat/completions"
   },
   "embedding": {
-    "api_key": "sk-your-embedding-api-key",
+    "api_key": "",
     "model": "Qwen/Qwen3-Embedding-4B",
     "base_url": "https://api.siliconflow.cn/v1/embeddings"
   }

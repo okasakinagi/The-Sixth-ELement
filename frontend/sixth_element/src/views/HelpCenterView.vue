@@ -332,7 +332,7 @@ const categories = ref([
         content: `
           <p>您可以通过以下方式联系我们的客服团队：</p>
           <ul>
-            <li>邮箱：support@sixth-element.com</li>
+            <li>邮箱：support@surveyfiller.com</li>
             <li>工作时间：周一至周五 9:00-18:00</li>
           </ul>
           <p>我们会在24小时内回复您的咨询。</p>

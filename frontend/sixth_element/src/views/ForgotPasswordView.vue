@@ -17,7 +17,6 @@ const showPassword = ref(false)
 // 验证码相关
 const countdown = ref(0)
 const canResend = computed(() => countdown.value === 0)
-const debugCode = ref('')  // 用于显示调试验证码
 
 // 状态
 const loading = ref(false)
@@ -100,11 +99,6 @@ async function sendCode() {
     if (!res.ok) {
       error.value = data.error || '发送验证码失败'
       return
-    }
-    
-    // 调试模式下显示验证码
-    if (data.debug_code) {
-      debugCode.value = data.debug_code
     }
     
     step.value = 'verify'
@@ -282,11 +276,6 @@ function togglePasswordVisibility() {
         <p class="step-description">
           验证码已发送到 <strong>{{ email }}</strong>
         </p>
-        
-        <!-- 调试信息 -->
-        <div v-if="debugCode" class="debug-info">
-          🔧 开发模式验证码：<strong>{{ debugCode }}</strong>
-        </div>
         
         <div class="form-group">
           <label for="code" class="form-label">验证码</label>

@@ -1,8 +1,11 @@
+import hashlib
 import json
 import secrets
 from datetime import datetime, time, timedelta, timezone as dt_timezone
 
+from django.conf import settings as django_settings
 from django.contrib.auth.hashers import check_password, make_password
+from django.core.mail import send_mail
 from django.http import HttpResponse
 from django.http import JsonResponse
 from django.utils import timezone
@@ -140,7 +143,7 @@ def get_current_user(request):
 def require_auth(request):
     user = get_current_user(request)
     if not user:
-        return None, error(401, "Unauthorized")
+        return None, error(401, "请先登录")
     return user, None
 
 
@@ -177,18 +180,226 @@ def index(request):
     )
 
 
+# ---- 验证码公共工具函数 -------------------------------------------------------
+
+MAX_CODE_ATTEMPTS = 5       # 最多错误尝试次数
+CODE_COOLDOWN_SECONDS = 60  # 同一邮笖68秒内不允许重发
+
+
+def _hash_code(code: str) -> str:
+    """SHA-256 摘要，存入数据库而不明文保存验证码。"""
+    return hashlib.sha256(code.encode()).hexdigest()
+
+
+def _send_verification_email(to_email: str, code: str, purpose: str):
+    """调用 FallbackEmailBackend 发送验证码邮件（HTML 富文本）。"""
+    if purpose == PasswordResetCode.PURPOSE_REGISTER:
+        subject = "【第六元素】注册验证码"
+        greeting = "您好，欢迎注册第六元素！"
+        intro = "您正在注册第六元素账号，请使用以下验证码完成邮箱验证。"
+        not_me = "如非本人操作，请忽略此邮件，您的账号安全不受任何影响。"
+    else:
+        subject = "【第六元素】密码重置验证码"
+        greeting = "您好！"
+        intro = "您正在重置第六元素账户密码，请使用以下验证码完成身份验证。"
+        not_me = "如非本人操作，请忽略此邮件，您的账户密码不会发生任何改变。"
+
+    # 纯文本备用（邮件客户端不支持 HTML 时显示）
+    plain = (
+        f"{subject}\n"
+        f"{'─' * 30}\n\n"
+        f"{greeting}\n\n"
+        f"{intro}\n\n"
+        f"验证码：{code}\n\n"
+        f"（验证码 15 分钟内有效，请勿泄露给他人）\n\n"
+        f"安全提示：请勿将验证码告知任何人，平台工作人员不会向您索要验证码。\n\n"
+        f"{'─' * 30}\n"
+        f"{not_me}\n\n"
+        f"此邮件由系统自动发送，请勿直接回复。\n"
+        f"第六元素团队"
+    )
+
+    # HTML 富文本（table 布局保障兼容性；避免装饰性文字以便剥标签后仍可读）
+    html = f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{subject}</title></head>
+<body style="margin:0;padding:0;background:#eef2fb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#eef2fb;padding:40px 16px;">
+  <tr><td align="center">
+    <table width="540" cellpadding="0" cellspacing="0" border="0" style="max-width:540px;width:100%;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 8px 32px rgba(0,82,217,0.10);">
+
+      <!-- 顶部渐变 Banner -->
+      <tr>
+        <td style="background:linear-gradient(135deg,#0052d9 0%,#3d7fff 100%);padding:32px 44px;text-align:center;">
+          <div style="color:#ffffff;font-size:24px;font-weight:700;letter-spacing:1px;">第六元素</div>
+          <div style="color:rgba(255,255,255,0.55);font-size:11px;margin-top:6px;">校园问卷互助平台</div>
+        </td>
+      </tr>
+
+      <!-- 正文区域 -->
+      <tr>
+        <td style="padding:40px 44px 32px;">
+          <p style="font-size:17px;font-weight:600;color:#0b2b66;margin:0 0 10px 0;">{greeting}</p>
+          <p style="font-size:14px;color:#4c5e78;line-height:1.85;margin:0 0 28px 0;">{intro}</p>
+
+          <!-- 验证码卡片 -->
+          <table width="100%" cellpadding="0" cellspacing="0" border="0"
+            style="background:#f0f6ff;border:2px solid #90b4f7;border-radius:12px;margin-bottom:20px;">
+            <tr>
+              <td style="padding:28px 20px;text-align:center;">
+                <div style="font-size:42px;font-weight:800;letter-spacing:12px;color:#0052d9;font-family:'Courier New',Courier,monospace;padding-left:12px;">{code}</div>
+                <p style="font-size:12px;color:#7b96b8;margin:12px 0 0 0;">验证码 15 分钟内有效，请勿泄露给他人</p>
+              </td>
+            </tr>
+          </table>
+
+          <!-- 安全提示 -->
+          <p style="font-size:13px;color:#7a5c2a;background:#fffbf0;border-left:4px solid #f5a623;padding:12px 16px;border-radius:0 8px 8px 0;margin:0 0 20px 0;line-height:1.75;">
+            <strong>安全提示：</strong>请勿将验证码告知任何人，平台工作人员不会向您索要验证码。
+          </p>
+
+          <p style="font-size:13px;color:#bac8d8;line-height:1.75;margin:0;">{not_me}</p>
+        </td>
+      </tr>
+
+      <!-- 分隔线 -->
+      <tr>
+        <td style="padding:0 44px;"><hr style="border:none;border-top:1px solid #e8eef8;margin:0;"></td>
+      </tr>
+
+      <!-- 页脚 -->
+      <tr>
+        <td style="background:#f8faff;padding:18px 44px;text-align:center;">
+          <p style="font-size:12px;color:#bac8d8;margin:0 0 4px 0;">此邮件由系统自动发送，请勿直接回复</p>
+          <p style="font-size:12px;color:#d0dae8;margin:0;">&copy; 2025 第六元素团队</p>
+        </td>
+      </tr>
+
+    </table>
+  </td></tr>
+</table>
+</body></html>"""
+
+    send_mail(
+        subject=subject,
+        message=plain,
+        from_email=django_settings.DEFAULT_FROM_EMAIL,
+        recipient_list=[to_email],
+        html_message=html,
+        fail_silently=False,
+    )
+
+
+def _issue_code(email: str, purpose: str) -> str | None:
+    """
+    为指定邮符1和 purpose 创建新验证码记录。
+    如果处于冷却期内，返回 None （调用方应返回 429）。
+    """
+    last = (
+        PasswordResetCode.objects.filter(email=email, purpose=purpose)
+        .order_by("-created_at")
+        .first()
+    )
+    if last is not None:
+        elapsed = (timezone.now() - last.created_at).total_seconds()
+        if elapsed < CODE_COOLDOWN_SECONDS:
+            return None  # 还在冷却期
+
+    # 使旧验证码全部失效
+    PasswordResetCode.objects.filter(email=email, purpose=purpose, is_used=False).update(
+        is_used=True
+    )
+
+    code = "".join([str(secrets.randbelow(10)) for _ in range(6)])
+    PasswordResetCode.objects.create(
+        email=email,
+        code_hash=_hash_code(code),
+        purpose=purpose,
+        expires_at=timezone.now() + timedelta(minutes=15),
+        is_used=False,
+        attempt_count=0,
+    )
+    return code
+
+
+def _verify_code(email: str, code: str, purpose: str):
+    """
+    验证码验证。
+    返回 (PasswordResetCode 对象, None) 或 (None, error_response)。
+    """
+    record = (
+        PasswordResetCode.objects.filter(
+            email=email,
+            purpose=purpose,
+            is_used=False,
+            expires_at__gt=timezone.now(),
+        )
+        .order_by("-created_at")
+        .first()
+    )
+    if not record:
+        return None, error(401, "验证码无效或已过期")
+
+    if record.attempt_count >= MAX_CODE_ATTEMPTS:
+        record.is_used = True
+        record.save(update_fields=["is_used"])
+        return None, error(401, "验证码错误次数过多，请重新获取验证码")
+
+    if record.code_hash != _hash_code(code):
+        record.attempt_count += 1
+        record.save(update_fields=["attempt_count"])
+        remaining = MAX_CODE_ATTEMPTS - record.attempt_count
+        return None, error(401, f"验证码错误，还剩 {remaining} 次机会")
+
+    return record, None
+
+
+# ---- 验证 & 注册路由 -----------------------------------------------------------
+
+@csrf_exempt
+def send_register_code(request):
+    """注册前发送邮符1验证码（防止击包占号）。"""
+    if request.method != "POST":
+        return error(405, "请求方法不允许")
+    data = parse_json(request)
+    email = data.get("email", "").strip()
+    if not email:
+        return error(422, "邮箱地址不能为空")
+    if AppUser.objects.filter(email=email).exists():
+        return error(422, "该邮箱已被注册")
+
+    code = _issue_code(email, PasswordResetCode.PURPOSE_REGISTER)
+    if code is None:
+        return error(429, "发送频率过高，请稍后再试")
+
+    try:
+        _send_verification_email(email, code, PasswordResetCode.PURPOSE_REGISTER)
+    except Exception:
+        return error(500, "邮件发送失败，请稍后重试")
+
+    return JsonResponse({"message": "verification code sent", "expires_in": 900})
+
+
 @csrf_exempt
 def register(request):
+    """两步注册：先经过 send_register_code 获取验证码，再提交此接口完成注册。"""
     if request.method != "POST":
-        return error(405, "Method not allowed")
+        return error(405, "请求方法不允许")
     data = parse_json(request)
     email = data.get("email", "").strip()
     password = data.get("password", "").strip()
     nickname = data.get("nickname", "").strip()
-    if not email or not password or not nickname:
-        return error(422, "email, password, nickname required")
+    code = data.get("code", "").strip()
+    if not email or not password or not nickname or not code:
+        return error(422, "邮箱、密码、昵称和验证码均不能为空")
+    if len(password) < 6:
+        return error(422, "密码长度至少为6位")
     if AppUser.objects.filter(email=email).exists():
-        return error(422, "email already registered")
+        return error(422, "该邮箱已被注册")
+
+    record, err = _verify_code(email, code, PasswordResetCode.PURPOSE_REGISTER)
+    if err:
+        return err
 
     user = AppUser.objects.create(
         email=email,
@@ -199,6 +410,8 @@ def register(request):
         status="normal",
     )
     AuthCredential.objects.create(user=user, password_hash=make_password(password))
+    record.is_used = True
+    record.save(update_fields=["is_used"])
     token, _ = issue_token(user)
     return JsonResponse(
         {
@@ -212,21 +425,21 @@ def register(request):
 @csrf_exempt
 def login(request):
     if request.method != "POST":
-        return error(405, "Method not allowed")
+        return error(405, "请求方法不允许")
     data = parse_json(request)
     email = data.get("email", "").strip()
     password = data.get("password", "").strip()
     if not email or not password:
-        return error(422, "email and password required")
+        return error(422, "邮箱和密码不能为空")
 
     try:
         user = AppUser.objects.get(email=email)
     except AppUser.DoesNotExist:
-        return error(401, "invalid credentials")
+        return error(401, "邮箱或密码错误")
 
     credential = AuthCredential.objects.filter(user=user).first()
     if not credential or not check_password(password, credential.password_hash):
-        return error(401, "invalid credentials")
+        return error(401, "邮箱或密码错误")
 
     token, _ = issue_token(user)
     return JsonResponse(
@@ -240,98 +453,65 @@ def login(request):
 
 @csrf_exempt
 def send_reset_code(request):
-    """发送密码重置验证码"""
+    """发送密码重置验证码。"""
     if request.method != "POST":
-        return error(405, "Method not allowed")
-    
+        return error(405, "请求方法不允许")
     data = parse_json(request)
     email = data.get("email", "").strip()
-    
     if not email:
-        return error(422, "email required")
-    
-    # 检查用户是否存在
+        return error(422, "邮箱地址不能为空")
     if not AppUser.objects.filter(email=email).exists():
-        return error(404, "user not found")
-    
-    # 生成6位数字验证码
-    code = "".join([str(secrets.randbelow(10)) for _ in range(6)])
-    
-    # 设置验证码过期时间（15分钟）
-    expires_at = timezone.now() + timedelta(minutes=15)
-    
-    # 使旧的验证码失效
-    PasswordResetCode.objects.filter(email=email, is_used=False).update(is_used=True)
-    
-    # 创建新验证码
-    PasswordResetCode.objects.create(
-        email=email,
-        code=code,
-        expires_at=expires_at,
-        is_used=False
-    )
-    
-    # 在实际生产环境中，这里应该发送邮件
-    # 开发环境下直接返回验证码（仅用于测试）
-    return JsonResponse({
-        "message": "verification code sent",
-        "debug_code": code,  # 生产环境应该删除这一行
-        "expires_in": 900  # 15分钟 = 900秒
-    })
+        return error(404, "用户不存在")
+
+    code = _issue_code(email, PasswordResetCode.PURPOSE_RESET)
+    if code is None:
+        return error(429, "发送频率过高，请稍后再试")
+
+    try:
+        _send_verification_email(email, code, PasswordResetCode.PURPOSE_RESET)
+    except Exception:
+        return error(500, "邮件发送失败，请稍后重试")
+
+    return JsonResponse({"message": "verification code sent", "expires_in": 900})
 
 
 @csrf_exempt
 def verify_reset_code(request):
-    """验证重置码并重置密码"""
+    """验证重置码并重置密码。"""
     if request.method != "POST":
-        return error(405, "Method not allowed")
-    
+        return error(405, "请求方法不允许")
     data = parse_json(request)
     email = data.get("email", "").strip()
     code = data.get("code", "").strip()
     new_password = data.get("new_password", "").strip()
-    
     if not email or not code or not new_password:
-        return error(422, "email, code and new_password required")
-    
+        return error(422, "邮箱、验证码和新密码不能为空")
     if len(new_password) < 6:
-        return error(422, "password must be at least 6 characters")
-    
-    # 查找有效的验证码
-    reset_code = PasswordResetCode.objects.filter(
-        email=email,
-        code=code,
-        is_used=False,
-        expires_at__gt=timezone.now()
-    ).first()
-    
-    if not reset_code:
-        return error(401, "invalid or expired verification code")
-    
-    # 获取用户
+        return error(422, "密码长度至少为6位")
+
     try:
         user = AppUser.objects.get(email=email)
     except AppUser.DoesNotExist:
-        return error(404, "user not found")
-    
-    # 更新密码
+        return error(404, "用户不存在")
+
+    record, err = _verify_code(email, code, PasswordResetCode.PURPOSE_RESET)
+    if err:
+        return err
+
     credential = AuthCredential.objects.filter(user=user).first()
     if credential:
         credential.password_hash = make_password(new_password)
         credential.save()
     else:
         AuthCredential.objects.create(user=user, password_hash=make_password(new_password))
-    
-    # 标记验证码为已使用
-    reset_code.is_used = True
-    reset_code.save()
-    
-    # 清除所有旧的 token（强制重新登录）
+
+    record.is_used = True
+    record.save(update_fields=["is_used"])
     AuthToken.objects.filter(user=user).delete()
-    
+
     return JsonResponse({
         "message": "password reset successful",
-        "user": {"id": str(user.id), "nickname": user.nickname}
+        "user": {"id": str(user.id), "nickname": user.nickname},
     })
 
 
@@ -343,7 +523,7 @@ def user_me(request):
     if request.method == "GET":
         return JsonResponse(user_response(user))
     if request.method != "PATCH":
-        return error(405, "Method not allowed")
+        return error(405, "请求方法不允许")
     data = parse_json(request)
     nickname = data.get("nickname", user.nickname)
     school = data.get("school", None)
@@ -367,11 +547,11 @@ def surveys(request):
         title = data.get("title", "").strip()
         reward_points = int(data.get("reward_points", 0) or 0)
         if not title:
-            return error(422, "title required")
+            return error(422, "问卷标题不能为空")
         if reward_points < 0:
-            return error(422, "reward_points must be >= 0")
+            return error(422, "悬赏积分不能为负数")
         if user.points < reward_points:
-            return error(422, "not enough points to publish survey")
+            return error(422, "积分不足，无法发布问卷")
 
         survey = Survey.objects.create(
             owner=user,
@@ -410,7 +590,7 @@ def surveys(request):
         return JsonResponse({"id": str(survey.id), "status": "active"})
 
     if request.method != "GET":
-        return error(405, "Method not allowed")
+        return error(405, "请求方法不允许")
 
     status = request.GET.get("status")
     min_points = request.GET.get("min_points")
@@ -445,33 +625,33 @@ def surveys(request):
 
 def survey_detail(request, survey_id):
     if request.method != "GET":
-        return error(405, "Method not allowed")
+        return error(405, "请求方法不允许")
     survey_pk = parse_int_id(survey_id)
     if survey_pk is None:
-        return error(422, "invalid survey id")
+        return error(422, "无效的问卷ID")
     try:
         survey = Survey.objects.get(id=survey_pk)
     except Survey.DoesNotExist:
-        return error(404, "survey not found")
+        return error(404, "问卷不存在")
     return JsonResponse(survey_response(survey))
 
 
 @csrf_exempt
 def close_survey(request, survey_id):
     if request.method != "POST":
-        return error(405, "Method not allowed")
+        return error(405, "请求方法不允许")
     user, err = require_auth(request)
     if err:
         return err
     survey_pk = parse_int_id(survey_id)
     if survey_pk is None:
-        return error(422, "invalid survey id")
+        return error(422, "无效的问卷ID")
     try:
         survey = Survey.objects.get(id=survey_pk)
     except Survey.DoesNotExist:
-        return error(404, "survey not found")
+        return error(404, "问卷不存在")
     if survey.owner_id != user.id:
-        return error(403, "not survey owner")
+        return error(403, "您不是该问卷的所有者")
     survey.status = "closed"
     survey.save(update_fields=["status"])
     return JsonResponse({"id": str(survey.id), "status": "closed"})
@@ -480,7 +660,7 @@ def close_survey(request, survey_id):
 @csrf_exempt
 def submit_fill(request, survey_id):
     if request.method != "POST":
-        return error(405, "Method not allowed")
+        return error(405, "请求方法不允许")
     user, err = require_auth(request)
     if err:
         return err
@@ -488,17 +668,17 @@ def submit_fill(request, survey_id):
     duration = data.get("duration_seconds")
     survey_pk = parse_int_id(survey_id)
     if survey_pk is None:
-        return error(422, "invalid survey id")
+        return error(422, "无效的问卷ID")
     try:
         survey = Survey.objects.get(id=survey_pk)
     except Survey.DoesNotExist:
-        return error(404, "survey not found")
+        return error(404, "问卷不存在")
     if survey.status != "published":
-        return error(422, "survey not published")
+        return error(422, "问卷未发布")
     if survey.owner_id == user.id:
-        return error(422, "cannot fill your own survey")
+        return error(422, "不能填写自己发布的问卷")
     if Response.objects.filter(survey=survey, user=user).exists():
-        return error(422, "already filled")
+        return error(422, "您已经填写过该问卷")
 
     response = Response.objects.create(
         survey=survey,
@@ -530,26 +710,26 @@ def submit_fill(request, survey_id):
 @csrf_exempt
 def review_fill(request, fill_id):
     if request.method != "POST":
-        return error(405, "Method not allowed")
+        return error(405, "请求方法不允许")
     user, err = require_auth(request)
     if err:
         return err
     data = parse_json(request)
     status = data.get("status")
     if status not in ("approved", "rejected"):
-        return error(422, "status must be approved or rejected")
+        return error(422, "审核状态必须为 approved 或 rejected")
     response_pk = parse_int_id(fill_id)
     if response_pk is None:
-        return error(422, "invalid fill id")
+        return error(422, "无效的填写记录ID")
 
     try:
         record = Response.objects.select_related("survey", "user").get(id=response_pk)
     except Response.DoesNotExist:
-        return error(404, "fill record not found")
+        return error(404, "填写记录不存在")
     if record.survey.owner_id != user.id:
-        return error(403, "not survey owner")
+        return error(403, "您不是该问卷的所有者")
     if record.status != "submitted":
-        return error(422, "record already reviewed")
+        return error(422, "该填写记录已审核")
 
     points_awarded = 0
     if status == "approved":
@@ -573,7 +753,7 @@ def review_fill(request, fill_id):
 
 def my_fills(request):
     if request.method != "GET":
-        return error(405, "Method not allowed")
+        return error(405, "请求方法不允许")
     user, err = require_auth(request)
     if err:
         return err
@@ -602,7 +782,7 @@ def my_fills(request):
 
 def points_logs(request):
     if request.method != "GET":
-        return error(405, "Method not allowed")
+        return error(405, "请求方法不允许")
     user, err = require_auth(request)
     if err:
         return err
@@ -680,7 +860,7 @@ def points_logs(request):
 @csrf_exempt
 def create_report(request):
     if request.method != "POST":
-        return error(405, "Method not allowed")
+        return error(405, "请求方法不允许")
     user, err = require_auth(request)
     if err:
         return err
@@ -689,19 +869,19 @@ def create_report(request):
     target_id_raw = data.get("target_id", "")
     reason = data.get("reason", "").strip()
     if not target_type or not target_id_raw or not reason:
-        return error(422, "target_type, target_id, reason required")
+        return error(422, "举报目标类型、目标ID和原因不能为空")
 
     target_id = parse_int_id(target_id_raw)
     if target_id is None:
-        return error(422, "invalid target_id")
+        return error(422, "无效的目标ID")
     if target_type == "survey":
         if not Survey.objects.filter(id=target_id).exists():
-            return error(404, "survey not found")
+            return error(404, "问卷不存在")
     elif target_type == "user":
         if not AppUser.objects.filter(id=target_id).exists():
-            return error(404, "user not found")
+            return error(404, "用户不存在")
     else:
-        return error(422, "target_type must be survey or user")
+        return error(422, "举报目标类型必须为 survey 或 user")
 
     report = Report.objects.create(
         reporter=user,

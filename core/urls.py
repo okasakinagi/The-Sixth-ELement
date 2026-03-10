@@ -5,6 +5,7 @@ from core.controllers import similarity_controller
 
 urlpatterns = [
     path("auth/register", views.register),
+    path("auth/send-register-code", views.send_register_code),
     path("auth/login", views.login),
     path("auth/send-reset-code", views.send_reset_code),
     path("auth/reset-password", views.verify_reset_code),
