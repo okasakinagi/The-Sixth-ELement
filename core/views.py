@@ -182,7 +182,7 @@ def index(request):
 
 # ---- 验证码公共工具函数 -------------------------------------------------------
 
-MAX_CODE_ATTEMPTS = 5       # 最多错误尝试次数
+MAX_CODE_ATTEMPTS = 5  # 最多错误尝试次数
 CODE_COOLDOWN_SECONDS = 60  # 同一邮笖68秒内不允许重发
 
 
@@ -306,9 +306,9 @@ def _issue_code(email: str, purpose: str) -> str | None:
             return None  # 还在冷却期
 
     # 使旧验证码全部失效
-    PasswordResetCode.objects.filter(email=email, purpose=purpose, is_used=False).update(
-        is_used=True
-    )
+    PasswordResetCode.objects.filter(
+        email=email, purpose=purpose, is_used=False
+    ).update(is_used=True)
 
     code = "".join([str(secrets.randbelow(10)) for _ in range(6)])
     PasswordResetCode.objects.create(
@@ -355,6 +355,7 @@ def _verify_code(email: str, code: str, purpose: str):
 
 
 # ---- 验证 & 注册路由 -----------------------------------------------------------
+
 
 @csrf_exempt
 def send_register_code(request):
@@ -503,16 +504,20 @@ def verify_reset_code(request):
         credential.password_hash = make_password(new_password)
         credential.save()
     else:
-        AuthCredential.objects.create(user=user, password_hash=make_password(new_password))
+        AuthCredential.objects.create(
+            user=user, password_hash=make_password(new_password)
+        )
 
     record.is_used = True
     record.save(update_fields=["is_used"])
     AuthToken.objects.filter(user=user).delete()
 
-    return JsonResponse({
-        "message": "password reset successful",
-        "user": {"id": str(user.id), "nickname": user.nickname},
-    })
+    return JsonResponse(
+        {
+            "message": "password reset successful",
+            "user": {"id": str(user.id), "nickname": user.nickname},
+        }
+    )
 
 
 @csrf_exempt
@@ -795,23 +800,22 @@ def points_logs(request):
         queryset = queryset.filter(points_type__in=["reward", "admin_adjust"])
     elif log_type == "spend":
         queryset = queryset.filter(points_type__in=["publish_cost", "admin_adjust"])
-    
+
     total = queryset.count()
     offset = (page - 1) * page_size
     items = []
-    
+
     for log in queryset[offset : offset + page_size]:
         # Try to find associated survey or fill record for navigation
         related_id = None
         related_type = None
-        
+
         if "问卷" in log.reason or "填" in log.reason:
             # Try to find matching fill record by timestamp and delta
             try:
                 if log.delta > 0:  # Earn - likely from completing a survey
                     fill = Response.objects.filter(
-                        user=user, 
-                        created_at__date=log.created_at.date()
+                        user=user, created_at__date=log.created_at.date()
                     ).first()
                     if fill:
                         related_id = str(fill.survey_id)
@@ -820,26 +824,28 @@ def points_logs(request):
                     survey = Survey.objects.filter(
                         owner=user,
                         reward_points=-log.delta,
-                        created_at__date=log.created_at.date()
+                        created_at__date=log.created_at.date(),
                     ).first()
                     if survey:
                         related_id = str(survey.id)
                         related_type = "survey_publish"
             except:
                 pass
-        
-        items.append({
-            "id": str(log.id),
-            "delta": log.delta,
-            "reason": log.reason,
-            "created_at": now_iso(log.created_at),
-            "related_id": related_id,
-            "related_type": related_type,
-        })
-    
+
+        items.append(
+            {
+                "id": str(log.id),
+                "delta": log.delta,
+                "reason": log.reason,
+                "created_at": now_iso(log.created_at),
+                "related_id": related_id,
+                "related_type": related_type,
+            }
+        )
+
     # Calculate honor status: credit_score >= 85 = qualified
     has_honor = user.credit_score >= 85
-    
+
     return JsonResponse(
         {
             "items": items,

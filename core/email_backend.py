@@ -106,4 +106,6 @@ class FallbackEmailBackend:
                 last_exc = exc
                 continue
 
-        raise RuntimeError(f"所有邮件账户均发送失败，最后一个错误：{last_exc}") from last_exc
+        raise RuntimeError(
+            f"所有邮件账户均发送失败，最后一个错误：{last_exc}"
+        ) from last_exc

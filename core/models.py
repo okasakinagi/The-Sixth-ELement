@@ -42,7 +42,9 @@ class PasswordResetCode(models.Model):
     email = models.EmailField(db_index=True)
     # 存储 SHA-256(code)，不明文保存原始6位数字；default='' 仅用于迁移过渡
     code_hash = models.CharField(max_length=64, default="")
-    purpose = models.CharField(max_length=20, choices=PURPOSE_CHOICES, default=PURPOSE_RESET)
+    purpose = models.CharField(
+        max_length=20, choices=PURPOSE_CHOICES, default=PURPOSE_RESET
+    )
     expires_at = models.DateTimeField()
     is_used = models.BooleanField(default=False)
     # 错误尝试次数，超过阈值（5次）自动失效
@@ -341,7 +343,9 @@ class UserTagWeight(models.Model):
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(fields=["user", "tag"], name="unique_user_tag_weight")
+            models.UniqueConstraint(
+                fields=["user", "tag"], name="unique_user_tag_weight"
+            )
         ]
         indexes = [
             models.Index(fields=["tag"], name="user_tagweight_tag_idx"),

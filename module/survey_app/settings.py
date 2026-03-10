@@ -125,12 +125,10 @@ DEFAULT_FROM_EMAIL = os.environ.get("EMAIL_PRIMARY_USER", "noreply@example.com")
 
 # 缓存配置
 CACHES = {
-    'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'analytics-cache',
-        'TIMEOUT': 3600,  # 1小时
-        'OPTIONS': {
-            'MAX_ENTRIES': 1000
-        }
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "analytics-cache",
+        "TIMEOUT": 3600,  # 1小时
+        "OPTIONS": {"MAX_ENTRIES": 1000},
     }
 }
