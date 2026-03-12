@@ -20,16 +20,33 @@ const showPublishModal = ref(false)
 const showPublishConfigModal = ref(false)
 const publishTarget = ref(null)
 const publishConfig = ref({
-  rewardPoints: 3,
   targetCount: 30,
   promptConstraint: '',
   speedBoostPoints: 0,
   estimatedMinutes: 5
 })
 
+const difficultyRewardMap = {
+  1: 1,
+  2: 2,
+  3: 3,
+  4: 4,
+  5: 5,
+}
+
+const currentRewardPoints = computed(() => {
+  const difficulty = Number(publishTarget.value?.difficulty ?? 3)
+  const level = Math.min(5, Math.max(1, Number.isNaN(difficulty) ? 3 : difficulty))
+  return difficultyRewardMap[level]
+})
+
+const basePublishCost = computed(() => {
+  return currentRewardPoints.value * publishConfig.value.targetCount
+})
+
 // 计算建议的加速积分（20%）
 const suggestedBoostPoints = computed(() => {
-  const total = publishConfig.value.rewardPoints * publishConfig.value.targetCount
+  const total = basePublishCost.value
   return Math.ceil(total * 0.2)
 })
 
@@ -94,7 +111,6 @@ const closePublishModal = () => {
 const openPublishConfig = (survey) => {
   publishTarget.value = survey
   publishConfig.value = {
-    rewardPoints: 3,
     targetCount: 30,
     promptConstraint: '',
     speedBoostPoints: 0,
@@ -115,7 +131,7 @@ const confirmPublish = async () => {
     loading.value = true
     const boostPoints = publishConfig.value.speedBoostPoints || 0
     await publishSurvey(publishTarget.value.id, {
-      budget_points: publishConfig.value.rewardPoints * publishConfig.value.targetCount + boostPoints,
+      budget_points: basePublishCost.value + boostPoints,
       target: publishConfig.value.targetCount
     })
     
@@ -370,8 +386,8 @@ onUnmounted(() => {
       <div class="config-form">
         <div class="form-group">
           <label>奖励积分（每份）</label>
-          <input v-model.number="publishConfig.rewardPoints" type="number" min="1" max="10" />
-          <span class="hint">每份问卷给填写者的积分</span>
+          <input :value="currentRewardPoints" type="number" disabled />
+          <span class="hint">由问卷难度自动决定，额外推流积分不会叠加到填写奖励</span>
         </div>
         <div class="form-group">
           <label>目标份数</label>
@@ -399,7 +415,7 @@ onUnmounted(() => {
         <div class="cost-summary">
           <div class="cost-row">
             <span>基础成本</span>
-            <span>{{ publishConfig.rewardPoints * publishConfig.targetCount }} 积分</span>
+            <span>{{ basePublishCost }} 积分</span>
           </div>
           <div v-if="publishConfig.speedBoostPoints > 0" class="cost-row">
             <span>加速费用</span>
@@ -407,7 +423,7 @@ onUnmounted(() => {
           </div>
           <div class="cost-row total">
             <span>总计</span>
-            <strong>{{ publishConfig.rewardPoints * publishConfig.targetCount + (publishConfig.speedBoostPoints || 0) }} 积分</strong>
+            <strong>{{ basePublishCost + (publishConfig.speedBoostPoints || 0) }} 积分</strong>
           </div>
         </div>
       </div>
