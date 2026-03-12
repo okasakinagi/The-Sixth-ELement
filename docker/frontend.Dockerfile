@@ -1,4 +1,4 @@
-FROM node:20-slim AS build
+FROM node:20.19.0-slim AS build
 WORKDIR /app
 
 # 复制 package.json 以利用缓存
