@@ -4,6 +4,7 @@
       <div class="title-block">
         <p class="kicker">Task Lobby</p>
         <h1>任务大厅</h1>
+        <p v-if="batchHint" class="batch-hint">{{ batchHint }}</p>
       </div>
 
       <div class="actions">
@@ -179,6 +180,10 @@ onUnmounted(() => {
   if (fabDragTimer.value) {
     clearTimeout(fabDragTimer.value)
   }
+  if (batchHintTimer) {
+    clearTimeout(batchHintTimer)
+    batchHintTimer = null
+  }
   document.removeEventListener('mousemove', onDrag)
   document.removeEventListener('mouseup', stopDrag)
   document.removeEventListener('touchmove', onDrag)
@@ -187,6 +192,8 @@ onUnmounted(() => {
 
 const visibleTasks = ref([])
 const seenTaskIds = ref([])
+const batchHint = ref('')
+let batchHintTimer = null
 
 function addSeenTaskIds(ids = []) {
   const idSet = new Set(seenTaskIds.value.map((id) => String(id)))
@@ -204,6 +211,28 @@ function syncSeenPoolByResponse(response, items = []) {
     return
   }
   addSeenTaskIds(items.map((task) => task.id))
+}
+
+function setBatchHint(message) {
+  if (!message) return
+  batchHint.value = message
+  if (batchHintTimer) {
+    clearTimeout(batchHintTimer)
+  }
+  batchHintTimer = setTimeout(() => {
+    batchHint.value = ''
+    batchHintTimer = null
+  }, 3600)
+}
+
+function countOverlap(previousIdSet, nextItems = []) {
+  let overlap = 0
+  for (const item of nextItems) {
+    if (previousIdSet.has(String(item.id))) {
+      overlap += 1
+    }
+  }
+  return overlap
 }
 
 async function loadInitialTasks() {
@@ -241,16 +270,42 @@ async function refreshBatch() {
   if (!confirm) return
   try {
     loading.value = true
-    const response = await refreshTaskHallBatch(
+    const previousIdSet = new Set(visibleTasks.value.map((task) => String(task.id)))
+    let response = await refreshTaskHallBatch(
       seenTaskIds.value,
       fixedBatchSize.value,
       router
     )
-    const items = Array.isArray(response.items) ? response.items : []
+    let items = Array.isArray(response.items) ? response.items : []
+    let overlapCount = countOverlap(previousIdSet, items)
+
+    // 新一轮且变化不明显时，自动再尝试一次，增强“换一批”的体感。
+    if (response?.recycled && items.length > 1 && overlapCount >= items.length - 1) {
+      const retryResponse = await refreshTaskHallBatch([], fixedBatchSize.value, router)
+      const retryItems = Array.isArray(retryResponse.items) ? retryResponse.items : []
+      const retryOverlap = countOverlap(previousIdSet, retryItems)
+      if (retryItems.length > 0 && retryOverlap < overlapCount) {
+        response = retryResponse
+        items = retryItems
+        overlapCount = retryOverlap
+      }
+    }
+
     visibleTasks.value = items
     syncSeenPoolByResponse(response, items)
+
+    const replacedCount = Math.max(0, items.length - overlapCount)
+    const total = response?.pool?.total
+    if (response?.recycled) {
+      setBatchHint(
+        `已开启新一轮推荐，替换 ${replacedCount}/${items.length}${typeof total === 'number' ? `，候选池 ${total}` : ''}`
+      )
+    } else {
+      setBatchHint(`本次已替换 ${replacedCount}/${items.length} 条问卷`)
+    }
   } catch (error) {
     console.error('换一批失败:', error)
+    setBatchHint('换一批失败，请稍后再试')
   } finally {
     loading.value = false
   }
@@ -412,6 +467,13 @@ function handleFabClick(e) {
   font-size: 11px;
   color: #5c7599;
   margin: 0;
+}
+
+.batch-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: #2f6fd9;
+  font-weight: 600;
 }
 
 .actions {

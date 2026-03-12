@@ -137,29 +137,44 @@ class SurveyFillService:
 
         # 填写奖励仅由问卷难度决定。
         reward = self._reward_points_by_difficulty(survey.difficulty)
+        points_awarded = 0
+        reward_limited = False
         if reward > 0:
             with transaction.atomic():
-                user_obj = user.__class__.objects.select_for_update().get(pk=user.pk)
-                user_obj.points += reward
-                user_obj.activity_points += reward
-                user_obj.save(update_fields=["points", "activity_points"])
-                PointsLog.objects.create(
-                    user=user_obj,
-                    points_type="fill_reward",
-                    delta=reward,
-                    reason=f"填写问卷《{survey.title}》奖励",
-                    ref_type="survey",
-                    ref_id=survey.id,
+                # 锁问卷行，避免并发提交在 target 边界处超发奖励。
+                locked_survey = survey.__class__.objects.select_for_update().get(
+                    pk=survey.pk
                 )
-            points_awarded = reward
-        else:
-            points_awarded = 0
+                target = max(int(locked_survey.target or 0), 0)
+                rewarded_count = PointsLog.objects.filter(
+                    points_type="fill_reward",
+                    ref_type="survey",
+                    ref_id=locked_survey.id,
+                ).count()
+
+                if target > 0 and rewarded_count >= target:
+                    reward_limited = True
+                else:
+                    user_obj = user.__class__.objects.select_for_update().get(pk=user.pk)
+                    user_obj.points += reward
+                    user_obj.activity_points += reward
+                    user_obj.save(update_fields=["points", "activity_points"])
+                    PointsLog.objects.create(
+                        user=user_obj,
+                        points_type="fill_reward",
+                        delta=reward,
+                        reason=f"填写问卷《{survey.title}》奖励",
+                        ref_type="survey",
+                        ref_id=locked_survey.id,
+                    )
+                    points_awarded = reward
 
         return {
             "id": str(response.id),
             "status": response.status,
             "points_awarded": points_awarded,
             "points_expected": reward,
+            "reward_limited": reward_limited,
         }
 
     def _reward_points_by_difficulty(self, difficulty):
