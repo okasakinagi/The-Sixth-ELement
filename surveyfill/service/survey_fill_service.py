@@ -19,6 +19,14 @@ class SurveyFillError(Exception):
 
 
 class SurveyFillService:
+    DIFFICULTY_REWARD_MAP = {
+        1: 1,
+        2: 2,
+        3: 3,
+        4: 4,
+        5: 5,
+    }
+
     def __init__(self):
         self.mapper = SurveyFillMapper()
 
@@ -127,8 +135,8 @@ class SurveyFillService:
         response.submitted_at = timezone.now()
         response.save(update_fields=["submitted_at"])
 
-        # 提交即时发放积分（已取消审核机制）
-        reward = survey.reward_points or 0
+        # 填写奖励仅由问卷难度决定。
+        reward = self._reward_points_by_difficulty(survey.difficulty)
         if reward > 0:
             with transaction.atomic():
                 user_obj = user.__class__.objects.select_for_update().get(pk=user.pk)
@@ -153,6 +161,17 @@ class SurveyFillService:
             "points_awarded": points_awarded,
             "points_expected": reward,
         }
+
+    def _reward_points_by_difficulty(self, difficulty):
+        try:
+            difficulty = int(difficulty)
+        except (TypeError, ValueError):
+            difficulty = 3
+        if difficulty < 1:
+            difficulty = 1
+        if difficulty > 5:
+            difficulty = 5
+        return self.DIFFICULTY_REWARD_MAP[difficulty]
 
     def _question_payload(self, question):
         options = [opt.label for opt in question.questionoption_set.all()]

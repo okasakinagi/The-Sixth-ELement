@@ -35,11 +35,30 @@ WEIGHT_DISMISS_DECREMENT = -0.2
 WEIGHT_ABANDON_DECREMENT = -0.04
 WEIGHT_MIN = 0.0
 WEIGHT_MAX = 5.0
+DIFFICULTY_REWARD_MAP = {
+    1: 1,
+    2: 2,
+    3: 3,
+    4: 4,
+    5: 5,
+}
 
 
 def now_iso(dt=None):
     value = dt or timezone.now()
     return value.astimezone(dt_timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def reward_points_by_difficulty(difficulty):
+    try:
+        difficulty = int(difficulty)
+    except (TypeError, ValueError):
+        difficulty = 3
+    if difficulty < 1:
+        difficulty = 1
+    if difficulty > 5:
+        difficulty = 5
+    return DIFFICULTY_REWARD_MAP[difficulty]
 
 
 def parse_json(request):
@@ -743,16 +762,25 @@ def review_fill(request, fill_id):
 
     points_awarded = 0
     if status == "approved":
-        points_awarded = record.survey.reward_points
-        record.user.points += points_awarded
-        record.user.activity_points += points_awarded
-        record.user.save(update_fields=["points", "activity_points"])
-        PointsLog.objects.create(
+        already_rewarded = PointsLog.objects.filter(
             user=record.user,
-            points_type="reward",
-            delta=points_awarded,
-            reason="完成问卷",
-        )
+            points_type="fill_reward",
+            ref_type="survey",
+            ref_id=record.survey_id,
+        ).exists()
+        if not already_rewarded:
+            points_awarded = reward_points_by_difficulty(record.survey.difficulty)
+            record.user.points += points_awarded
+            record.user.activity_points += points_awarded
+            record.user.save(update_fields=["points", "activity_points"])
+            PointsLog.objects.create(
+                user=record.user,
+                points_type="fill_reward",
+                delta=points_awarded,
+                reason="完成问卷审核通过",
+                ref_type="survey",
+                ref_id=record.survey_id,
+            )
 
     record.status = status
     record.save(update_fields=["status"])

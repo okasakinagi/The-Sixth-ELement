@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { handleTokenExpired } from '@/utils/authHelper'
-import { getPointsLogs, getPointsSummary } from '@/utils/pointsApi'
+import { getPointsLogs } from '@/utils/pointsApi'
 import { updateUserPoints } from '@/utils/userPointsHelper'
 
 const router = useRouter()
@@ -36,33 +36,9 @@ function formatDateTime(isoString) {
   return `${year}-${month}-${day} ${hours}:${minutes}`
 }
 
-async function fetchPointsSummary() {
-  try {
-    const summaryData = await getPointsSummary()
-    if (summaryData.user) {
-      userBalance.value = summaryData.user.points
-      userCredit.value = summaryData.user.credit_score || 0
-      hasHonor.value = summaryData.user.has_honor || false
-      activityPoints.value = summaryData.user.activity_points || 0
-      
-      // 同步更新localStorage
-      updateUserPoints(summaryData.user.points)
-    }
-  } catch (err) {
-    console.error('Failed to fetch points summary:', err)
-    // 不阻止后续操作，继续获取积分记录
-  }
-}
-
 async function fetchPointsLogs() {
   try {
     loading.value = true
-    
-    // 首次加载时获取积分汇总
-    if (currentPage.value === 1) {
-      await fetchPointsSummary()
-    }
-    
     const typeParam = selectedType.value === 'all' ? '' : selectedType.value
     const data = await getPointsLogs({
       type: typeParam,
@@ -70,11 +46,17 @@ async function fetchPointsLogs() {
       page_size: pageSize.value
     })
 
-    if (currentPage.value === 1) {
-      // 计算累计赚取的积分
+    if (currentPage.value === 1 && data.user) {
+      userBalance.value = data.user.points
+      userCredit.value = data.user.credit_score
+      hasHonor.value = data.user.has_honor
+      activityPoints.value = data.user.activity_points
       const earnedRecords = data.items.filter(item => item.delta > 0)
       totalEarned.value = earnedRecords.reduce((sum, item) => sum + item.delta, 0)
       logs.value = data.items
+      
+      // 同步更新localStorage
+      updateUserPoints(data.user.points)
     } else if (currentPage.value > 1) {
       logs.value = [...logs.value, ...data.items]
     }
@@ -108,18 +90,18 @@ function loadMore() {
 }
 
 function navigateToSurvey(log) {
-  if (!log.ref_id || !log.ref_type) return
+  if (!log.related_id || !log.related_type) return
 
-  if (log.ref_type === 'survey_fill') {
+  if (log.related_type === 'survey_fill') {
     router.push({
       name: 'survey-fill',
-      params: { id: log.ref_id },
+      params: { id: log.related_id },
       query: { readonly: 'true' },
     })
-  } else if (log.ref_type === 'survey_publish') {
+  } else if (log.related_type === 'survey_publish') {
     router.push({
       name: 'survey-builder',
-      params: { id: log.ref_id },
+      params: { id: log.related_id },
     })
   }
 }
@@ -206,7 +188,7 @@ onUnmounted(() => {
           <div 
             v-for="log in displayedLogs" 
             :key="log.id"
-            :class="['list-item', { clickable: log.ref_id }]"
+            :class="['list-item', { clickable: log.related_id }]"
             @click="navigateToSurvey(log)"
           >
             <div class="item-left">
@@ -415,13 +397,13 @@ onUnmounted(() => {
 }
 
 .balance-label {
-  font-size: 18px;
+  font-size: 14px;
   opacity: 0.9;
   margin: 0;
 }
 
 .balance-value {
-  font-size: 48px;
+  font-size: 40px;
   font-weight: 700;
   margin: 4px 0 0 0;
 }
@@ -431,13 +413,13 @@ onUnmounted(() => {
 }
 
 .earned-label {
-  font-size: 16px;
+  font-size: 12px;
   opacity: 0.85;
   margin: 0;
 }
 
 .earned-value {
-  font-size: 22px;
+  font-size: 18px;
   margin: 2px 0 0 0;
   opacity: 0.95;
 }
@@ -475,11 +457,11 @@ onUnmounted(() => {
 }
 
 .badge-icon {
-  font-size: 24px;
+  font-size: 20px;
 }
 
 .badge-text {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -537,7 +519,7 @@ onUnmounted(() => {
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 20px;
+  font-size: 14px;
   color: #666;
   font-weight: 500;
   padding: 8px 0;
@@ -595,20 +577,20 @@ onUnmounted(() => {
 }
 
 .item-reason {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 500;
   color: #1a202c;
   margin: 0 0 4px 0;
 }
 
 .item-time {
-  font-size: 14px;
+  font-size: 12px;
   color: #999;
   margin: 0;
 }
 
 .item-right {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
   width: 60px;
   text-align: right;
@@ -690,11 +672,11 @@ onUnmounted(() => {
   }
 
   .balance-value {
-    font-size: 40px;
+    font-size: 32px;
   }
 
   .earned-value {
-    font-size: 20px;
+    font-size: 16px;
   }
 
   .honor-badge {
@@ -704,7 +686,7 @@ onUnmounted(() => {
   }
 
   .badge-text {
-    font-size: 15px;
+    font-size: 13px;
   }
 
   .filter-tabs {
@@ -712,7 +694,7 @@ onUnmounted(() => {
   }
 
   .tab {
-    font-size: 18px;
+    font-size: 13px;
   }
 
   .transaction-list {
@@ -724,15 +706,15 @@ onUnmounted(() => {
   }
 
   .item-reason {
-    font-size: 15px;
-  }
-
-  .item-time {
     font-size: 13px;
   }
 
+  .item-time {
+    font-size: 11px;
+  }
+
   .item-right {
-    font-size: 17px;
+    font-size: 15px;
     width: 55px;
   }
 

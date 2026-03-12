@@ -3,7 +3,7 @@ UserProfile Service - 业务逻辑层
 处理用户画像相关的业务逻辑、数据验证和格式转换（基于Tag系统）
 """
 
-from datetime import timezone as dt_timezone
+from django.utils import timezone
 from ..mapper.profile_mapper import UserProfileMapper
 
 
@@ -35,7 +35,7 @@ class UserProfileService:
             UserTag.objects.filter(user_id=user.id).order_by("-created_at").first()
         )
         profile["updated_at"] = (
-            latest_tag.created_at.astimezone(dt_timezone.utc)
+            latest_tag.created_at.astimezone(timezone.UTC)
             .isoformat()
             .replace("+00:00", "Z")
             if latest_tag
@@ -255,7 +255,7 @@ class UserProfileService:
         Returns:
             int: 完成度（0-100）
         """
-        total_fields = 11  # 总字段数（不含状态字段）
+        total_fields = 12  # 总字段数
         filled_fields = 0
 
         # 单值字段
@@ -270,6 +270,8 @@ class UserProfileService:
         if profile.get("major"):
             filled_fields += 1
         if profile.get("mbti"):
+            filled_fields += 1
+        if profile.get("current_status"):
             filled_fields += 1
 
         # 数组字段

@@ -37,28 +37,6 @@ const confirmPassword = ref('')
 const nicknameError = ref('')
 const confirmPasswordError = ref('')
 
-// 注册验证码步骤相关
-const registerStep = ref('form') // 'form' | 'verify'
-const registerCode = ref('')
-const registerCodeError = ref('')
-const registerCountdown = ref(0)
-const registerCanResend = computed(() => registerCountdown.value === 0)
-
-function startRegisterCountdown() {
-  registerCountdown.value = 60
-  const timer = setInterval(() => {
-    registerCountdown.value--
-    if (registerCountdown.value <= 0) clearInterval(timer)
-  }, 1000)
-}
-
-function goBackToForm() {
-  registerStep.value = 'form'
-  registerCode.value = ''
-  registerCodeError.value = ''
-  registerCountdown.value = 0   // 重置倒计时，修正后可立即重发
-}
-
 // 初始化随机文案
 onMounted(() => {
   const randomIndex = Math.floor(Math.random() * quotes.length)
@@ -194,11 +172,9 @@ async function handleLogin() {
     const isFirstLogin = data.user && (data.user.profile_completion === 0 || data.user.is_first_login)
     setTimeout(() => {
       if (isFirstLogin) {
-        // 首次登录：进入任务大厅并展示新手引导（定位到完善资料区域）
-        router.push({ path: '/task-hall', query: { newUser: '1' } })
+        router.push({ path: '/profile/edit', query: { first: '1' } })
       } else {
-        // 普通登录：直接进入任务大厅
-        router.push('/task-hall')
+        router.push('/surveys?justLoggedIn=true')
       }
     }, 500)
   } catch (err) {
@@ -211,39 +187,7 @@ async function handleLogin() {
 
 // 处理注册
 async function handleRegister() {
-  if (registerStep.value === 'form') {
-    // 第一步：校验表单并发送验证码
-    if (!validateRegisterForm()) return
-    loading.value = true
-    error.value = ''
-    try {
-      const res = await fetch('/api/v1/auth/send-register-code', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.value.trim() }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        error.value = data.error || '发送验证码失败，请稍后重试'
-        return
-      }
-      registerStep.value = 'verify'
-      startRegisterCountdown()
-    } catch (err) {
-      console.error('Send register code error:', err)
-      error.value = '网络连接失败，请稍后重试'
-    } finally {
-      loading.value = false
-    }
-    return
-  }
-
-  // 第二步：提交验证码 + 注册信息
-  clearErrors()
-  if (!registerCode.value.trim() || registerCode.value.trim().length !== 6) {
-    registerCodeError.value = '请输入6位验证码'
-    return
-  }
+  if (!validateRegisterForm()) return
 
   loading.value = true
   error.value = ''
@@ -251,21 +195,20 @@ async function handleRegister() {
   try {
     const res = await fetch('/api/v1/auth/register', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+      },
       body: JSON.stringify({
         email: email.value.trim(),
         nickname: nickname.value.trim(),
         password: password.value,
-        code: registerCode.value.trim(),
       }),
     })
+
     const data = await res.json()
+
     if (!res.ok) {
       error.value = data.error || '注册失败，请稍后重试'
-      // 验证码错误时留在验证码步骤，其他错误回到表单步骤
-      if (!data.error?.includes('code') && !data.error?.includes('attempt')) {
-        registerStep.value = 'form'
-      }
       return
     }
 
@@ -273,6 +216,8 @@ async function handleRegister() {
     localStorage.setItem('access_token', data.access_token)
     localStorage.setItem('user_id', data.user?.id || '')
     localStorage.setItem('user_nickname', data.user?.nickname || '')
+    
+    // 保存用户完整信息（包括积分）
     if (data.user) {
       localStorage.setItem('sixth_element_profile', JSON.stringify({
         id: data.user.id,
@@ -284,8 +229,10 @@ async function handleRegister() {
         profile_completion: data.user.profile_completion || 0
       }))
     }
+
+    // 注册后一定跳转到个人资料编辑页
     setTimeout(() => {
-      router.push({ path: '/task-hall', query: { newUser: '1' } })
+      router.push({ path: '/profile/edit', query: { first: '1' } })
     }, 500)
   } catch (err) {
     console.error('Register error:', err)
@@ -309,9 +256,6 @@ function handleKeydown(e) {
 // 切换模式
 function switchMode(mode) {
   authMode.value = mode
-  registerStep.value = 'form'
-  registerCode.value = ''
-  registerCodeError.value = ''
   clearErrors()
   error.value = ''
 }
@@ -367,7 +311,7 @@ function goToForgotPassword() {
       <!-- 表单区 -->
       <form @keydown="handleKeydown" class="auth-form">
         <!-- 邮箱字段 -->
-        <div v-if="authMode === 'login' || (authMode === 'register' && registerStep === 'form')" class="form-group">
+        <div class="form-group">
           <label for="email" class="form-label">邮箱地址</label>
           <div class="input-wrapper">
             <span class="input-icon">✉️</span>
@@ -384,8 +328,8 @@ function goToForgotPassword() {
           <p v-if="emailError" class="error-text">{{ emailError }}</p>
         </div>
 
-        <!-- 昵称字段（注册模式第一步） -->
-        <div v-if="authMode === 'register' && registerStep === 'form'" class="form-group">
+        <!-- 昵称字段（注册模式） -->
+        <div v-if="authMode === 'register'" class="form-group">
           <label for="nickname" class="form-label">昵称</label>
           <div class="input-wrapper">
             <span class="input-icon">👤</span>
@@ -402,7 +346,7 @@ function goToForgotPassword() {
         </div>
 
         <!-- 密码字段 -->
-        <div v-if="authMode === 'login' || (authMode === 'register' && registerStep === 'form')" class="form-group">
+        <div class="form-group">
           <label for="password" class="form-label">密码</label>
           <div class="input-wrapper">
             <span class="input-icon">🔒</span>
@@ -427,8 +371,8 @@ function goToForgotPassword() {
           <p v-if="passwordError" class="error-text">{{ passwordError }}</p>
         </div>
 
-        <!-- 确认密码字段（注册模式第一步） -->
-        <div v-if="authMode === 'register' && registerStep === 'form'" class="form-group">
+        <!-- 确认密码字段（注册模式） -->
+        <div v-if="authMode === 'register'" class="form-group">
           <label for="confirm-password" class="form-label">确认密码</label>
           <div class="input-wrapper">
             <span class="input-icon">🔒</span>
@@ -455,36 +399,6 @@ function goToForgotPassword() {
           </p>
         </div>
 
-        <!-- 注册验证码字段（注册模式第二步） -->
-        <div v-if="authMode === 'register' && registerStep === 'verify'" class="form-group">
-          <label for="register-code" class="form-label">邮箱验证码</label>
-          <p class="step-hint">
-            验证码已发送至 <strong>{{ email }}</strong>，请查收
-            <button type="button" class="back-to-form-btn" @click="goBackToForm">（邮箱填错了？）</button>
-          </p>
-          <div class="input-wrapper">
-            <span class="input-icon">🔢</span>
-            <input
-              id="register-code"
-              v-model="registerCode"
-              type="text"
-              maxlength="6"
-              class="form-input"
-              :class="{ 'has-error': registerCodeError }"
-              placeholder="请输入6位验证码"
-            />
-            <button
-              type="button"
-              class="resend-btn"
-              :disabled="!registerCanResend"
-              @click="registerCanResend && handleRegister()"
-            >
-              {{ registerCanResend ? '重新发送' : `${registerCountdown}秒后重发` }}
-            </button>
-          </div>
-          <p v-if="registerCodeError" class="error-text">{{ registerCodeError }}</p>
-        </div>
-
         <!-- 登录特有的辅助链接 -->
         <div v-if="authMode === 'login'" class="form-helpers">
           <button type="button" class="forgot-password-btn" @click="goToForgotPassword">
@@ -500,7 +414,7 @@ function goToForgotPassword() {
           @click="authMode === 'login' ? handleLogin() : handleRegister()"
         >
           <span v-if="!loading" class="btn-text">
-            {{ authMode === 'login' ? '登录' : (registerStep === 'form' ? '发送验证码' : '完成注册') }}
+            {{ authMode === 'login' ? '登录' : '注册' }}
           </span>
           <span v-else class="loading-spinner">⏳</span>
         </button>
@@ -800,50 +714,6 @@ function goToForgotPassword() {
 .forgot-password-btn:hover {
   opacity: 0.7;
   text-decoration: underline;
-}
-
-/* 注册验证码步骤提示 */
-.step-hint {
-  font-size: 12px;
-  color: #5c7599;
-  margin: 0 0 6px 0;
-}
-
-/* 重新发送按钮（验证码输入框内） */
-.resend-btn {
-  position: absolute;
-  right: 10px;
-  background: none;
-  border: none;
-  color: #0052d9;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  white-space: nowrap;
-  padding: 0;
-  transition: opacity 0.2s;
-}
-
-.resend-btn:disabled {
-  color: #aab8cc;
-  cursor: not-allowed;
-}
-
-.back-to-form-btn {
-  background: none;
-  border: none;
-  color: #7b96b8;
-  font-size: 12px;
-  cursor: pointer;
-  padding: 0;
-  margin-left: 4px;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  transition: color 0.15s;
-}
-
-.back-to-form-btn:hover {
-  color: #0052d9;
 }
 
 /* 提交按钮 */

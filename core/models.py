@@ -30,32 +30,18 @@ class AuthToken(models.Model):
 
 
 class PasswordResetCode(models.Model):
-    """邮件验证码（服务于注册验证和密码重置两种场景）"""
-
-    PURPOSE_REGISTER = "register"
-    PURPOSE_RESET = "reset"
-    PURPOSE_CHOICES = [
-        ("register", "注册验证"),
-        ("reset", "密码重置"),
-    ]
+    """密码重置验证码"""
 
     email = models.EmailField(db_index=True)
-    # 存储 SHA-256(code)，不明文保存原始6位数字；default='' 仅用于迁移过渡
-    code_hash = models.CharField(max_length=64, default="")
-    purpose = models.CharField(
-        max_length=20, choices=PURPOSE_CHOICES, default=PURPOSE_RESET
-    )
+    code = models.CharField(max_length=6)  # 6位数字验证码
     expires_at = models.DateTimeField()
     is_used = models.BooleanField(default=False)
-    # 错误尝试次数，超过阈值（5次）自动失效
-    attempt_count = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         indexes = [
             models.Index(
-                fields=["email", "purpose", "is_used", "expires_at"],
-                name="email_code_lookup_idx",
+                fields=["email", "is_used", "expires_at"], name="reset_code_lookup_idx"
             ),
         ]
 
@@ -343,9 +329,7 @@ class UserTagWeight(models.Model):
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(
-                fields=["user", "tag"], name="unique_user_tag_weight"
-            )
+            models.UniqueConstraint(fields=["user", "tag"], name="unique_user_tag_weight")
         ]
         indexes = [
             models.Index(fields=["tag"], name="user_tagweight_tag_idx"),

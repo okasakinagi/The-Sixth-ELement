@@ -55,14 +55,6 @@ class SurveyManagementMapper:
         )
         survey.active_questionnaire = questionnaire
         survey.save(update_fields=["active_questionnaire"])
-        try:
-            # ensure survey vector is generated at creation time
-            from core.services.similarity_service import SimilarityService
-
-            SimilarityService.generate_and_store_vector("survey", str(survey.id))
-        except Exception:
-            # non-fatal: vector generation failure shouldn't block creation
-            pass
         return survey
 
     @staticmethod
@@ -83,12 +75,6 @@ class SurveyManagementMapper:
         )
         survey.active_questionnaire = questionnaire
         survey.save(update_fields=["active_questionnaire"])
-        try:
-            from core.services.similarity_service import SimilarityService
-
-            SimilarityService.generate_and_store_vector("survey", str(survey.id))
-        except Exception:
-            pass
         return survey
 
     @staticmethod
