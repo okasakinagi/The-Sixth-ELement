@@ -5,7 +5,6 @@ from datetime import datetime, time, timedelta, timezone as dt_timezone
 
 from django.conf import settings as django_settings
 from django.contrib.auth.hashers import check_password, make_password
-from django.db import transaction
 from django.core.mail import send_mail
 from django.http import HttpResponse
 from django.http import JsonResponse
@@ -36,30 +35,11 @@ WEIGHT_DISMISS_DECREMENT = -0.2
 WEIGHT_ABANDON_DECREMENT = -0.04
 WEIGHT_MIN = 0.0
 WEIGHT_MAX = 5.0
-DIFFICULTY_REWARD_MAP = {
-    1: 1,
-    2: 2,
-    3: 3,
-    4: 4,
-    5: 5,
-}
 
 
 def now_iso(dt=None):
     value = dt or timezone.now()
     return value.astimezone(dt_timezone.utc).isoformat().replace("+00:00", "Z")
-
-
-def reward_points_by_difficulty(difficulty):
-    try:
-        difficulty = int(difficulty)
-    except (TypeError, ValueError):
-        difficulty = 3
-    if difficulty < 1:
-        difficulty = 1
-    if difficulty > 5:
-        difficulty = 5
-    return DIFFICULTY_REWARD_MAP[difficulty]
 
 
 def parse_json(request):
@@ -497,46 +477,13 @@ def send_reset_code(request):
 
 
 @csrf_exempt
-def request_password_reset(request):
-    """兼容旧路由：等价于 send_reset_code。"""
-    return send_reset_code(request)
-
-
-@csrf_exempt
 def verify_reset_code(request):
-    """仅验证重置码是否有效。"""
+    """验证重置码并重置密码。"""
     if request.method != "POST":
         return error(405, "请求方法不允许")
     data = parse_json(request)
     email = data.get("email", "").strip()
-    code = (data.get("code") or data.get("reset_code") or "").strip()
-    if not email or not code:
-        return error(422, "邮箱和验证码不能为空")
-
-    try:
-        user = AppUser.objects.get(email=email)
-    except AppUser.DoesNotExist:
-        return error(404, "用户不存在")
-
-    record, err = _verify_code(email, code, PasswordResetCode.PURPOSE_RESET)
-    if err:
-        return err
-
-    remaining_seconds = int((record.expires_at - timezone.now()).total_seconds())
-    if remaining_seconds < 0:
-        remaining_seconds = 0
-
-    return JsonResponse({"message": "验证码有效", "expires_in": remaining_seconds})
-
-
-@csrf_exempt
-def reset_password(request):
-    """使用有效重置码更新密码。"""
-    if request.method != "POST":
-        return error(405, "请求方法不允许")
-    data = parse_json(request)
-    email = data.get("email", "").strip()
-    code = (data.get("code") or data.get("reset_code") or "").strip()
+    code = data.get("code", "").strip()
     new_password = data.get("new_password", "").strip()
     if not email or not code or not new_password:
         return error(422, "邮箱、验证码和新密码不能为空")
@@ -603,14 +550,11 @@ def surveys(request):
             return err
         data = parse_json(request)
         title = data.get("title", "").strip()
-        difficulty = data.get("difficulty", 3)
-        try:
-            difficulty = int(difficulty)
-        except (TypeError, ValueError):
-            return error(422, "难度必须为数字")
-        reward_points = reward_points_by_difficulty(difficulty)
+        reward_points = int(data.get("reward_points", 0) or 0)
         if not title:
             return error(422, "问卷标题不能为空")
+        if reward_points < 0:
+            return error(422, "悬赏积分不能为负数")
         if user.points < reward_points:
             return error(422, "积分不足，无法发布问卷")
 
@@ -618,7 +562,6 @@ def surveys(request):
             owner=user,
             title=title,
             description=data.get("description"),
-            difficulty=difficulty,
             reward_points=reward_points,
             publish_cost_points=reward_points,
             deadline=parse_deadline(data.get("deadline")),
@@ -799,50 +742,22 @@ def review_fill(request, fill_id):
         return error(422, "该填写记录已审核")
 
     points_awarded = 0
-    reward_limited = False
     if status == "approved":
-        already_rewarded = PointsLog.objects.filter(
+        points_awarded = record.survey.reward_points
+        record.user.points += points_awarded
+        record.user.activity_points += points_awarded
+        record.user.save(update_fields=["points", "activity_points"])
+        PointsLog.objects.create(
             user=record.user,
-            points_type="fill_reward",
-            ref_type="survey",
-            ref_id=record.survey_id,
-        ).exists()
-        if not already_rewarded:
-            reward = reward_points_by_difficulty(record.survey.difficulty)
-            with transaction.atomic():
-                locked_survey = Survey.objects.select_for_update().get(pk=record.survey_id)
-                target = max(int(locked_survey.target or 0), 0)
-                rewarded_count = PointsLog.objects.filter(
-                    points_type="fill_reward",
-                    ref_type="survey",
-                    ref_id=locked_survey.id,
-                ).count()
-                if target > 0 and rewarded_count >= target:
-                    reward_limited = True
-                else:
-                    user_obj = AppUser.objects.select_for_update().get(pk=record.user_id)
-                    user_obj.points += reward
-                    user_obj.activity_points += reward
-                    user_obj.save(update_fields=["points", "activity_points"])
-                    PointsLog.objects.create(
-                        user=user_obj,
-                        points_type="fill_reward",
-                        delta=reward,
-                        reason="完成问卷审核通过",
-                        ref_type="survey",
-                        ref_id=locked_survey.id,
-                    )
-                    points_awarded = reward
+            points_type="reward",
+            delta=points_awarded,
+            reason="完成问卷",
+        )
 
     record.status = status
     record.save(update_fields=["status"])
     return JsonResponse(
-        {
-            "id": str(record.id),
-            "status": status,
-            "points_awarded": points_awarded,
-            "reward_limited": reward_limited,
-        }
+        {"id": str(record.id), "status": status, "points_awarded": points_awarded}
     )
 
 
