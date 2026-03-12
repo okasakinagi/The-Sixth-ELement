@@ -5,6 +5,7 @@ from datetime import datetime, time, timedelta, timezone as dt_timezone
 
 from django.conf import settings as django_settings
 from django.contrib.auth.hashers import check_password, make_password
+from django.db import transaction
 from django.core.mail import send_mail
 from django.http import HttpResponse
 from django.http import JsonResponse
@@ -798,6 +799,7 @@ def review_fill(request, fill_id):
         return error(422, "该填写记录已审核")
 
     points_awarded = 0
+    reward_limited = False
     if status == "approved":
         already_rewarded = PointsLog.objects.filter(
             user=record.user,
@@ -806,23 +808,41 @@ def review_fill(request, fill_id):
             ref_id=record.survey_id,
         ).exists()
         if not already_rewarded:
-            points_awarded = reward_points_by_difficulty(record.survey.difficulty)
-            record.user.points += points_awarded
-            record.user.activity_points += points_awarded
-            record.user.save(update_fields=["points", "activity_points"])
-            PointsLog.objects.create(
-                user=record.user,
-                points_type="fill_reward",
-                delta=points_awarded,
-                reason="完成问卷审核通过",
-                ref_type="survey",
-                ref_id=record.survey_id,
-            )
+            reward = reward_points_by_difficulty(record.survey.difficulty)
+            with transaction.atomic():
+                locked_survey = Survey.objects.select_for_update().get(pk=record.survey_id)
+                target = max(int(locked_survey.target or 0), 0)
+                rewarded_count = PointsLog.objects.filter(
+                    points_type="fill_reward",
+                    ref_type="survey",
+                    ref_id=locked_survey.id,
+                ).count()
+                if target > 0 and rewarded_count >= target:
+                    reward_limited = True
+                else:
+                    user_obj = AppUser.objects.select_for_update().get(pk=record.user_id)
+                    user_obj.points += reward
+                    user_obj.activity_points += reward
+                    user_obj.save(update_fields=["points", "activity_points"])
+                    PointsLog.objects.create(
+                        user=user_obj,
+                        points_type="fill_reward",
+                        delta=reward,
+                        reason="完成问卷审核通过",
+                        ref_type="survey",
+                        ref_id=locked_survey.id,
+                    )
+                    points_awarded = reward
 
     record.status = status
     record.save(update_fields=["status"])
     return JsonResponse(
-        {"id": str(record.id), "status": status, "points_awarded": points_awarded}
+        {
+            "id": str(record.id),
+            "status": status,
+            "points_awarded": points_awarded,
+            "reward_limited": reward_limited,
+        }
     )
 
 
