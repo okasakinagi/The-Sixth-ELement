@@ -288,17 +288,14 @@
     </div>
 
     <!-- 悬浮画像完成度 -->
-    <div v-if="showFloatingProgress" class="floating-progress" :class="{ mobile: isMobile }">
+    <div class="floating-progress" :class="{ mobile: isMobile }">
       <div class="floating-header">
         <span class="floating-title">画像完成度</span>
-        <div class="floating-header-right">
-          <button v-if="completionRate < 100" class="floating-action" @click="goToEdit">去完善</button>
-          <button class="floating-close" @click="dismissFloating" aria-label="关闭">×</button>
-        </div>
+        <button class="floating-action" @click="goToEdit">去完善</button>
       </div>
       <div class="floating-body">
         <div class="circular-progress small">
-          <svg class="progress-ring" width="84" height="84" viewBox="0 0 84 84">
+          <svg class="progress-ring" width="84" height="84">
             <circle
               class="progress-ring-circle-bg"
               stroke="#e3f2fd"
@@ -370,48 +367,6 @@ const isMobile = ref(window.innerWidth <= 768)
 const isLoading = ref(true)
 const errorMessage = ref('')
 
-// 悬浮完成度窗口
-const showFloatingProgress = ref(false)
-const FLOATING_STATUS_KEY = 'profile_floating_status'
-
-function checkFloatingVisibility() {
-  const rate = completionRate.value
-  const stored = localStorage.getItem(FLOATING_STATUS_KEY)
-  let status = null
-  if (stored) {
-    try { status = JSON.parse(stored) } catch {}
-  }
-
-  if (rate === 100) {
-    // 100% 时：已展示过则不再显示
-    if (status?.type === '100_seen') {
-      showFloatingProgress.value = false
-      return
-    }
-    // 首次达到100%：展示并立即记录，3秒后自动关闭
-    localStorage.setItem(FLOATING_STATUS_KEY, JSON.stringify({ type: '100_seen' }))
-    showFloatingProgress.value = true
-    setTimeout(() => {
-      showFloatingProgress.value = false
-    }, 3000)
-  } else {
-    // < 100% 时：被关闭后 24h 内不再显示
-    if (status?.type === 'dismissed' && Date.now() < status.until) {
-      showFloatingProgress.value = false
-      return
-    }
-    showFloatingProgress.value = true
-  }
-}
-
-function dismissFloating() {
-  localStorage.setItem(FLOATING_STATUS_KEY, JSON.stringify({
-    type: 'dismissed',
-    until: Date.now() + 24 * 60 * 60 * 1000
-  }))
-  showFloatingProgress.value = false
-}
-
 // 状态弹窗相关
 const showStatusModal = ref(false)
 const selectedStatus = ref('')
@@ -449,12 +404,12 @@ const studyStatuses = [
   { value: '刚下课', label: '刚下课', emoji: '🎒' }
 ]
 
-// 当前显示的状态（主状态 + 描述，第3段为时间戳不显示）
+// 当前显示的状态（主状态 + 描述）
 const currentStatusDisplay = computed(() => {
   if (!userData.value.currentStatus) return ''
-  // 存储格式: "主状态|描述|timestamp" 或 "主状态|描述" 或 "主状态"
+  // 解析存储的状态格式: "主状态|描述" 或 纯主状态
   const parts = userData.value.currentStatus.split('|')
-  if (parts[1]) {
+  if (parts.length > 1 && parts[1]) {
     return `${parts[0]} · ${parts[1]}`
   }
   return parts[0]
@@ -496,19 +451,6 @@ const loadProfile = async () => {
       skills: profile.skills || [],
       currentStatus: profile.current_status || '',
       profile_completion: profile.profile_completion || 0
-    }
-    localStorage.setItem('sixth_element_profile_completion', String(profile.profile_completion || 0))
-    // 检查是否展示悬浮完成度窗口
-    checkFloatingVisibility()
-    // 24小时自动清除状态（时间戳存在后端状态字符串第3段，多端通用）
-    if (userData.value.currentStatus) {
-      const parts = userData.value.currentStatus.split('|')
-      const timestamp = parts[2] ? parseInt(parts[2]) : null
-      if (timestamp && Date.now() - timestamp > 24 * 60 * 60 * 1000) {
-        updateUserProfile({ current_status: '' }).then(() => {
-          userData.value.currentStatus = ''
-        }).catch(err => console.error('自动清除状态失败:', err))
-      }
     }
   } catch (error) {
     console.error('加载画像失败:', error)
@@ -552,7 +494,7 @@ const completionMessage = computed(() => {
 
 // 打开状态弹窗
 const openStatusModal = () => {
-  // 解析当前状态（格式: 主状态|描述|timestamp）
+  // 解析当前状态
   if (userData.value.currentStatus) {
     const parts = userData.value.currentStatus.split('|')
     selectedStatus.value = parts[0] || ''
@@ -580,11 +522,10 @@ const selectStatus = (status) => {
 const confirmStatus = async () => {
   if (!selectedStatus.value) return
   
-  // 组合状态字符串: "主状态|描述|timestamp"（时间戳随状态存后端，多端通用）
-  const ts = Date.now()
-  const statusValue = statusDescription.value.trim()
-    ? `${selectedStatus.value}|${statusDescription.value.trim()}|${ts}`
-    : `${selectedStatus.value}||${ts}`
+  // 组合状态字符串: "主状态|描述"
+  const statusValue = statusDescription.value.trim() 
+    ? `${selectedStatus.value}|${statusDescription.value.trim()}`
+    : selectedStatus.value
   
   try {
     await updateUserProfile({ current_status: statusValue })
@@ -801,18 +742,11 @@ onUnmounted(() => {
 
 .profile-container {
   min-height: 100vh;
-  width: 100%;
-  max-width: 100%;
-  box-sizing: border-box;
+  width: 100vw;
   background: linear-gradient(135deg, #e3f2fd 0%, #f5f9ff 100%);
-  padding: 0 0 40px;
+  padding-bottom: 40px;
   overflow-x: hidden;
   position: relative;
-}
-
-:global(.main-content) {
-  padding: 0;
-  background: transparent;
 }
 
 /* 左上角返回按钮 */
@@ -858,7 +792,6 @@ onUnmounted(() => {
   margin-bottom: 30px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   width: 100%;
-  box-sizing: border-box;
 }
 
 .header-bg {
@@ -887,7 +820,7 @@ onUnmounted(() => {
 
 .avatar-section {
   display: flex;
-  align-items: flex-start;
+  align-items: flex-end;
   gap: 20px;
   margin-top: -60px;
 }
@@ -902,7 +835,6 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   box-shadow: 0 4px 12px rgba(33, 150, 243, 0.3);
-  flex-shrink: 0;
 }
 
 .avatar-text {
@@ -912,30 +844,26 @@ onUnmounted(() => {
 }
 
 .user-basic-info {
-  padding-bottom: 0;
-  padding-top: 45px;
+  padding-bottom: 10px;
 }
 
 .username {
   font-size: 28px;
   font-weight: bold;
-  background: linear-gradient(135deg, #1e3a5f 0%, #2c5282 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: #1f3a60;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.7);
   letter-spacing: 0.4px;
   margin: 0 0 6px 0;
-  filter: drop-shadow(0 2px 4px rgba(30, 58, 95, 0.15));
 }
 
 .user-subtitle {
-  font-size: 15px;
+  font-size: 16px;
   color: #757575;
   margin: 0;
 }
 
 .status-row {
-  margin-top: 12px;
+  margin-top: 10px;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -1286,7 +1214,7 @@ onUnmounted(() => {
 /* 内容区域 */
 .profile-content {
   max-width: 1200px;
-  width: 100%;
+  width: calc(100% - 40px);
   margin: 0 auto;
   padding: 0 20px;
   display: grid;
@@ -1298,7 +1226,7 @@ onUnmounted(() => {
 @media (max-width: 900px) {
   .profile-content {
     grid-template-columns: 1fr;
-    width: 100%;
+    width: calc(100% - 30px);
     padding: 0 15px;
   }
 }
@@ -1583,12 +1511,6 @@ onUnmounted(() => {
   justify-content: space-between;
 }
 
-.floating-header-right {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
 .floating-title {
   font-weight: 700;
   color: #0b2b66;
@@ -1605,29 +1527,6 @@ onUnmounted(() => {
   font-weight: 700;
   cursor: pointer;
   box-shadow: 0 4px 12px rgba(33, 150, 243, 0.28);
-}
-
-.floating-close {
-  width: 22px;
-  height: 22px;
-  border: none;
-  background: #f0f4f8;
-  border-radius: 50%;
-  color: #8a97a8;
-  font-size: 16px;
-  line-height: 1;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  transition: background 0.2s, color 0.2s;
-  flex-shrink: 0;
-}
-
-.floating-close:hover {
-  background: #dde5ef;
-  color: #374151;
 }
 
 .floating-body {

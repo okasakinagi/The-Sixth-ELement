@@ -7,11 +7,8 @@ import {
   deleteSurvey,
   pauseSurvey,
   resumeSurvey,
-  publishSurvey,
-  evaluateSurvey,
-  getSurveyDetail,
+  publishSurvey
 } from '@/utils/surveyManagementApi'
-import { cancelPublish } from '@/utils/surveyManagementApi'
 
 const router = useRouter()
 const route = useRoute()
@@ -19,19 +16,15 @@ const route = useRoute()
 const hideCompleted = ref(false)
 const showDeleteModal = ref(false)
 const deleteTarget = ref(null)
-const showCancelModal = ref(false)
-const cancelTarget = ref(null)
-const cancelEstimate = ref(null)
 const showPublishModal = ref(false)
 const showPublishConfigModal = ref(false)
-const isEvaluating = ref(false)
 const publishTarget = ref(null)
 const publishConfig = ref({
   rewardPoints: 3,
   targetCount: 30,
+  promptConstraint: '',
   speedBoostPoints: 0,
-  estimatedMinutes: 5,
-  difficulty: 1.0
+  estimatedMinutes: 5
 })
 
 // 计算建议的加速积分（20%）
@@ -88,32 +81,6 @@ const openDeleteModal = (survey) => {
   showDeleteModal.value = true
 }
 
-const openCancelModal = async (survey) => {
-  // 获取问卷详情以计算预估退还积分（仅估算基础预算，不含加速积分）
-  try {
-    loading.value = true
-    const detail = await getSurveyDetail(survey.id)
-    const completed = detail.completed || 0
-    const target = detail.target || 0
-    const reward = detail.reward_points || 0
-    const remaining = Math.max(0, target - completed)
-    // 估算退还：剩余份数 * 每份奖励；注意：若存在加速积分，实际退还会更少
-    cancelEstimate.value = remaining * reward
-  } catch (err) {
-    console.error('获取问卷详情失败，无法估算退还积分：', err)
-    cancelEstimate.value = null
-  } finally {
-    loading.value = false
-    cancelTarget.value = survey
-    showCancelModal.value = true
-  }
-}
-
-const closeCancelModal = () => {
-  cancelTarget.value = null
-  showCancelModal.value = false
-}
-
 const closeDeleteModal = () => {
   showDeleteModal.value = false
   deleteTarget.value = null
@@ -124,84 +91,16 @@ const closePublishModal = () => {
   router.replace({ query: {} })
 }
 
-const handleConfirmPublishFromBuilder = async () => {
-  // 尝试从 sessionStorage 读取编辑器保存的草稿并直接进入发布配置
-  const raw = sessionStorage.getItem('survey-draft')
-  if (!raw) {
-    showPublishModal.value = false
-    router.replace({ query: {} })
-    error.value = '未找到待发布的问卷草稿'
-    setTimeout(() => {
-      error.value = ''
-    }, 3000)
-    return
-  }
-
-  let draft = null
-  try {
-    draft = JSON.parse(raw)
-  } catch (e) {
-    showPublishModal.value = false
-    router.replace({ query: {} })
-    error.value = '读取问卷草稿失败'
-    setTimeout(() => {
-      error.value = ''
-    }, 3000)
-    return
-  }
-
-  // 将草稿作为发布目标，初始化配置并打开发布配置弹窗
-  publishTarget.value = draft
-  showPublishModal.value = false
-  publishConfig.value = {
-    rewardPoints: 3,
-    targetCount: 30,
-    speedBoostPoints: 0,
-    estimatedMinutes: 5,
-    difficultyLevel: 3
-  }
-  showPublishConfigModal.value = true
-
-  // AI 评估问卷难度（与从问卷列表点击发布的流程保持一致）
-  if (draft.id) {
-    try {
-      isEvaluating.value = true
-      const evaluation = await evaluateSurvey(draft.id)
-      publishConfig.value.estimatedMinutes = evaluation.estimated_time_minutes || 5
-      publishConfig.value.difficultyLevel = evaluation.difficulty_level || 3
-      publishConfig.value.rewardPoints = publishConfig.value.difficultyLevel
-    } catch (err) {
-      console.error('Failed to evaluate survey:', err)
-      // 评估失败不影响发布，使用默认值
-    } finally {
-      isEvaluating.value = false
-    }
-  }
-}
-const openPublishConfig = async (survey) => {
+const openPublishConfig = (survey) => {
   publishTarget.value = survey
   publishConfig.value = {
     rewardPoints: 3,
     targetCount: 30,
+    promptConstraint: '',
     speedBoostPoints: 0,
-    estimatedMinutes: 5,
-    difficultyLevel: 3
+    estimatedMinutes: 5
   }
   showPublishConfigModal.value = true
-  
-  try {
-    isEvaluating.value = true
-    const evaluation = await evaluateSurvey(survey.id)
-    publishConfig.value.estimatedMinutes = evaluation.estimated_time_minutes || 5
-    publishConfig.value.difficultyLevel = evaluation.difficulty_level || 3
-    // 自动映射积分
-    publishConfig.value.rewardPoints = publishConfig.value.difficultyLevel
-  } catch (err) {
-    console.error('Failed to evaluate survey:', err)
-    // 评估失败不影响发布，使用默认值
-  } finally {
-    isEvaluating.value = false
-  }
 }
 
 const closePublishConfig = () => {
@@ -217,16 +116,12 @@ const confirmPublish = async () => {
     const boostPoints = publishConfig.value.speedBoostPoints || 0
     await publishSurvey(publishTarget.value.id, {
       budget_points: publishConfig.value.rewardPoints * publishConfig.value.targetCount + boostPoints,
-      target: publishConfig.value.targetCount,
-      estimated_minutes: publishConfig.value.estimatedMinutes,
-      difficulty: publishConfig.value.difficultyLevel
+      target: publishConfig.value.targetCount
     })
     
     // 刷新问卷列表
     await loadSurveys()
     closePublishConfig()
-    // 通知浮动菜单刷新积分（发布消耗积分）
-    window.dispatchEvent(new CustomEvent('points-updated'))
   } catch (err) {
     // 检查是否是登录过期
     if (err.message.includes('登录已过期')) {
@@ -247,17 +142,11 @@ const confirmDelete = async () => {
   
   try {
     loading.value = true
-    const delResp = await deleteSurvey(deleteTarget.value.id)
+    await deleteSurvey(deleteTarget.value.id)
     
     // 刷新问卷列表
     await loadSurveys()
     closeDeleteModal()
-    // 通知浮动菜单刷新积分（删除已发布问卷时可能退还积分）
-    window.dispatchEvent(new CustomEvent('points-updated'))
-    if (delResp?.refund > 0) {
-      error.value = `问卷已删除，退还积分：${delResp.refund}`
-      setTimeout(() => { error.value = '' }, 4000)
-    }
   } catch (err) {
     // 检查是否是登录过期
     if (err.message.includes('登录已过期')) {
@@ -294,29 +183,6 @@ const togglePause = async (survey) => {
     setTimeout(() => {
       error.value = ''
     }, 3000)
-  } finally {
-    loading.value = false
-  }
-}
-
-const confirmCancel = async () => {
-  if (!cancelTarget.value) return
-  try {
-    loading.value = true
-    const resp = await cancelPublish(cancelTarget.value.id)
-    await loadSurveys()
-    closeCancelModal()
-    // 通知浮动菜单刷新积分（取消发布退还积分）
-    window.dispatchEvent(new CustomEvent('points-updated'))
-    error.value = `已取消发布，退还积分：${resp.refund}（不含加速积分）`
-    setTimeout(() => { error.value = '' }, 4000)
-  } catch (err) {
-    if (err.message.includes('登录已过期')) {
-      handleTokenExpired(router)
-      return
-    }
-    error.value = err.message
-    setTimeout(() => { error.value = '' }, 4000)
   } finally {
     loading.value = false
   }
@@ -446,15 +312,7 @@ onUnmounted(() => {
                 {{ survey.status === 'paused' ? '继续发布' : '暂停发布' }}
               </button>
               <button
-                v-if="survey.status === 'live' || survey.status === 'paused'"
-                class="danger-button small"
-                type="button"
-                @click="openCancelModal(survey)"
-              >
-                取消发布
-              </button>
-              <button
-                v-if="survey.status !== 'draft'"
+                v-if="survey.status === 'ended'"
                 class="primary-button small"
                 type="button"
                 @click="openAnalytics(survey)"
@@ -462,6 +320,15 @@ onUnmounted(() => {
                 数据分析
               </button>
               <button
+                v-if="survey.status !== 'ended'"
+                class="ghost-button"
+                type="button"
+                @click="openSurvey(survey)"
+              >
+                编辑/查看问卷
+              </button>
+              <button
+                v-if="survey.status === 'ended'"
                 class="ghost-button"
                 type="button"
                 @click="openSurvey(survey)"
@@ -485,27 +352,13 @@ onUnmounted(() => {
     </div>
   </div>
 
-  <div v-if="showCancelModal" class="modal-backdrop" @click.self="closeCancelModal">
-    <div class="modal">
-      <h3>确认取消发布</h3>
-      <p>取消发布则问卷将不能在被填写，并退还剩余的基础预算积分（不退还加速积分）。</p>
-      <p v-if="cancelEstimate !== null">预估可退还积分：<strong>{{ cancelEstimate }}</strong>（仅为预估，实际结果以返还积分为准）</p>
-      <p v-else>正在获取预估退还积分，或无法获取详情。</p>
-      <p>确定要取消发布吗？</p>
-      <div class="modal-actions">
-        <button class="ghost-button" type="button" @click="closeCancelModal">取消</button>
-        <button class="danger-button" type="button" @click="confirmCancel">确认取消</button>
-      </div>
-    </div>
-  </div>
-
   <div v-if="showPublishModal" class="modal-backdrop" @click.self="closePublishModal">
     <div class="modal">
       <h3>发问卷确认</h3>
       <p>发布将进行积分结算并进入投放流程，确认现在发布吗？</p>
       <div class="modal-actions">
         <button class="ghost-button" type="button" @click="closePublishModal">稍后再说</button>
-        <button class="primary-button" type="button" @click="handleConfirmPublishFromBuilder">确认发布</button>
+        <button class="primary-button" type="button" @click="closePublishModal">确认发布</button>
       </div>
     </div>
   </div>
@@ -514,23 +367,11 @@ onUnmounted(() => {
   <div v-if="showPublishConfigModal" class="modal-backdrop" @click.self="closePublishConfig">
     <div class="modal config-modal">
       <h3>发布问卷配置</h3>
-      
-      <div v-if="isEvaluating" class="evaluating-state">
-        <div class="spinner"></div>
-        <p>AI 正在评估问卷难度和预估时间...</p>
-      </div>
-      
-      <div v-else class="config-form">
+      <div class="config-form">
         <div class="form-group">
-          <label>问卷难度与奖励</label>
-          <div class="difficulty-display">
-            <span class="difficulty-stars">
-              <i v-for="n in 5" :key="n" class="star" :class="{ active: n <= publishConfig.difficultyLevel }">★</i>
-            </span>
-            <span class="difficulty-value">{{ publishConfig.difficultyLevel }} 级</span>
-            <span class="reward-points-badge">自动奖励 {{ publishConfig.rewardPoints }} 积分/份</span>
-          </div>
-          <span class="hint">本结果由 系统智能评估，如有明显不合理可提交反馈。</span>
+          <label>奖励积分（每份）</label>
+          <input v-model.number="publishConfig.rewardPoints" type="number" min="1" max="10" />
+          <span class="hint">每份问卷给填写者的积分</span>
         </div>
         <div class="form-group">
           <label>目标份数</label>
@@ -540,9 +381,13 @@ onUnmounted(() => {
         <div class="form-group">
           <label>预估时间（分钟）</label>
           <input v-model.number="publishConfig.estimatedMinutes" type="number" min="1" max="60" />
-          <span class="hint">填写问卷需要的时间，该时间将由系统根据问卷结构智能评估，通常较为准确。建议保持默认值，以保障填写者体验与积分公平性。如有特殊情况可自行调整。</span>
+          <span class="hint">填写问卷需要的时间</span>
         </div>
-
+        <div class="form-group">
+          <label>人群锁定（可选）</label>
+          <textarea v-model="publishConfig.promptConstraint" rows="3" placeholder="例如：只想要大一到大三女生的数据、不需要研究生和博士生的数据等..."></textarea>
+          <span class="hint">我们的AI助手会根据您的需求智能投放问卷</span>
+        </div>
         <div class="form-group">
           <label>积分加速（可选）</label>
           <div class="boost-input-wrapper">
@@ -550,7 +395,6 @@ onUnmounted(() => {
             <span class="boost-suggest">建议：{{ suggestedBoostPoints }} 积分</span>
           </div>
           <span class="hint">使用积分进行额外曝光，更高效地收集您问卷的结果，使用的积分越多效果越显著噢~</span>
-          <span class="hint" style="color:#b16112">加速积分不予退还，取消发布时只会退还剩余的基础预算积分。</span>
         </div>
         <div class="cost-summary">
           <div class="cost-row">
@@ -568,8 +412,8 @@ onUnmounted(() => {
         </div>
       </div>
       <div class="modal-actions">
-        <button class="ghost-button" type="button" @click="closePublishConfig" :disabled="isEvaluating">取消</button>
-        <button class="primary-button" type="button" @click="confirmPublish" :disabled="isEvaluating">确认发布</button>
+        <button class="ghost-button" type="button" @click="closePublishConfig">取消</button>
+        <button class="primary-button" type="button" @click="confirmPublish">确认发布</button>
       </div>
     </div>
   </div>
@@ -1166,70 +1010,6 @@ onUnmounted(() => {
   font-size: 18px;
 }
 
-.evaluating-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 40px 0;
-  gap: 16px;
-  color: #415673;
-}
-
-.spinner {
-  width: 40px;
-  height: 40px;
-  border: 4px solid #e5edf8;
-  border-top-color: #1e4fb4;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.difficulty-display {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 12px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-}
-
-.difficulty-value {
-  font-size: 18px;
-  font-weight: 600;
-  color: #0d1b37;
-}
-
-.difficulty-stars {
-  display: flex;
-  gap: 4px;
-}
-
-.star {
-  color: #cbd5e1;
-  font-size: 18px;
-  font-style: normal;
-}
-
-.star.active {
-  color: #f59e0b;
-}
-
-.reward-points-badge {
-  margin-left: auto;
-  background: #eef2ff;
-  color: #1e4fb4;
-  padding: 4px 10px;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 600;
-}
-
 @media (max-width: 768px) {
   .survey-main {
     margin-left: 0;
@@ -1276,7 +1056,6 @@ onUnmounted(() => {
   }
 
   .primary-button.small,
-  .danger-button.small,
   .ghost-button {
     padding: 6px 12px;
     font-size: 12px;

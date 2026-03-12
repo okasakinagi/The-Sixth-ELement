@@ -1,7 +1,13 @@
 import hashlib
 import json
 import secrets
+<<<<<<< Updated upstream
 from datetime import datetime, time, timedelta, timezone as dt_timezone
+=======
+import random
+import string
+from datetime import datetime, time, timedelta
+>>>>>>> Stashed changes
 
 from django.conf import settings as django_settings
 from django.contrib.auth.hashers import check_password, make_password
@@ -16,7 +22,11 @@ from .models import (
     AppUser,
     AuthCredential,
     AuthToken,
+<<<<<<< Updated upstream
     PasswordResetCode,
+=======
+    PasswordReset,
+>>>>>>> Stashed changes
     PointsLog,
     Questionnaire,
     Report,
@@ -35,11 +45,30 @@ WEIGHT_DISMISS_DECREMENT = -0.2
 WEIGHT_ABANDON_DECREMENT = -0.04
 WEIGHT_MIN = 0.0
 WEIGHT_MAX = 5.0
+DIFFICULTY_REWARD_MAP = {
+    1: 1,
+    2: 2,
+    3: 3,
+    4: 4,
+    5: 5,
+}
 
 
 def now_iso(dt=None):
     value = dt or timezone.now()
     return value.astimezone(dt_timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def reward_points_by_difficulty(difficulty):
+    try:
+        difficulty = int(difficulty)
+    except (TypeError, ValueError):
+        difficulty = 3
+    if difficulty < 1:
+        difficulty = 1
+    if difficulty > 5:
+        difficulty = 5
+    return DIFFICULTY_REWARD_MAP[difficulty]
 
 
 def parse_json(request):
@@ -453,6 +482,7 @@ def login(request):
 
 
 @csrf_exempt
+<<<<<<< Updated upstream
 def send_reset_code(request):
     """发送密码重置验证码。"""
     if request.method != "POST":
@@ -474,10 +504,49 @@ def send_reset_code(request):
         return error(500, "邮件发送失败，请稍后重试")
 
     return JsonResponse({"message": "verification code sent", "expires_in": 900})
+=======
+def request_password_reset(request):
+    """请求密码重置，发送验证码"""
+    if request.method != "POST":
+        return error(405, "Method not allowed")
+    
+    data = parse_json(request)
+    email = data.get("email", "").strip()
+    
+    if not email:
+        return error(422, "email required")
+    
+    try:
+        user = AppUser.objects.get(email=email)
+    except AppUser.DoesNotExist:
+        # 为了安全，不暴露邮箱是否存在
+        return JsonResponse({"message": "如果邮箱存在，验证码已发送"})
+    
+    # 生成6位数字验证码
+    reset_code = ''.join(random.choices(string.digits, k=6))
+    
+    # 删除之前未使用的重置令牌
+    PasswordReset.objects.filter(user=user, is_used=False).delete()
+    
+    # 创建新的重置令牌，有效期15分钟
+    expires_at = timezone.now() + timedelta(minutes=15)
+    PasswordReset.objects.create(
+        user=user,
+        reset_code=reset_code,
+        expires_at=expires_at
+    )
+    
+    # TODO: 在生产环境中通过邮件发送验证码
+    # 这里可以集成邮件服务（如 SendGrid、AWS SES 等）
+    print(f"[DEBUG] Password reset code for {email}: {reset_code}")
+    
+    return JsonResponse({"message": "验证码已发送"})
+>>>>>>> Stashed changes
 
 
 @csrf_exempt
 def verify_reset_code(request):
+<<<<<<< Updated upstream
     """验证重置码并重置密码。"""
     if request.method != "POST":
         return error(405, "请求方法不允许")
@@ -518,6 +587,93 @@ def verify_reset_code(request):
             "user": {"id": str(user.id), "nickname": user.nickname},
         }
     )
+=======
+    """验证密码重置码"""
+    if request.method != "POST":
+        return error(405, "Method not allowed")
+    
+    data = parse_json(request)
+    email = data.get("email", "").strip()
+    reset_code = data.get("reset_code", "").strip()
+    
+    if not email or not reset_code:
+        return error(422, "email and reset_code required")
+    
+    try:
+        user = AppUser.objects.get(email=email)
+    except AppUser.DoesNotExist:
+        return error(401, "invalid email")
+    
+    # 查找有效的重置令牌
+    reset_record = PasswordReset.objects.filter(
+        user=user,
+        reset_code=reset_code,
+        is_used=False,
+        expires_at__gt=timezone.now()
+    ).first()
+    
+    if not reset_record:
+        return error(401, "invalid or expired reset code")
+    
+    return JsonResponse({"message": "验证码正确"})
+
+
+@csrf_exempt
+def reset_password(request):
+    """重置密码"""
+    if request.method != "POST":
+        return error(405, "Method not allowed")
+    
+    data = parse_json(request)
+    email = data.get("email", "").strip()
+    reset_code = data.get("reset_code", "").strip()
+    new_password = data.get("new_password", "").strip()
+    
+    if not email or not reset_code or not new_password:
+        return error(422, "email, reset_code, and new_password required")
+    
+    if len(new_password) < 6:
+        return error(422, "password must be at least 6 characters")
+    
+    try:
+        user = AppUser.objects.get(email=email)
+    except AppUser.DoesNotExist:
+        return error(401, "invalid email")
+    
+    # 验证重置令牌
+    reset_record = PasswordReset.objects.filter(
+        user=user,
+        reset_code=reset_code,
+        is_used=False,
+        expires_at__gt=timezone.now()
+    ).first()
+    
+    if not reset_record:
+        return error(401, "invalid or expired reset code")
+    
+    # 更新密码
+    credential = AuthCredential.objects.filter(user=user).first()
+    if credential:
+        credential.password_hash = make_password(new_password)
+        credential.save(update_fields=["password_hash"])
+    else:
+        # 如果没有凭证记录，创建一个
+        AuthCredential.objects.create(
+            user=user,
+            password_hash=make_password(new_password)
+        )
+    
+    # 标记重置码为已使用
+    reset_record.is_used = True
+    reset_record.used_at = timezone.now()
+    reset_record.save(update_fields=["is_used", "used_at"])
+    
+    # 删除该用户的所有认证令牌（强制重新登录）
+    AuthToken.objects.filter(user=user).delete()
+    
+    return JsonResponse({"message": "密码已成功重置，请用新密码登录"})
+
+>>>>>>> Stashed changes
 
 
 @csrf_exempt
@@ -743,16 +899,25 @@ def review_fill(request, fill_id):
 
     points_awarded = 0
     if status == "approved":
-        points_awarded = record.survey.reward_points
-        record.user.points += points_awarded
-        record.user.activity_points += points_awarded
-        record.user.save(update_fields=["points", "activity_points"])
-        PointsLog.objects.create(
+        already_rewarded = PointsLog.objects.filter(
             user=record.user,
-            points_type="reward",
-            delta=points_awarded,
-            reason="完成问卷",
-        )
+            points_type="fill_reward",
+            ref_type="survey",
+            ref_id=record.survey_id,
+        ).exists()
+        if not already_rewarded:
+            points_awarded = reward_points_by_difficulty(record.survey.difficulty)
+            record.user.points += points_awarded
+            record.user.activity_points += points_awarded
+            record.user.save(update_fields=["points", "activity_points"])
+            PointsLog.objects.create(
+                user=record.user,
+                points_type="fill_reward",
+                delta=points_awarded,
+                reason="完成问卷审核通过",
+                ref_type="survey",
+                ref_id=record.survey_id,
+            )
 
     record.status = status
     record.save(update_fields=["status"])

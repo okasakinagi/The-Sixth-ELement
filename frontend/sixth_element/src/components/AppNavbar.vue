@@ -32,7 +32,7 @@ function isActive(routeName) {
 
     <div class="navbar-center">
       <RouterLink
-        to="/task-hall"
+        to="/"
         :class="['navbar-link', { active: isActive('task-hall') }]"
       >
         📋 任务大厅

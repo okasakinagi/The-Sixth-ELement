@@ -8,7 +8,6 @@ from urllib import request as url_request
 from django.utils import timezone
 
 from core.models import Questionnaire
-from django.db import transaction
 from survey_management.mapper.survey_management_mapper import SurveyManagementMapper
 
 
@@ -20,6 +19,14 @@ class SurveyManagementError(Exception):
 
 
 class SurveyManagementService:
+    DIFFICULTY_REWARD_MAP = {
+        1: 1,
+        2: 2,
+        3: 3,
+        4: 4,
+        5: 5,
+    }
+
     STATUS_LIVE_INTERNAL = {"published", "active", "live"}
     STATUS_ENDED_INTERNAL = {"ended", "closed", "expired", "rejected"}
 
@@ -42,12 +49,8 @@ class SurveyManagementService:
             if not status_list:
                 raise SurveyManagementError(422, "invalid status")
 
-        surveys = self.mapper.list_surveys(
-            user, status_list=status_list, keyword=keyword
-        )
-        completed_counts = self.mapper.get_completed_counts(
-            [survey.id for survey in surveys]
-        )
+        surveys = self.mapper.list_surveys(user, status_list=status_list, keyword=keyword)
+        completed_counts = self.mapper.get_completed_counts([survey.id for survey in surveys])
 
         items = []
         for survey in surveys:
@@ -57,9 +60,7 @@ class SurveyManagementService:
 
     def get_summary(self, user):
         surveys = self.mapper.list_surveys(user)
-        completed_counts = self.mapper.get_completed_counts(
-            [survey.id for survey in surveys]
-        )
+        completed_counts = self.mapper.get_completed_counts([survey.id for survey in surveys])
         summary = {"draft_count": 0, "live_count": 0, "ended_count": 0}
         for survey in surveys:
             completed = completed_counts.get(survey.id, survey.completed or 0)
@@ -84,39 +85,8 @@ class SurveyManagementService:
         survey = self.mapper.get_owner_survey(user, survey_id)
         if not survey:
             raise SurveyManagementError(404, "survey not found")
-
-        # 如果问卷处于已发布/暂停状态，需先结算并退还未消耗的积分
-        refund = 0
-        if survey.status in self.STATUS_LIVE_INTERNAL or survey.status == "paused":
-            completed_counts = self.mapper.get_completed_counts([survey.id])
-            completed = completed_counts.get(survey.id, survey.completed or 0)
-
-            total_paid = survey.publish_cost_points or 0
-            reward = survey.reward_points or 0
-            target = survey.target or 0
-
-            spent = completed * reward
-            remaining = max(0, total_paid - spent)
-
-            inferred_speed_boost = 0
-            if target:
-                inferred_speed_boost = max(0, total_paid - (reward * target))
-
-            refund = max(0, remaining - inferred_speed_boost)
-
-            if refund > 0:
-                user.points += refund
-                user.save(update_fields=["points"])
-                self.mapper.create_points_log(
-                    user=user,
-                    delta=refund,
-                    reason="删除问卷退还",
-                    ref_type="survey",
-                    ref_id=survey.id,
-                )
-
         self.mapper.delete_survey(survey)
-        return {"success": True, "refund": refund}
+        return {"success": True}
 
     def pause_survey(self, user, survey_id):
         survey = self.mapper.get_owner_survey(user, survey_id)
@@ -137,56 +107,6 @@ class SurveyManagementService:
         survey.status = "published"
         survey.save(update_fields=["status"])
         return {"id": self._public_survey_id(survey.id), "status": "live"}
-
-    def cancel_publish(self, user, survey_id):
-        survey = self.mapper.get_owner_survey(user, survey_id)
-        if not survey:
-            raise SurveyManagementError(404, "survey not found")
-        # Only live/paused surveys can be cancelled
-        if survey.status not in self.STATUS_LIVE_INTERNAL and survey.status != "paused":
-            raise SurveyManagementError(409, "survey cannot be cancelled")
-
-        # compute completed counts and refunds
-        completed_counts = self.mapper.get_completed_counts([survey.id])
-        completed = completed_counts.get(survey.id, survey.completed or 0)
-
-        total_paid = survey.publish_cost_points or 0
-        reward = survey.reward_points or 0
-        target = survey.target or 0
-
-        spent = completed * reward
-        remaining = max(0, total_paid - spent)
-
-        # infer speed boost portion if present: assume total_paid = reward*target + speed_boost
-        inferred_speed_boost = 0
-        if target:
-            inferred_speed_boost = max(0, total_paid - (reward * target))
-
-        # refund should not include inferred speed boost
-        refund = max(0, remaining - inferred_speed_boost)
-
-        # update survey status to ended (keep data for view/edit)
-        survey.status = "ended"
-        survey.updated_at = timezone.now()
-        survey.save(update_fields=["status", "updated_at"])
-
-        # refund points to owner if any
-        if refund > 0:
-            user.points += refund
-            user.save(update_fields=["points"])
-            self.mapper.create_points_log(
-                user=user,
-                delta=refund,
-                reason="取消发布退还",
-                ref_type="survey",
-                ref_id=survey.id,
-            )
-
-        return {
-            "id": self._public_survey_id(survey.id),
-            "status": "ended",
-            "refund": refund,
-        }
 
     def publish_survey(self, user, survey_id, data):
         survey = self.mapper.get_owner_survey(user, survey_id)
@@ -214,49 +134,20 @@ class SurveyManagementService:
         if user.points < budget_points:
             raise SurveyManagementError(422, "not enough points to publish survey")
 
-        if not survey.reward_points and budget_points > 0:
-            survey.reward_points = max(1, budget_points // target) if target else 0
-
-        frontend_estimated = data.get("estimated_minutes")
-        if frontend_estimated is not None:
-            try:
-                survey.estimated_minutes = int(frontend_estimated)
-            except (TypeError, ValueError):
-                pass
-
-        frontend_difficulty = data.get("difficulty")
-        if frontend_difficulty is not None:
-            try:
-                survey.difficulty = int(frontend_difficulty)
-            except (TypeError, ValueError):
-                pass
+        reward_points = self._reward_points_by_difficulty(survey.difficulty)
+        minimum_reward_budget = reward_points * target
+        if budget_points < minimum_reward_budget:
+            raise SurveyManagementError(
+                422,
+                f"budget_points must be >= {minimum_reward_budget}",
+            )
 
         survey.target = target
+        survey.reward_points = reward_points
         survey.publish_cost_points = budget_points
-        # Ensure survey and its active questionnaire are updated atomically
         survey.status = "published"
         survey.updated_at = timezone.now()
-        try:
-            with transaction.atomic():
-                survey.save(
-                    update_fields=[
-                        "target",
-                        "publish_cost_points",
-                        "reward_points",
-                        "status",
-                        "updated_at",
-                        "estimated_minutes",
-                        "difficulty",
-                    ]
-                )
-                # If there is an active questionnaire, mark it as published as well
-                q = survey.active_questionnaire
-                if q and q.status != "published":
-                    q.status = "published"
-                    q.save(update_fields=["status"])
-        except Exception:
-            # Bubble up as management error
-            raise SurveyManagementError(500, "failed to publish survey")
+        survey.save(update_fields=["target", "publish_cost_points", "reward_points", "status", "updated_at"])
 
         if budget_points > 0:
             user.points -= budget_points
@@ -272,10 +163,7 @@ class SurveyManagementService:
         return {
             "id": self._public_survey_id(survey.id),
             "status": "live",
-            "published_at": timezone.now()
-            .astimezone(dt_timezone.utc)
-            .isoformat()
-            .replace("+00:00", "Z"),
+            "published_at": timezone.now().astimezone(dt_timezone.utc).isoformat().replace("+00:00", "Z"),
         }
 
     def create_survey(self, user, data):
@@ -283,13 +171,15 @@ class SurveyManagementService:
         if not title:
             raise SurveyManagementError(422, "title required")
 
-        reward_points = data.get("reward_points", 0) or 0
+        difficulty = data.get("difficulty", 3)
         try:
-            reward_points = int(reward_points)
+            difficulty = int(difficulty)
         except (TypeError, ValueError):
-            raise SurveyManagementError(422, "reward_points must be a number")
-        if reward_points < 0:
-            raise SurveyManagementError(422, "reward_points must be >= 0")
+            raise SurveyManagementError(422, "difficulty must be a number")
+        if difficulty < 1 or difficulty > 5:
+            raise SurveyManagementError(422, "difficulty must be between 1 and 5")
+
+        reward_points = self._reward_points_by_difficulty(difficulty)
         if user.points < reward_points:
             raise SurveyManagementError(422, "not enough points to publish survey")
 
@@ -308,6 +198,7 @@ class SurveyManagementService:
                 "owner": user,
                 "title": title,
                 "description": data.get("description"),
+                "difficulty": difficulty,
                 "reward_points": reward_points,
                 "publish_cost_points": reward_points,
                 "deadline": data.get("deadline"),
@@ -412,10 +303,7 @@ class SurveyManagementService:
         survey.save(update_fields=["updated_at"])
         return {
             "draft_id": self._public_survey_id(survey.id),
-            "questions": [
-                self._question_payload(q)
-                for q in self.mapper.get_questions(questionnaire.id)
-            ],
+            "questions": [self._question_payload(q) for q in self.mapper.get_questions(questionnaire.id)],
         }
 
     def _survey_list_payload(self, survey, completed):
@@ -460,6 +348,17 @@ class SurveyManagementService:
         if internal_status in self.STATUS_ENDED_INTERNAL:
             return "ended"
         return "draft"
+
+    def _reward_points_by_difficulty(self, difficulty):
+        try:
+            difficulty = int(difficulty)
+        except (TypeError, ValueError):
+            difficulty = 3
+        if difficulty < 1:
+            difficulty = 1
+        if difficulty > 5:
+            difficulty = 5
+        return self.DIFFICULTY_REWARD_MAP[difficulty]
 
     def _public_survey_id(self, survey_id):
         return f"s_{survey_id}"
@@ -567,34 +466,27 @@ class SurveyManagementService:
         return normalized
 
     def _call_siliconflow(self, prompt, question_count):
-        file_cfg = self._load_ai_config().get("survey_generation", {})
-        api_key = os.getenv("GENERATION_API_KEY", "").strip()
+        config = self._load_ai_config()
+        api_key = config.get("api_key") or os.environ.get("SILICONFLOW_API_KEY")
         if not api_key:
-            api_key = str(file_cfg.get("api_key") or "").strip()
-        if not api_key:
-            raise SurveyManagementError(500, "GENERATION_API_KEY not configured")
-
-        base_url = os.getenv("GENERATION_BASE_URL", "").strip()
-        if not base_url:
-            base_url = str(
-                file_cfg.get("base_url")
-                or "https://api.siliconflow.cn/v1/chat/completions"
-            ).strip()
+            raise SurveyManagementError(500, "SILICONFLOW_API_KEY not configured")
+        base_url = config.get("base_url") or os.environ.get(
+            "SILICONFLOW_BASE_URL",
+            "https://api.siliconflow.cn/v1/chat/completions",
+        )
         normalized_base = base_url.rstrip("/")
         if normalized_base.endswith("/v1"):
             base_url = f"{normalized_base}/chat/completions"
         elif "chat/completions" not in normalized_base:
             base_url = normalized_base
-        model = os.getenv("GENERATION_MODEL", "").strip()
+        model = config.get("model") or os.environ.get("SILICONFLOW_MODEL")
         if not model:
-            model = str(file_cfg.get("model") or "").strip()
-        if not model:
-            raise SurveyManagementError(500, "GENERATION_MODEL not configured")
+            raise SurveyManagementError(500, "SILICONFLOW_MODEL not configured")
 
         instruction = (
             "You are a survey designer. Return JSON only. "
-            'Output format: {"questions":[{"type":"single|multi|text|multi-text",'
-            '"title":"...","options":[...],"required":true}]}. '
+            "Output format: {\"questions\":[{\"type\":\"single|multi|text|multi-text\","
+            "\"title\":\"...\",\"options\":[...],\"required\":true}]}. "
             f"Generate {question_count} questions."
         )
 
@@ -656,206 +548,22 @@ class SurveyManagementService:
             raise SurveyManagementError(502, "llm output missing questions")
         return questions
 
-    def evaluate_survey(self, user, survey_id):
-        survey = self.mapper.get_survey(survey_id)
-        if survey.owner != user:
-            raise SurveyManagementError(403, "not your survey")
-
-        questionnaire = survey.active_questionnaire
-        if not questionnaire:
-            raise SurveyManagementError(404, "questionnaire not found")
-
-        questions = questionnaire.question_set.all().order_by("order_no", "id")
-        fallback_time = max(1, len(questions) // 2)  # 简单回退规则：每2题1分钟
-        if not questions.exists():
-            return {"difficulty_level": 1, "estimated_time_minutes": 1}
-
-        # Prepare survey content for AI
-        survey_content = f"Title: {survey.title}\n"
-        survey_content += f"Description: {survey.description}\n\n"
-        survey_content += "Questions:\n"
-
-        for q in questions:
-            survey_content += f"- [{q.type}] {q.title}\n"
-            if q.type in ["single", "multi"]:
-                options = q.questionoption_set.all().order_by("order_no", "id")
-                for opt in options:
-                    survey_content += f"  * {opt.label}\n"
-
-        try:
-            return self._call_siliconflow_for_evaluation(survey_content)
-        except Exception as e:
-            # 异常与容错机制：AI调用失败或返回值异常时，使用基础规则
-            return {"difficulty_level": 3, "estimated_time_minutes": fallback_time}
-
-    def _call_siliconflow_for_evaluation(self, survey_content):
-        file_cfg = self._load_ai_config().get("difficulties", {})
-        api_key = os.getenv("DIFFICULTIES_API_KEY", "").strip()
-        if not api_key:
-            api_key = str(file_cfg.get("api_key") or "").strip()
-        if not api_key:
-            raise SurveyManagementError(500, "DIFFICULTIES_API_KEY not configured")
-
-        base_url = os.getenv("DIFFICULTIES_BASE_URL", "").strip()
-        if not base_url:
-            base_url = str(
-                file_cfg.get("base_url")
-                or "https://api.siliconflow.cn/v1/chat/completions"
-            ).strip()
-        normalized_base = base_url.rstrip("/")
-        if normalized_base.endswith("/v1"):
-            base_url = f"{normalized_base}/chat/completions"
-        elif "chat/completions" not in normalized_base:
-            base_url = normalized_base
-
-        model = os.getenv("DIFFICULTIES_MODEL", "").strip()
-        if not model:
-            model = str(file_cfg.get("model") or "").strip()
-        if not model:
-            raise SurveyManagementError(500, "DIFFICULTIES_MODEL not configured")
-
-        instruction = (
-            "You are an expert survey evaluator. Analyze the provided survey content and estimate its difficulty and completion time. "
-            "Difficulty level must be an integer between 1 (very easy) and 5 (very hard). "
-            "Estimated time must be an integer representing the average time to complete the survey in minutes. "
-            "Return ONLY a JSON object with the keys 'difficulty_level' and 'estimated_time_minutes'. "
-            'Example: {"difficulty_level": 3, "estimated_time_minutes": 4}'
-        )
-
-        payload = {
-            "model": model,
-            "messages": [
-                {"role": "system", "content": instruction},
-                {"role": "user", "content": survey_content},
-            ],
-            "temperature": 0.3,
-        }
-        req = url_request.Request(
-            base_url,
-            data=json.dumps(payload).encode("utf-8"),
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            method="POST",
-        )
-
-        try:
-            with url_request.urlopen(req, timeout=30) as resp:
-                body = resp.read().decode("utf-8")
-        except url_error.HTTPError as exc:
-            error_body = exc.read().decode("utf-8") if exc.fp else str(exc)
-            raise SurveyManagementError(502, f"llm error: {error_body}")
-        except url_error.URLError as exc:
-            raise SurveyManagementError(502, f"llm error: {str(exc)}")
-
-        try:
-            data = json.loads(body)
-        except json.JSONDecodeError:
-            raise SurveyManagementError(502, "llm returned invalid response")
-
-        text = None
-        if isinstance(data, dict):
-            choices = data.get("choices") or []
-            if choices:
-                first = choices[0] or {}
-                message = first.get("message") or {}
-                text = message.get("content") or first.get("text")
-        if not text:
-            raise SurveyManagementError(502, "llm returned empty output")
-
-        json_text = self._extract_json(text)
-        try:
-            payload = json.loads(json_text)
-        except json.JSONDecodeError:
-            raise SurveyManagementError(502, "llm returned non-json output")
-
-        difficulty = payload.get("difficulty_level")
-        estimated_minutes = payload.get("estimated_time_minutes")
-
-        if difficulty is None or estimated_minutes is None:
-            raise SurveyManagementError(502, "llm output missing required fields")
-
-        try:
-            difficulty = int(difficulty)
-            estimated_minutes = int(estimated_minutes)
-        except (ValueError, TypeError):
-            raise SurveyManagementError(502, "llm output fields have invalid types")
-
-        return {
-            "difficulty_level": max(1, min(5, difficulty)),
-            "estimated_time_minutes": max(1, estimated_minutes),
-        }
-
     def _load_ai_config(self):
         project_root = Path(__file__).resolve().parents[2]
         config_path = project_root / "deploy" / "ai_config.json"
         if not config_path.exists():
-            return {"survey_generation": {}, "embedding": {}}
+            return {}
         try:
             content = config_path.read_text(encoding="utf-8")
             data = json.loads(content)
         except (OSError, json.JSONDecodeError):
-            return {"survey_generation": {}, "embedding": {}}
+            return {}
         if not isinstance(data, dict):
-            return {"survey_generation": {}, "embedding": {}}
-
-        # Backward compatibility: if old flat fields exist, treat them as defaults.
-        flat = {
+            return {}
+        return {
             "api_key": str(data.get("api_key") or "").strip(),
             "model": str(data.get("model") or "").strip(),
             "base_url": str(data.get("base_url") or "").strip(),
-        }
-
-        survey_cfg_raw = data.get("survey_generation")
-        survey_cfg = flat.copy()
-        if isinstance(survey_cfg_raw, dict):
-            survey_cfg = {
-                "api_key": str(
-                    survey_cfg_raw.get("api_key") or survey_cfg["api_key"]
-                ).strip(),
-                "model": str(
-                    survey_cfg_raw.get("model") or survey_cfg["model"]
-                ).strip(),
-                "base_url": str(
-                    survey_cfg_raw.get("base_url") or survey_cfg["base_url"]
-                ).strip(),
-            }
-
-        embedding_cfg_raw = data.get("embedding")
-        embedding_cfg = flat.copy()
-        if isinstance(embedding_cfg_raw, dict):
-            embedding_cfg = {
-                "api_key": str(
-                    embedding_cfg_raw.get("api_key") or embedding_cfg["api_key"]
-                ).strip(),
-                "model": str(
-                    embedding_cfg_raw.get("model") or embedding_cfg["model"]
-                ).strip(),
-                "base_url": str(
-                    embedding_cfg_raw.get("base_url") or embedding_cfg["base_url"]
-                ).strip(),
-            }
-
-        difficulties_cfg_raw = data.get("diffculties")
-        difficulties_cfg = flat.copy()
-        if isinstance(difficulties_cfg_raw, dict):
-            difficulties_cfg = {
-                "api_key": str(
-                    difficulties_cfg_raw.get("api_key") or difficulties_cfg["api_key"]
-                ).strip(),
-                "model": str(
-                    difficulties_cfg_raw.get("model") or difficulties_cfg["model"]
-                ).strip(),
-                "base_url": str(
-                    difficulties_cfg_raw.get("base_url") or difficulties_cfg["base_url"]
-                ).strip(),
-            }
-
-        return {
-            "survey_generation": survey_cfg,
-            "embedding": embedding_cfg,
-            "difficulties": difficulties_cfg,
         }
 
     def _extract_json(self, text):
