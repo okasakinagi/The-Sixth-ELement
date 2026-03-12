@@ -602,11 +602,14 @@ def surveys(request):
             return err
         data = parse_json(request)
         title = data.get("title", "").strip()
-        reward_points = int(data.get("reward_points", 0) or 0)
+        difficulty = data.get("difficulty", 3)
+        try:
+            difficulty = int(difficulty)
+        except (TypeError, ValueError):
+            return error(422, "难度必须为数字")
+        reward_points = reward_points_by_difficulty(difficulty)
         if not title:
             return error(422, "问卷标题不能为空")
-        if reward_points < 0:
-            return error(422, "悬赏积分不能为负数")
         if user.points < reward_points:
             return error(422, "积分不足，无法发布问卷")
 
@@ -614,6 +617,7 @@ def surveys(request):
             owner=user,
             title=title,
             description=data.get("description"),
+            difficulty=difficulty,
             reward_points=reward_points,
             publish_cost_points=reward_points,
             deadline=parse_deadline(data.get("deadline")),
