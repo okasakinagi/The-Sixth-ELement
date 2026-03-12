@@ -29,23 +29,35 @@ class AuthToken(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
 
-<<<<<<< Updated upstream
 class PasswordResetCode(models.Model):
-    """密码重置验证码"""
+    PURPOSE_REGISTER = "register"
+    PURPOSE_RESET = "reset"
+    PURPOSE_CHOICES = [
+        (PURPOSE_REGISTER, "注册验证"),
+        (PURPOSE_RESET, "密码重置"),
+    ]
 
     email = models.EmailField(db_index=True)
-    code = models.CharField(max_length=6)  # 6位数字验证码
+    code_hash = models.CharField(max_length=64, default="")
+    purpose = models.CharField(
+        max_length=20,
+        choices=PURPOSE_CHOICES,
+        default=PURPOSE_RESET,
+    )
     expires_at = models.DateTimeField()
     is_used = models.BooleanField(default=False)
+    attempt_count = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         indexes = [
             models.Index(
-                fields=["email", "is_used", "expires_at"], name="reset_code_lookup_idx"
+                fields=["email", "purpose", "is_used", "expires_at"],
+                name="email_code_lookup_idx",
             ),
         ]
-=======
+
+
 class PasswordReset(models.Model):
     user = models.ForeignKey(AppUser, on_delete=models.CASCADE)
     reset_code = models.CharField(max_length=6, db_index=True)
@@ -53,7 +65,6 @@ class PasswordReset(models.Model):
     is_used = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     used_at = models.DateTimeField(blank=True, null=True)
->>>>>>> Stashed changes
 
 
 class Role(models.Model):

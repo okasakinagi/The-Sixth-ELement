@@ -197,6 +197,15 @@ function addSeenTaskIds(ids = []) {
   seenTaskIds.value = Array.from(idSet)
 }
 
+function syncSeenPoolByResponse(response, items = []) {
+  if (response?.recycled) {
+    // 后端已开启新一轮池子，前端同步重置 seen 集合，避免排除列表无限膨胀。
+    seenTaskIds.value = items.map((task) => String(task.id))
+    return
+  }
+  addSeenTaskIds(items.map((task) => task.id))
+}
+
 async function loadInitialTasks() {
   try {
     loading.value = true
@@ -212,7 +221,7 @@ async function loadInitialTasks() {
       const items = Array.isArray(response.items) ? response.items : []
       visibleTasks.value = items
       seenTaskIds.value = []
-      addSeenTaskIds(items.map((task) => task.id))
+      syncSeenPoolByResponse(response, items)
     }
   } catch (error) {
     console.error('加载任务大厅失败:', error)
@@ -239,7 +248,7 @@ async function refreshBatch() {
     )
     const items = Array.isArray(response.items) ? response.items : []
     visibleTasks.value = items
-    addSeenTaskIds(items.map((task) => task.id))
+    syncSeenPoolByResponse(response, items)
   } catch (error) {
     console.error('换一批失败:', error)
   } finally {
@@ -280,7 +289,7 @@ async function handleDelete(taskId) {
     )
     const replacement = Array.isArray(response.items) ? response.items[0] : null
     if (replacement) {
-      addSeenTaskIds([replacement.id])
+      syncSeenPoolByResponse(response, [replacement])
       visibleTasks.value = [
         ...nextVisibleTasks.slice(0, index),
         replacement,
