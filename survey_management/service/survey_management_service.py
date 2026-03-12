@@ -308,11 +308,14 @@ class SurveyManagementService:
 
     def _survey_list_payload(self, survey, completed):
         target = survey.target or 0
+        reward_points = self._reward_points_by_difficulty(survey.difficulty)
         return {
             "id": self._public_survey_id(survey.id),
             "title": survey.title,
             "subtitle": survey.description or "",
             "status": self._to_api_status(survey.status, completed, target),
+            "difficulty": survey.difficulty or 3,
+            "reward_points": reward_points,
             "completed": completed,
             "target": target,
             "updated_at": self._date_str(survey.updated_at),
@@ -321,13 +324,15 @@ class SurveyManagementService:
 
     def _survey_detail_payload(self, survey, completed):
         target = survey.target or 0
+        reward_points = self._reward_points_by_difficulty(survey.difficulty)
         return {
             "id": self._public_survey_id(survey.id),
             "title": survey.title,
             "subtitle": survey.description or "",
             "description": survey.description or "",
             "link": None,
-            "reward_points": survey.reward_points,
+            "difficulty": survey.difficulty or 3,
+            "reward_points": reward_points,
             "estimated_minutes": survey.estimated_minutes,
             "deadline": self._iso_str(survey.deadline) if survey.deadline else None,
             "status": self._to_api_status(survey.status, completed, target),
