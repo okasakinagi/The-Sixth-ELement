@@ -695,15 +695,15 @@ const parseQuestionCount = (input) => {
         <p class="settings-hint">逻辑设置与高级选项将在后续版本开放。</p>
       </div>
     </div>
-  </div>
 
-  <div v-if="state.saveModalOpen" class="modal-backdrop" @click.self="closeSaveModal">
-    <div class="modal">
-      <h3>问卷保存成功，是否立即发布？</h3>
-      <p>发布后将进入问卷管理并进行积分结算确认。</p>
-      <div class="modal-actions">
-        <button class="ghost-button" type="button" @click="closeSaveModal">继续编辑</button>
-        <button class="primary-button" type="button" @click="publishSurvey">发布调查</button>
+    <div v-if="state.saveModalOpen" class="modal-backdrop" @click.self="closeSaveModal">
+      <div class="modal">
+        <h3>问卷保存成功，是否立即发布？</h3>
+        <p>发布后将进入问卷管理并进行积分结算确认。</p>
+        <div class="modal-actions">
+          <button class="ghost-button" type="button" @click="closeSaveModal">继续编辑</button>
+          <button class="primary-button" type="button" @click="publishSurvey">发布调查</button>
+        </div>
       </div>
     </div>
   </div>
