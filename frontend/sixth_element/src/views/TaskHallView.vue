@@ -354,7 +354,6 @@ function getMatchClass(task) {
 
 function getMatchText(task) {
   if (task.match_level === 'random') return '随机'
-  if (task.match_reason) return task.match_reason
   if (task.match_level === 'high') return '高匹配'
   if (task.match_level === 'medium') return '中匹配'
   return '低匹配'
