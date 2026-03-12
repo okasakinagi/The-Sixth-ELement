@@ -124,17 +124,32 @@ class TaskHallService:
             exclude_ids=exclude_task_ids,
         )
 
-        # 换一批时若排除当前已展示批次后池为空（问卷总量少），
-        # 退回到完整池重新排名，保证始终走排名路径、携带 match_score 和 match_reason，
-        # 而不是落入无 match_score 的时间排序兜底（会导致徽章降级显示"中匹配"）。
-        if not ranked and exclude_task_ids:
-            ranked = SimilarityService.rank_candidate_surveys_for_user(
-                user_id=str(user_id),
-                candidate_survey_ids=survey_ids,
-                exclude_ids=None,
-            )
-
         if not ranked:
+            # 换一批时若推荐排序不可用，仍需优先排除当前已展示问卷，
+            # 否则会反复返回同一批任务，导致“换一批”看起来无效。
+            if exclude_task_ids:
+                exclude_set = {int(x) for x in exclude_task_ids}
+                fresh_ids = [
+                    sid
+                    for sid in queryset.values_list("id", flat=True)
+                    if sid not in exclude_set
+                ]
+                all_ids = list(queryset.values_list("id", flat=True))
+                # 未见任务不足时回退全量池，并随机打散降低重复感。
+                pool = fresh_ids if len(fresh_ids) >= page_size else all_ids
+                random.shuffle(pool)
+                selected_ids = pool[offset : offset + page_size]
+                selected_map = {
+                    s.id: s
+                    for s in queryset.filter(id__in=selected_ids).select_related("owner")
+                }
+                filled_counts = self.mapper.get_filled_counts(selected_ids)
+                return [
+                    self._to_task_card(selected_map[sid], filled_counts.get(sid, 0))
+                    for sid in selected_ids
+                    if sid in selected_map
+                ]
+
             fallback = list(
                 queryset.order_by("-created_at")[offset : offset + page_size]
             )

@@ -1,13 +1,7 @@
 import hashlib
 import json
 import secrets
-<<<<<<< Updated upstream
 from datetime import datetime, time, timedelta, timezone as dt_timezone
-=======
-import random
-import string
-from datetime import datetime, time, timedelta
->>>>>>> Stashed changes
 
 from django.conf import settings as django_settings
 from django.contrib.auth.hashers import check_password, make_password
@@ -22,11 +16,7 @@ from .models import (
     AppUser,
     AuthCredential,
     AuthToken,
-<<<<<<< Updated upstream
     PasswordResetCode,
-=======
-    PasswordReset,
->>>>>>> Stashed changes
     PointsLog,
     Questionnaire,
     Report,
@@ -482,7 +472,6 @@ def login(request):
 
 
 @csrf_exempt
-<<<<<<< Updated upstream
 def send_reset_code(request):
     """发送密码重置验证码。"""
     if request.method != "POST":
@@ -504,55 +493,49 @@ def send_reset_code(request):
         return error(500, "邮件发送失败，请稍后重试")
 
     return JsonResponse({"message": "verification code sent", "expires_in": 900})
-=======
+
+
+@csrf_exempt
 def request_password_reset(request):
-    """请求密码重置，发送验证码"""
-    if request.method != "POST":
-        return error(405, "Method not allowed")
-    
-    data = parse_json(request)
-    email = data.get("email", "").strip()
-    
-    if not email:
-        return error(422, "email required")
-    
-    try:
-        user = AppUser.objects.get(email=email)
-    except AppUser.DoesNotExist:
-        # 为了安全，不暴露邮箱是否存在
-        return JsonResponse({"message": "如果邮箱存在，验证码已发送"})
-    
-    # 生成6位数字验证码
-    reset_code = ''.join(random.choices(string.digits, k=6))
-    
-    # 删除之前未使用的重置令牌
-    PasswordReset.objects.filter(user=user, is_used=False).delete()
-    
-    # 创建新的重置令牌，有效期15分钟
-    expires_at = timezone.now() + timedelta(minutes=15)
-    PasswordReset.objects.create(
-        user=user,
-        reset_code=reset_code,
-        expires_at=expires_at
-    )
-    
-    # TODO: 在生产环境中通过邮件发送验证码
-    # 这里可以集成邮件服务（如 SendGrid、AWS SES 等）
-    print(f"[DEBUG] Password reset code for {email}: {reset_code}")
-    
-    return JsonResponse({"message": "验证码已发送"})
->>>>>>> Stashed changes
+    """兼容旧路由：等价于 send_reset_code。"""
+    return send_reset_code(request)
 
 
 @csrf_exempt
 def verify_reset_code(request):
-<<<<<<< Updated upstream
-    """验证重置码并重置密码。"""
+    """仅验证重置码是否有效。"""
     if request.method != "POST":
         return error(405, "请求方法不允许")
     data = parse_json(request)
     email = data.get("email", "").strip()
-    code = data.get("code", "").strip()
+    code = (data.get("code") or data.get("reset_code") or "").strip()
+    if not email or not code:
+        return error(422, "邮箱和验证码不能为空")
+
+    try:
+        user = AppUser.objects.get(email=email)
+    except AppUser.DoesNotExist:
+        return error(404, "用户不存在")
+
+    record, err = _verify_code(email, code, PasswordResetCode.PURPOSE_RESET)
+    if err:
+        return err
+
+    remaining_seconds = int((record.expires_at - timezone.now()).total_seconds())
+    if remaining_seconds < 0:
+        remaining_seconds = 0
+
+    return JsonResponse({"message": "验证码有效", "expires_in": remaining_seconds})
+
+
+@csrf_exempt
+def reset_password(request):
+    """使用有效重置码更新密码。"""
+    if request.method != "POST":
+        return error(405, "请求方法不允许")
+    data = parse_json(request)
+    email = data.get("email", "").strip()
+    code = (data.get("code") or data.get("reset_code") or "").strip()
     new_password = data.get("new_password", "").strip()
     if not email or not code or not new_password:
         return error(422, "邮箱、验证码和新密码不能为空")
@@ -587,93 +570,6 @@ def verify_reset_code(request):
             "user": {"id": str(user.id), "nickname": user.nickname},
         }
     )
-=======
-    """验证密码重置码"""
-    if request.method != "POST":
-        return error(405, "Method not allowed")
-    
-    data = parse_json(request)
-    email = data.get("email", "").strip()
-    reset_code = data.get("reset_code", "").strip()
-    
-    if not email or not reset_code:
-        return error(422, "email and reset_code required")
-    
-    try:
-        user = AppUser.objects.get(email=email)
-    except AppUser.DoesNotExist:
-        return error(401, "invalid email")
-    
-    # 查找有效的重置令牌
-    reset_record = PasswordReset.objects.filter(
-        user=user,
-        reset_code=reset_code,
-        is_used=False,
-        expires_at__gt=timezone.now()
-    ).first()
-    
-    if not reset_record:
-        return error(401, "invalid or expired reset code")
-    
-    return JsonResponse({"message": "验证码正确"})
-
-
-@csrf_exempt
-def reset_password(request):
-    """重置密码"""
-    if request.method != "POST":
-        return error(405, "Method not allowed")
-    
-    data = parse_json(request)
-    email = data.get("email", "").strip()
-    reset_code = data.get("reset_code", "").strip()
-    new_password = data.get("new_password", "").strip()
-    
-    if not email or not reset_code or not new_password:
-        return error(422, "email, reset_code, and new_password required")
-    
-    if len(new_password) < 6:
-        return error(422, "password must be at least 6 characters")
-    
-    try:
-        user = AppUser.objects.get(email=email)
-    except AppUser.DoesNotExist:
-        return error(401, "invalid email")
-    
-    # 验证重置令牌
-    reset_record = PasswordReset.objects.filter(
-        user=user,
-        reset_code=reset_code,
-        is_used=False,
-        expires_at__gt=timezone.now()
-    ).first()
-    
-    if not reset_record:
-        return error(401, "invalid or expired reset code")
-    
-    # 更新密码
-    credential = AuthCredential.objects.filter(user=user).first()
-    if credential:
-        credential.password_hash = make_password(new_password)
-        credential.save(update_fields=["password_hash"])
-    else:
-        # 如果没有凭证记录，创建一个
-        AuthCredential.objects.create(
-            user=user,
-            password_hash=make_password(new_password)
-        )
-    
-    # 标记重置码为已使用
-    reset_record.is_used = True
-    reset_record.used_at = timezone.now()
-    reset_record.save(update_fields=["is_used", "used_at"])
-    
-    # 删除该用户的所有认证令牌（强制重新登录）
-    AuthToken.objects.filter(user=user).delete()
-    
-    return JsonResponse({"message": "密码已成功重置，请用新密码登录"})
-
->>>>>>> Stashed changes
 
 
 @csrf_exempt
