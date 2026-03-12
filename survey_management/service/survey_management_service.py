@@ -19,14 +19,6 @@ class SurveyManagementError(Exception):
 
 
 class SurveyManagementService:
-    DIFFICULTY_REWARD_MAP = {
-        1: 1,
-        2: 2,
-        3: 3,
-        4: 4,
-        5: 5,
-    }
-
     STATUS_LIVE_INTERNAL = {"published", "active", "live"}
     STATUS_ENDED_INTERNAL = {"ended", "closed", "expired", "rejected"}
 
@@ -134,16 +126,10 @@ class SurveyManagementService:
         if user.points < budget_points:
             raise SurveyManagementError(422, "not enough points to publish survey")
 
-        reward_points = self._reward_points_by_difficulty(survey.difficulty)
-        minimum_reward_budget = reward_points * target
-        if budget_points < minimum_reward_budget:
-            raise SurveyManagementError(
-                422,
-                f"budget_points must be >= {minimum_reward_budget}",
-            )
+        if not survey.reward_points and budget_points > 0:
+            survey.reward_points = max(1, budget_points // target) if target else 0
 
         survey.target = target
-        survey.reward_points = reward_points
         survey.publish_cost_points = budget_points
         survey.status = "published"
         survey.updated_at = timezone.now()
@@ -171,15 +157,13 @@ class SurveyManagementService:
         if not title:
             raise SurveyManagementError(422, "title required")
 
-        difficulty = data.get("difficulty", 3)
+        reward_points = data.get("reward_points", 0) or 0
         try:
-            difficulty = int(difficulty)
+            reward_points = int(reward_points)
         except (TypeError, ValueError):
-            raise SurveyManagementError(422, "difficulty must be a number")
-        if difficulty < 1 or difficulty > 5:
-            raise SurveyManagementError(422, "difficulty must be between 1 and 5")
-
-        reward_points = self._reward_points_by_difficulty(difficulty)
+            raise SurveyManagementError(422, "reward_points must be a number")
+        if reward_points < 0:
+            raise SurveyManagementError(422, "reward_points must be >= 0")
         if user.points < reward_points:
             raise SurveyManagementError(422, "not enough points to publish survey")
 
@@ -198,7 +182,6 @@ class SurveyManagementService:
                 "owner": user,
                 "title": title,
                 "description": data.get("description"),
-                "difficulty": difficulty,
                 "reward_points": reward_points,
                 "publish_cost_points": reward_points,
                 "deadline": data.get("deadline"),
@@ -308,14 +291,11 @@ class SurveyManagementService:
 
     def _survey_list_payload(self, survey, completed):
         target = survey.target or 0
-        reward_points = self._reward_points_by_difficulty(survey.difficulty)
         return {
             "id": self._public_survey_id(survey.id),
             "title": survey.title,
             "subtitle": survey.description or "",
             "status": self._to_api_status(survey.status, completed, target),
-            "difficulty": survey.difficulty or 3,
-            "reward_points": reward_points,
             "completed": completed,
             "target": target,
             "updated_at": self._date_str(survey.updated_at),
@@ -324,15 +304,13 @@ class SurveyManagementService:
 
     def _survey_detail_payload(self, survey, completed):
         target = survey.target or 0
-        reward_points = self._reward_points_by_difficulty(survey.difficulty)
         return {
             "id": self._public_survey_id(survey.id),
             "title": survey.title,
             "subtitle": survey.description or "",
             "description": survey.description or "",
             "link": None,
-            "difficulty": survey.difficulty or 3,
-            "reward_points": reward_points,
+            "reward_points": survey.reward_points,
             "estimated_minutes": survey.estimated_minutes,
             "deadline": self._iso_str(survey.deadline) if survey.deadline else None,
             "status": self._to_api_status(survey.status, completed, target),
@@ -353,17 +331,6 @@ class SurveyManagementService:
         if internal_status in self.STATUS_ENDED_INTERNAL:
             return "ended"
         return "draft"
-
-    def _reward_points_by_difficulty(self, difficulty):
-        try:
-            difficulty = int(difficulty)
-        except (TypeError, ValueError):
-            difficulty = 3
-        if difficulty < 1:
-            difficulty = 1
-        if difficulty > 5:
-            difficulty = 5
-        return self.DIFFICULTY_REWARD_MAP[difficulty]
 
     def _public_survey_id(self, survey_id):
         return f"s_{survey_id}"

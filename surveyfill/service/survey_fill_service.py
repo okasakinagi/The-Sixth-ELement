@@ -19,14 +19,6 @@ class SurveyFillError(Exception):
 
 
 class SurveyFillService:
-    DIFFICULTY_REWARD_MAP = {
-        1: 1,
-        2: 2,
-        3: 3,
-        4: 4,
-        5: 5,
-    }
-
     def __init__(self):
         self.mapper = SurveyFillMapper()
 
@@ -135,58 +127,32 @@ class SurveyFillService:
         response.submitted_at = timezone.now()
         response.save(update_fields=["submitted_at"])
 
-        # 填写奖励仅由问卷难度决定。
-        reward = self._reward_points_by_difficulty(survey.difficulty)
-        points_awarded = 0
-        reward_limited = False
+        # 提交即时发放积分（已取消审核机制）
+        reward = survey.reward_points or 0
         if reward > 0:
             with transaction.atomic():
-                # 锁问卷行，避免并发提交在 target 边界处超发奖励。
-                locked_survey = survey.__class__.objects.select_for_update().get(
-                    pk=survey.pk
-                )
-                target = max(int(locked_survey.target or 0), 0)
-                rewarded_count = PointsLog.objects.filter(
+                user_obj = user.__class__.objects.select_for_update().get(pk=user.pk)
+                user_obj.points += reward
+                user_obj.activity_points += reward
+                user_obj.save(update_fields=["points", "activity_points"])
+                PointsLog.objects.create(
+                    user=user_obj,
                     points_type="fill_reward",
+                    delta=reward,
+                    reason=f"填写问卷《{survey.title}》奖励",
                     ref_type="survey",
-                    ref_id=locked_survey.id,
-                ).count()
-
-                if target > 0 and rewarded_count >= target:
-                    reward_limited = True
-                else:
-                    user_obj = user.__class__.objects.select_for_update().get(pk=user.pk)
-                    user_obj.points += reward
-                    user_obj.activity_points += reward
-                    user_obj.save(update_fields=["points", "activity_points"])
-                    PointsLog.objects.create(
-                        user=user_obj,
-                        points_type="fill_reward",
-                        delta=reward,
-                        reason=f"填写问卷《{survey.title}》奖励",
-                        ref_type="survey",
-                        ref_id=locked_survey.id,
-                    )
-                    points_awarded = reward
+                    ref_id=survey.id,
+                )
+            points_awarded = reward
+        else:
+            points_awarded = 0
 
         return {
             "id": str(response.id),
             "status": response.status,
             "points_awarded": points_awarded,
             "points_expected": reward,
-            "reward_limited": reward_limited,
         }
-
-    def _reward_points_by_difficulty(self, difficulty):
-        try:
-            difficulty = int(difficulty)
-        except (TypeError, ValueError):
-            difficulty = 3
-        if difficulty < 1:
-            difficulty = 1
-        if difficulty > 5:
-            difficulty = 5
-        return self.DIFFICULTY_REWARD_MAP[difficulty]
 
     def _question_payload(self, question):
         options = [opt.label for opt in question.questionoption_set.all()]
