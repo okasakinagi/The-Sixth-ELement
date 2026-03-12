@@ -1,6 +1,7 @@
 from datetime import timezone as dt_timezone
 import random
 
+from django.conf import settings
 from django.utils import timezone
 
 from core.services.similarity_service import SimilarityService
@@ -89,6 +90,33 @@ class TaskHallService:
     def _list_personalized_items(
         self, user_id, queryset, offset, page_size, exclude_task_ids=None
     ):
+        # 随机模式：直接随机打乱，不调用 AI 推荐
+        if getattr(settings, "RECOMMENDATION_MODE", "personalized") == "random":
+            all_ids = list(queryset.values_list("id", flat=True))
+            if exclude_task_ids:
+                exclude_set = {int(x) for x in exclude_task_ids}
+                fresh_ids = [i for i in all_ids if i not in exclude_set]
+            else:
+                fresh_ids = all_ids
+            # 如果剩余未见问卷不足一页，降级到全量池（用户会看到重复，但不会返回空）
+            pool = fresh_ids if len(fresh_ids) >= page_size else all_ids
+            random.shuffle(pool)
+            page_ids = pool[offset : offset + page_size]
+            survey_by_id = {
+                s.id: s
+                for s in queryset.filter(id__in=page_ids).select_related("owner")
+            }
+            filled_counts = self.mapper.get_filled_counts(page_ids)
+            return [
+                self._to_task_card(
+                    survey_by_id[sid],
+                    filled_counts.get(sid, 0),
+                    is_random=True,
+                )
+                for sid in page_ids
+                if sid in survey_by_id
+            ]
+
         survey_ids = list(queryset.values_list("id", flat=True))
         ranked = SimilarityService.rank_candidate_surveys_for_user(
             user_id=str(user_id),
@@ -96,13 +124,17 @@ class TaskHallService:
             exclude_ids=exclude_task_ids,
         )
 
-        # 当 ranked 为空，或全部结果 score == 0（无有效个性化信息）时，降级走 fallback
-        # 这样与"换一批"在排除所有已见问卷后走 fallback 的体验保持一致
-        has_meaningful_rank = ranked and any(
-            item.get("score", 0.0) > 0.0 for item in ranked
-        )
+        # 换一批时若排除当前已展示批次后池为空（问卷总量少），
+        # 退回到完整池重新排名，保证始终走排名路径、携带 match_score 和 match_reason，
+        # 而不是落入无 match_score 的时间排序兜底（会导致徽章降级显示"中匹配"）。
+        if not ranked and exclude_task_ids:
+            ranked = SimilarityService.rank_candidate_surveys_for_user(
+                user_id=str(user_id),
+                candidate_survey_ids=survey_ids,
+                exclude_ids=None,
+            )
 
-        if not has_meaningful_rank:
+        if not ranked:
             fallback = list(
                 queryset.order_by("-created_at")[offset : offset + page_size]
             )
@@ -172,7 +204,9 @@ class TaskHallService:
             "page_size": filters.get("page_size", 20),
         }
 
-    def _to_task_card(self, survey, filled_count=0, match_score=None, match_reason=""):
+    def _to_task_card(
+        self, survey, filled_count=0, match_score=None, match_reason="", is_random=False
+    ):
         difficulty = survey.difficulty or 3
         reward = survey.reward_points or 0
 
@@ -181,7 +215,10 @@ class TaskHallService:
         if target and filled_count >= target:
             status = "full"
 
-        if match_score is None:
+        if is_random:
+            match_level = "random"
+            match_reason = ""
+        elif match_score is None:
             ratio = reward / difficulty if difficulty else 0
             if ratio >= 1.5:
                 match_level = "high"
@@ -244,11 +281,13 @@ class TaskHallService:
         sample_size = min(size, len(all_ids))
         sampled_ids = random.sample(all_ids, sample_size)
 
-        surveys = {s.id: s for s in queryset.filter(id__in=sampled_ids).select_related("owner")}
+        surveys = {
+            s.id: s for s in queryset.filter(id__in=sampled_ids).select_related("owner")
+        }
         filled_counts = self.mapper.get_filled_counts(sampled_ids)
 
         items = [
-            self._to_task_card(surveys[sid], filled_counts.get(sid, 0))
+            self._to_task_card(surveys[sid], filled_counts.get(sid, 0), is_random=True)
             for sid in sampled_ids
             if sid in surveys
         ]

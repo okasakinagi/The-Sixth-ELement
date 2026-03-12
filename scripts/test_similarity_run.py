@@ -33,12 +33,14 @@ except Exception as e:
 
 print('survey_vector_len=', len(sv) if sv else None, 'user_vector_len=', len(uv) if uv else None)
 
-# recommend
+# rank candidate surveys (new architecture: user-vec x survey-vec cosine)
 try:
-    recs = SimilarityService.recommend_surveys_for_user(str(user.id), 3)
-    print('recommend:', json.dumps(recs))
+    from core.models import Survey as _Survey
+    all_ids = list(_Survey.objects.values_list('id', flat=True))[:20]
+    recs = SimilarityService.rank_candidate_surveys_for_user(str(user.id), all_ids)
+    print('rank:', json.dumps(recs))
 except Exception as e:
-    print('recommend error:', e)
+    print('rank error:', e)
 
 # compute cosine
 try:

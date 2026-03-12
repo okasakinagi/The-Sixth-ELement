@@ -2,6 +2,7 @@
 local_dev/
 .env
 deploy/.env
+deploy/ai_config.json
 .env.*
 .env.local
 *.pem

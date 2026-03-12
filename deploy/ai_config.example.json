@@ -8,5 +8,10 @@
     "api_key": "",
     "model": "Qwen/Qwen3-Embedding-4B",
     "base_url": "https://api.siliconflow.cn/v1/embeddings"
+  },
+  "diffculties": {
+    "api_key": "",
+    "model": "Pro/deepseek-ai/DeepSeek-V3.2",
+    "base_url": "https://api.siliconflow.cn/v1"
   }
 }

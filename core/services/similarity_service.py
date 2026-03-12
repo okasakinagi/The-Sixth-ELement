@@ -1,6 +1,4 @@
 from core.managers.similarity_manager import SimilarityManager
-from core.models import Survey
-from django.conf import settings
 
 
 class SimilarityService:
@@ -55,40 +53,3 @@ class SimilarityService:
             dim=100,
         )
 
-    @staticmethod
-    def recommend_surveys_for_user(user_id, k, exclude_ids=None):
-        # mode switch: 'personalized' (default) uses similarity ranking; 'random' returns pure random
-        mode = getattr(settings, "RECOMMENDATION_MODE", "personalized")
-        if mode == "random":
-            qs = Survey.objects.all()
-            if exclude_ids:
-                qs = qs.exclude(id__in=[int(x) for x in exclude_ids])
-            qs = list(qs.order_by("?")[: max(int(k), 0)])
-            return [{"id": str(s.id), "title": s.title, "cosine": None} for s in qs]
-
-        survey_ids = list(Survey.objects.values_list("id", flat=True))
-        ranked = SimilarityService.rank_candidate_surveys_for_user(
-            user_id=user_id,
-            candidate_survey_ids=survey_ids,
-            exclude_ids=exclude_ids,
-        )
-        top = ranked[: max(int(k), 0)]
-
-        surveys = {
-            s.id: s
-            for s in Survey.objects.filter(id__in=[item["survey_id"] for item in top])
-        }
-        items = []
-        for item in top:
-            survey = surveys.get(item["survey_id"])
-            if not survey:
-                continue
-            items.append(
-                {
-                    "id": str(survey.id),
-                    "title": survey.title,
-                    "cosine": float(item["score"]),
-                    "reason": item.get("reason", ""),
-                }
-            )
-        return items

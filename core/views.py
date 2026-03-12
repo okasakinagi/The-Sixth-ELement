@@ -707,6 +707,11 @@ def submit_fill(request, survey_id):
     except Exception:
         # 权重更新失败不影响主要提交流程
         pass
+    # 提交后使用户向量失效，下次推荐时重新生成
+    try:
+        SimilarityManager.invalidate_vector("user", str(user.id))
+    except Exception:
+        pass
     return JsonResponse(
         {"id": str(response.id), "status": response.status, "points_awarded": 0}
     )

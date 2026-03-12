@@ -3,8 +3,15 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
 from core.services.similarity_service import SimilarityService
+from core.managers.similarity_manager import SimilarityManager
 from core.views import error, require_auth
-from core.views import parse_int_id, WEIGHT_DISMISS_DECREMENT, WEIGHT_ABANDON_DECREMENT, WEIGHT_MIN, WEIGHT_MAX
+from core.views import (
+    parse_int_id,
+    WEIGHT_DISMISS_DECREMENT,
+    WEIGHT_ABANDON_DECREMENT,
+    WEIGHT_MIN,
+    WEIGHT_MAX,
+)
 from core.models import UserTagWeight, SurveyTag, Response
 
 
@@ -94,22 +101,6 @@ def generate_and_store_vector(request):
 
 
 @csrf_exempt
-def recommend_surveys(request):
-    if request.method != "POST":
-        return error(405, "Method not allowed")
-    user, resp = require_auth(request)
-    if resp:
-        return resp
-    data = parse_json(request)
-    user_id = data.get("user_id")
-    num = int(data.get("num", 10) or 10)
-    if not user_id:
-        return error(422, "user_id required")
-    payload = SimilarityService.recommend_surveys_for_user(user_id, num)
-    return JsonResponse({"items": payload})
-
-
-@csrf_exempt
 def dismiss_survey(request):
     """用户在任务大厅点击不感兴趣/删除时调用，减少相关 tag 权重。"""
     if request.method != "POST":
@@ -137,6 +128,11 @@ def dismiss_survey(request):
             utw.save(update_fields=["weight", "updated_at"])
     except Exception:
         return JsonResponse({"error": "failed to update weights"}, status=500)
+    # 权重更新后使用户向量失效，下次推荐时重新生成
+    try:
+        SimilarityManager.invalidate_vector("user", str(user.id))
+    except Exception:
+        pass
     return JsonResponse({"status": "ok"})
 
 
@@ -152,12 +148,16 @@ def abandon_fill(request, fill_id):
     if response_pk is None:
         return error(422, "invalid fill id")
     try:
-        record = Response.objects.select_related("survey").get(id=response_pk, user=user)
+        record = Response.objects.select_related("survey").get(
+            id=response_pk, user=user
+        )
     except Response.DoesNotExist:
         return error(404, "fill record not found")
     # 对该问卷的 tags 减少小幅权重
     try:
-        tags = SurveyTag.objects.filter(survey_id=record.survey_id).select_related("tag")
+        tags = SurveyTag.objects.filter(survey_id=record.survey_id).select_related(
+            "tag"
+        )
         for st in tags:
             tag = st.tag
             utw, _ = UserTagWeight.objects.get_or_create(user=user, tag=tag)
@@ -168,6 +168,11 @@ def abandon_fill(request, fill_id):
             utw.save(update_fields=["weight", "updated_at"])
     except Exception:
         return JsonResponse({"error": "failed to update weights"}, status=500)
+    # 权重更新后使用户向量失效，下次推荐时重新生成
+    try:
+        SimilarityManager.invalidate_vector("user", str(user.id))
+    except Exception:
+        pass
     return JsonResponse({"status": "ok"})
 
 
@@ -198,4 +203,9 @@ def abandon_by_survey(request):
             utw.save(update_fields=["weight", "updated_at"])
     except Exception:
         return JsonResponse({"error": "failed to update weights"}, status=500)
+    # 权重更新后使用户向量失效，下次推荐时重新生成
+    try:
+        SimilarityManager.invalidate_vector("user", str(user.id))
+    except Exception:
+        pass
     return JsonResponse({"status": "ok"})

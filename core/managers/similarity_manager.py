@@ -1,3 +1,4 @@
+from collections import defaultdict
 from django.db import transaction
 from django.utils import timezone
 from math import sqrt
@@ -14,6 +15,7 @@ from core.models import (
     SurveyUserSimilarity,
     Survey,
     AppUser,
+    Question,
     SurveyTag,
     UserTag,
     UserTagWeight,
@@ -51,22 +53,12 @@ class SimilarityManager:
         node, _ = IDVector.objects.get_or_create(ref_type=ref_type, ref_id=str(ref_id))
         node.set_vector(vec)
         node.save()
-        # If a user vector was updated, refresh any cached SurveyUserSimilarity rows for this user
-        if ref_type == "user":
-            try:
-                user_vec = node.get_vector()
-                rows = SurveyUserSimilarity.objects.filter(user__id=ref_id)
-                for row in rows:
-                    survey_vec = SimilarityManager.fetch_vector("survey", str(row.survey.id))
-                    if survey_vec is None:
-                        continue
-                    cosine = SimilarityManager.compute_cosine(user_vec, survey_vec)
-                    row.cosine = float(cosine) if cosine is not None else 0.0
-                    row.save(update_fields=["cosine"])
-            except Exception:
-                # non-fatal: keep vector saved even if cache refresh fails
-                pass
         return node
+
+    @staticmethod
+    def invalidate_vector(ref_type, ref_id):
+        """删除缓存向量，下次推荐请求时将重新生成。"""
+        IDVector.objects.filter(ref_type=ref_type, ref_id=str(ref_id)).delete()
 
     @staticmethod
     def compute_cosine(vec_a, vec_b):
@@ -153,8 +145,12 @@ class SimilarityManager:
             embedding_raw = data.get("embedding")
             if isinstance(embedding_raw, dict):
                 cfg = {
-                    "api_key": str(embedding_raw.get("api_key") or flat["api_key"]).strip(),
-                    "base_url": str(embedding_raw.get("base_url") or flat["base_url"]).strip(),
+                    "api_key": str(
+                        embedding_raw.get("api_key") or flat["api_key"]
+                    ).strip(),
+                    "base_url": str(
+                        embedding_raw.get("base_url") or flat["base_url"]
+                    ).strip(),
                     "model": str(embedding_raw.get("model") or flat["model"]).strip(),
                 }
             else:
@@ -215,95 +211,127 @@ class SimilarityManager:
 
         return SimilarityManager.deterministic_text_to_vector(text, dim=dim)
 
+    # 标签类型 → 中文标签名映射，用于生成自然语言描述
+    _TAG_TYPE_LABEL = {
+        "interest": "兴趣爱好",
+        "school": "学校",
+        "major": "专业",
+        "gender": "性别",
+        "age": "年龄",
+        "grade": "年级",
+        "college": "学院",
+        "mbti": "MBTI",
+        "organization": "参与组织",
+        "consumption": "消费偏好",
+        "career": "职业方向",
+        "skill": "技能特长",
+        "survey_type": "偏好问卷类型",
+        "status": "状态",
+    }
+
     @staticmethod
     def generate_placeholder_string(ref_type, ref_id):
-        """返回用于向量化的文本。
+        """返回用于向量化的描述性文本。
 
-        - user: 拼接该用户 tag 与权重
-        - survey: 拼接该问卷 tag
+        - user: 按标签类型分组、按权重降序排列的自然语言描述；高权重标签重复出现以加强语义权重
+        - survey: 标题 + 描述 + 标签 + 前5道题目标题
         - other: 返回空串
         """
         if ref_type == "user":
-            rows = (
-                UserTagWeight.objects.filter(user_id=ref_id)
+            rows = list(
+                UserTagWeight.objects.filter(user_id=ref_id, weight__gt=0)
+                .select_related("tag")
+                .order_by("-weight")
+            )
+            if not rows:
+                # 回退：用户有标签但无权重记录
+                tags = list(
+                    UserTag.objects.filter(user_id=ref_id)
+                    .select_related("tag")
+                    .order_by("tag_id")
+                )
+                tag_names = [t.tag.name for t in tags]
+                if not tag_names:
+                    return ""
+                return "用户兴趣标签：" + " ".join(tag_names)
+
+            type_groups = defaultdict(list)
+            type_order = []
+            for row in rows:
+                t = row.tag.type
+                if t not in type_order:
+                    type_order.append(t)
+                type_groups[t].append((row.tag.name, float(row.weight)))
+
+            parts = []
+            for t in type_order:
+                group = type_groups[t]
+                label = SimilarityManager._TAG_TYPE_LABEL.get(t, t)
+                tag_parts = []
+                for name, weight in group:
+                    # 高权重标签重复出现，加强该方向的语义信号
+                    repeat = 3 if weight >= 4.0 else (2 if weight >= 2.0 else 1)
+                    tag_parts.extend([name] * repeat)
+                parts.append(f"{label}：{' '.join(tag_parts)}")
+            return "；".join(parts)
+
+        if ref_type == "survey":
+            try:
+                survey_obj = Survey.objects.select_related("active_questionnaire").get(
+                    id=int(ref_id)
+                )
+            except (Survey.DoesNotExist, ValueError):
+                return ""
+
+            parts = [f"问卷标题：{survey_obj.title}"]
+            if survey_obj.description:
+                parts.append(f"问卷描述：{survey_obj.description}")
+
+            tag_rows = (
+                SurveyTag.objects.filter(survey_id=ref_id)
                 .select_related("tag")
                 .order_by("tag_id")
             )
-            if rows:
-                return " ".join([f"{r.tag.name}:{float(r.weight):.3f}" for r in rows])
-            tags = UserTag.objects.filter(user_id=ref_id).select_related("tag").order_by("tag_id")
-            return " ".join([t.tag.name for t in tags])
+            tag_names = [r.tag.name for r in tag_rows]
+            if tag_names:
+                parts.append(f"分类标签：{' '.join(tag_names)}")
 
-        if ref_type == "survey":
-            rows = SurveyTag.objects.filter(survey_id=ref_id).select_related("tag").order_by("tag_id")
-            return " ".join([r.tag.name for r in rows])
+            questionnaire = survey_obj.active_questionnaire
+            if questionnaire:
+                questions = Question.objects.filter(
+                    questionnaire=questionnaire
+                ).order_by("order_no")[:5]
+                q_titles = [q.title for q in questions if q.title]
+                if q_titles:
+                    parts.append(f"题目摘要：{'；'.join(q_titles)}")
+
+            return "。".join(parts)
 
         return ""
 
     @staticmethod
     def generate_and_store_vector(ref_type, ref_id, dim=100, force=False):
-        """生成并持久化向量。"""
-        now = timezone.now()
+        """生成并持久化向量。
+
+        缓存策略：向量存在时直接复用（依赖 invalidate_vector 显式失效）。
+        force=True 时强制重新生成并覆盖缓存。
+        """
         node = IDVector.objects.filter(ref_type=ref_type, ref_id=str(ref_id)).first()
         if node and node.vector and not force:
-            # 已有向量，用户向量按 TTL 缓存（30 分钟）；survey/tag 向量直接复用
-            if ref_type == "user":
-                if node.created_at and (now - node.created_at).total_seconds() <= 30 * 60:
-                    return node.get_vector()
-            else:
-                return node.get_vector()
+            return node.get_vector()
 
         text = SimilarityManager.generate_placeholder_string(ref_type, ref_id)
         vec = SimilarityManager.encode_text(text, dim=dim)
         return SimilarityManager.save_vector(ref_type, ref_id, vec).get_vector()
 
     @staticmethod
-    def _get_or_create_tag_vectors(tag_rows, dim=100):
-        """Load vectors for tag rows; generate and cache missing ones."""
-        tag_ids = [str(row.tag_id) for row in tag_rows]
-        if not tag_ids:
-            return {}
-
-        existing = IDVector.objects.filter(ref_type="tag", ref_id__in=tag_ids)
-        vec_by_tag = {int(node.ref_id): node.get_vector() for node in existing if node.get_vector()}
-
-        for row in tag_rows:
-            tid = int(row.tag_id)
-            if tid in vec_by_tag:
-                continue
-            vec = SimilarityManager.encode_text(row.tag.name, dim=dim)
-            SimilarityManager.save_vector("tag", str(tid), vec)
-            vec_by_tag[tid] = vec
-        return vec_by_tag
-
-    @staticmethod
-    def _user_tag_rows(user_id):
-        rows = list(
-            UserTagWeight.objects.filter(user_id=user_id)
-            .select_related("tag")
-            .order_by("tag_id")
-        )
-        if rows:
-            return [r for r in rows if float(r.weight) > 0.0]
-
-        # fallback: user has tags but no weight record yet
-        tags = list(UserTag.objects.filter(user_id=user_id).select_related("tag").order_by("tag_id"))
-        class _Tmp:
-            def __init__(self, tag):
-                self.tag = tag
-                self.tag_id = tag.id
-                self.weight = 1.0
-
-        return [_Tmp(t.tag) for t in tags]
-
-    @staticmethod
     def rank_surveys_for_user(user_id, survey_ids, exclude_ids=None, dim=100):
-        """Rank surveys by user-tag/survey-tag semantic matching score.
+        """对候选问卷按用户-问卷整体向量余弦相似度排序推荐。
 
-        Score design:
-        - For each survey tag, find the best matched user tag cosine.
-        - Multiply by normalized user tag weight.
-        - Final score = average of best matches across survey tags.
+        流程：
+        1. 获取/生成用户整体描述向量。
+        2. 批量查询已缓存的问卷向量；对未缓存问卷生成描述字符串并嵌入。
+        3. 计算余弦相似度，按分数降序返回。
         """
         if not survey_ids:
             return []
@@ -313,81 +341,48 @@ class SimilarityManager:
         if not cleaned_sids:
             return []
 
-        user_rows = SimilarityManager._user_tag_rows(user_id)
-        if not user_rows:
-            return [{"survey_id": sid, "score": 0.0, "reason": "标签信息不足"} for sid in cleaned_sids]
-
-        survey_rows = list(
-            SurveyTag.objects.filter(survey_id__in=cleaned_sids)
-            .select_related("tag")
-            .order_by("survey_id", "tag_id")
+        # 1. 获取/生成用户整体向量
+        user_vec = SimilarityManager.generate_and_store_vector(
+            "user", str(user_id), dim=dim, force=False
         )
+        if user_vec is None:
+            return [
+                {"survey_id": sid, "score": 0.0, "reason": "用户向量不可用"}
+                for sid in cleaned_sids
+            ]
 
-        # Build vector cache for all involved tags
-        all_rows = list(user_rows) + survey_rows
-        vec_by_tag = SimilarityManager._get_or_create_tag_vectors(all_rows, dim=dim)
+        # 2. 批量查询已缓存的问卷向量
+        str_sids = [str(sid) for sid in cleaned_sids]
+        existing_nodes = IDVector.objects.filter(ref_type="survey", ref_id__in=str_sids)
+        vec_by_survey = {
+            int(node.ref_id): node.get_vector()
+            for node in existing_nodes
+            if node.get_vector()
+        }
 
-        user_weight_max = max(float(r.weight) for r in user_rows) or 1.0
-        user_rows_scored = []
-        for row in user_rows:
-            vec = vec_by_tag.get(int(row.tag_id))
-            if not vec:
-                continue
-            user_rows_scored.append(
-                {
-                    "tag_id": int(row.tag_id),
-                    "tag_name": row.tag.name,
-                    "weight": float(row.weight) / user_weight_max,
-                    "vec": vec,
-                }
-            )
+        # 对尚未缓存的问卷生成描述字符串并嵌入
+        uncached = [sid for sid in cleaned_sids if sid not in vec_by_survey]
+        for sid in uncached:
+            text = SimilarityManager.generate_placeholder_string("survey", str(sid))
+            if text:
+                vec = SimilarityManager.encode_text(text, dim=dim)
+                SimilarityManager.save_vector("survey", str(sid), vec)
+                vec_by_survey[sid] = vec
 
-        if not user_rows_scored:
-            return [{"survey_id": sid, "score": 0.0, "reason": "标签向量缺失"} for sid in cleaned_sids]
-
-        survey_tags = {}
-        for row in survey_rows:
-            sid = int(row.survey_id)
-            survey_tags.setdefault(sid, []).append(row)
-
+        # 3. 计算余弦相似度并排序
         ranked = []
         for sid in cleaned_sids:
-            rows = survey_tags.get(sid, [])
-            if not rows:
-                ranked.append({"survey_id": sid, "score": 0.0, "reason": "问卷暂无标签"})
+            survey_vec = vec_by_survey.get(sid)
+            if survey_vec is None:
+                ranked.append(
+                    {"survey_id": sid, "score": 0.0, "reason": "问卷向量不可用"}
+                )
                 continue
-
-            best_scores = []
-            best_pairs = []
-            for srow in rows:
-                svec = vec_by_tag.get(int(srow.tag_id))
-                if not svec:
-                    continue
-                best = None
-                best_pair = None
-                for u in user_rows_scored:
-                    cosine = SimilarityManager.compute_cosine(svec, u["vec"])
-                    cosine = float(cosine or 0.0)
-                    weighted = cosine * u["weight"]
-                    if best is None or weighted > best:
-                        best = weighted
-                        best_pair = (srow.tag.name, u["tag_name"])
-                if best is not None:
-                    best_scores.append(best)
-                    if best_pair:
-                        best_pairs.append(best_pair)
-
-            if not best_scores:
-                ranked.append({"survey_id": sid, "score": 0.0, "reason": "标签向量缺失"})
-                continue
-
-            score = float(sum(best_scores) / len(best_scores))
-            reason = ""
-            if best_pairs:
-                s_tag, u_tag = best_pairs[0]
-                reason = f"问卷标签“{s_tag}”与你的“{u_tag}”匹配"
-
-            ranked.append({"survey_id": sid, "score": score, "reason": reason})
+            cosine = SimilarityManager.compute_cosine(user_vec, survey_vec)
+            score = float(cosine or 0.0)
+            ranked.append(
+                {"survey_id": sid, "score": score, "reason": "基于内容语义匹配"}
+            )
 
         ranked.sort(key=lambda x: x["score"], reverse=True)
         return ranked

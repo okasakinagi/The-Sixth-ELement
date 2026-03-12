@@ -346,12 +346,14 @@ async function openTaskFill(task) {
 }
 
 function getMatchClass(task) {
+  if (task.match_level === 'random') return 'random-match'
   if (task.match_level === 'high') return 'high-match'
   if (task.match_level === 'medium') return 'mid-match'
   return 'low-match'
 }
 
 function getMatchText(task) {
+  if (task.match_level === 'random') return '随机'
   if (task.match_reason) return task.match_reason
   if (task.match_level === 'high') return '高匹配'
   if (task.match_level === 'medium') return '中匹配'
@@ -773,6 +775,12 @@ function handleFabClick(e) {
   background: linear-gradient(135deg, #f44336, #e57373);
   color: white;
   box-shadow: 0 2px 8px rgba(244, 67, 54, 0.3);
+}
+
+.random-match {
+  background: linear-gradient(135deg, #9e9e9e, #bdbdbd);
+  color: white;
+  box-shadow: 0 2px 8px rgba(158, 158, 158, 0.3);
 }
 
 .fab {
