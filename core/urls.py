@@ -7,8 +7,14 @@ urlpatterns = [
     path("auth/register", views.register),
     path("auth/send-register-code", views.send_register_code),
     path("auth/login", views.login),
+<<<<<<< Updated upstream
     path("auth/send-reset-code", views.send_reset_code),
     path("auth/reset-password", views.verify_reset_code),
+=======
+    path("auth/request-reset", views.request_password_reset),
+    path("auth/verify-reset-code", views.verify_reset_code),
+    path("auth/reset-password", views.reset_password),
+>>>>>>> Stashed changes
     path("users/me", views.user_me),
     # Survey management routes are served by survey_management.urls
     path("surveys/<str:survey_id>/close", views.close_survey),

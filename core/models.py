@@ -29,6 +29,7 @@ class AuthToken(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
 
+<<<<<<< Updated upstream
 class PasswordResetCode(models.Model):
     """密码重置验证码"""
 
@@ -44,6 +45,15 @@ class PasswordResetCode(models.Model):
                 fields=["email", "is_used", "expires_at"], name="reset_code_lookup_idx"
             ),
         ]
+=======
+class PasswordReset(models.Model):
+    user = models.ForeignKey(AppUser, on_delete=models.CASCADE)
+    reset_code = models.CharField(max_length=6, db_index=True)
+    expires_at = models.DateTimeField()
+    is_used = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    used_at = models.DateTimeField(blank=True, null=True)
+>>>>>>> Stashed changes
 
 
 class Role(models.Model):

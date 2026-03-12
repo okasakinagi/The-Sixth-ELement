@@ -1,10 +1,15 @@
 <script setup>
+<<<<<<< Updated upstream
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { aiGenerateDraftQuestions, createSurveyDraft } from '../utils/surveyManagementApi'
+=======
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
+>>>>>>> Stashed changes
 
-const router = useRouter()
 const route = useRoute()
+<<<<<<< Updated upstream
 
 const aiGenerating = ref(false)
 
@@ -707,11 +712,28 @@ const parseQuestionCount = (input) => {
         <button class="primary-button" type="button" @click="publishSurvey">发布调查</button>
       </div>
     </div>
+=======
+const surveyId = computed(() => route.params.id)
+</script>
+
+<template>
+  <div class="builder">
+    <header>
+      <RouterLink class="back" to="/surveys">返回问卷管理</RouterLink>
+      <h1>问卷制作</h1>
+      <p v-if="surveyId">正在编辑：{{ surveyId }}</p>
+      <p v-else>新建问卷模板</p>
+    </header>
+    <section class="canvas">
+      <h2>拖拽题型到这里开始设计</h2>
+      <p>这是问卷制作入口示意，后续可接入真实编辑器。</p>
+    </section>
+>>>>>>> Stashed changes
   </div>
 </template>
 
 <style scoped>
-.builder-shell {
+.builder {
   min-height: 100vh;
   padding: 32px 48px 120px 80px;
   background: radial-gradient(circle at top left, #edf3ff 0%, #f7f9ff 45%, #ffffff 100%);
@@ -757,6 +779,7 @@ const parseQuestionCount = (input) => {
 
 header {
   display: grid;
+<<<<<<< Updated upstream
   gap: 20px;
   position: relative;
 }
@@ -767,6 +790,15 @@ header {
   align-items: center;
   padding: 20px 0;
   margin-top: 40px;
+=======
+  gap: 10px;
+  margin-bottom: 32px;
+}
+
+h1 {
+  font-family: 'Newsreader', serif;
+  font-size: 32px;
+>>>>>>> Stashed changes
 }
 
 .header-main {
@@ -781,6 +813,7 @@ header {
   font-family: 'Newsreader', serif;
 }
 
+<<<<<<< Updated upstream
 .title-block {
   display: flex;
   align-items: center;
@@ -1564,5 +1597,14 @@ header {
   .question-card {
     padding: 16px;
   }
+=======
+.canvas {
+  background: #ffffff;
+  padding: 32px;
+  border-radius: 24px;
+  border: 2px dashed #c8d6ee;
+  text-align: center;
+  color: #5f6f86;
+>>>>>>> Stashed changes
 }
 </style>

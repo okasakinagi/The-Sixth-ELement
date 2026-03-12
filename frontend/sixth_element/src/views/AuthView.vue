@@ -20,6 +20,7 @@ const quotes = [
 const email = ref('')
 const password = ref('')
 const showPassword = ref(false)
+const showConfirmPassword = ref(false)
 
 // 状态
 const loading = ref(false)
@@ -43,9 +44,14 @@ onMounted(() => {
   currentQuote.value = quotes[randomIndex]
 })
 
-// 切换显示密码
+// 切换显示密码（点击切换，不是长按）
 function togglePasswordVisibility() {
   showPassword.value = !showPassword.value
+}
+
+// 切换显示确认密码
+function toggleConfirmPasswordVisibility() {
+  showConfirmPassword.value = !showConfirmPassword.value
 }
 
 // 清空所有错误信息
@@ -268,6 +274,9 @@ function goToForgotPassword() {
 
 <template>
   <div class="auth-container">
+    <!-- 动画背景 -->
+    <div class="animated-bg"></div>
+
     <!-- 主要内容区 -->
     <div class="auth-content">
       <!-- Logo 区 -->
@@ -379,7 +388,7 @@ function goToForgotPassword() {
             <input
               id="confirm-password"
               v-model="confirmPassword"
-              :type="showPassword ? 'text' : 'password'"
+              :type="showConfirmPassword ? 'text' : 'password'"
               class="form-input"
               :class="{ 'has-error': confirmPasswordError }"
               placeholder="请再次输入密码"
@@ -387,11 +396,18 @@ function goToForgotPassword() {
             <button
               type="button"
               class="password-toggle"
+<<<<<<< Updated upstream
               :class="{ 'password-hidden': !showPassword }"
               @click="togglePasswordVisibility"
               :aria-label="showPassword ? '隐藏密码' : '显示密码'"
             >
               👁️
+=======
+              @click="toggleConfirmPasswordVisibility"
+              :aria-label="showConfirmPassword ? '隐藏密码' : '显示密码'"
+            >
+              {{ showConfirmPassword ? '👁️‍🗨️' : '🙈' }}
+>>>>>>> Stashed changes
             </button>
           </div>
           <p v-if="confirmPasswordError" class="error-text">
@@ -401,9 +417,13 @@ function goToForgotPassword() {
 
         <!-- 登录特有的辅助链接 -->
         <div v-if="authMode === 'login'" class="form-helpers">
+<<<<<<< Updated upstream
           <button type="button" class="forgot-password-btn" @click="goToForgotPassword">
+=======
+          <router-link to="/reset-password" class="forgot-password-btn">
+>>>>>>> Stashed changes
             忘记密码？
-          </button>
+          </router-link>
         </div>
 
         <!-- 提交按钮 -->
@@ -458,22 +478,49 @@ function goToForgotPassword() {
 
 .auth-container {
   min-height: 100vh;
-  background: #f6f8fb;
+  background: linear-gradient(135deg, #f0f5ff 0%, #ffffff 50%, #f8f9ff 100%);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 20px;
+  position: relative;
+  overflow: hidden;
+}
+
+/* 动画背景 */
+.animated-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: 
+    radial-gradient(circle at 20% 30%, rgba(30, 79, 180, 0.05) 0%, transparent 50%),
+    radial-gradient(circle at 80% 70%, rgba(13, 71, 161, 0.03) 0%, transparent 50%);
+  animation: float 20s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px) translateX(0px);
+  }
+  50% {
+    transform: translateY(10px) translateX(5px);
+  }
 }
 
 /* 主要内容 */
 .auth-content {
-  max-width: 460px;
+  position: relative;
+  z-index: 1;
+  max-width: 420px;
   width: 100%;
-  background: #ffffff;
-  border-radius: 14px;
-  padding: 28px 26px;
-  border: 1px solid #e3e9f5;
-  box-shadow: 0 10px 26px rgba(0, 82, 217, 0.06);
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 20px;
+  padding: 40px 30px;
+  box-shadow: 0 20px 60px rgba(30, 79, 180, 0.08);
+  backdrop-filter: blur(10px);
 }
 
 /* Logo 区 */
@@ -483,15 +530,25 @@ function goToForgotPassword() {
 }
 
 .logo {
-  font-size: 42px;
+  font-size: 48px;
   margin-bottom: 12px;
   display: inline-block;
+  animation: bounce 2s ease-in-out infinite;
+}
+
+@keyframes bounce {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
 }
 
 .app-title {
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 700;
-  color: #0b2b66;
+  color: #1a202c;
   margin: 0;
   letter-spacing: -0.5px;
 }
@@ -503,19 +560,31 @@ function goToForgotPassword() {
 }
 
 .main-title {
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 600;
-  color: #0b2b66;
+  color: #1a202c;
   margin: 0 0 12px 0;
 }
 
 .dynamic-quote {
   font-size: 13px;
-  color: #5c7599;
+  color: #7f8d9d;
   margin: 0;
   line-height: 1.5;
   font-weight: 400;
   letter-spacing: 0.3px;
+  animation: fadeIn 0.8s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* 模式切换标签 */
@@ -523,10 +592,9 @@ function goToForgotPassword() {
   display: flex;
   gap: 8px;
   margin-bottom: 24px;
-  background: #f2f6ff;
+  background: #f5f7fa;
   padding: 6px;
   border-radius: 10px;
-  border: 1px solid #d7e3ff;
 }
 
 .mode-tab {
@@ -534,7 +602,7 @@ function goToForgotPassword() {
   padding: 10px;
   border: none;
   background: transparent;
-  color: #5c7599;
+  color: #7f8d9d;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
@@ -543,9 +611,9 @@ function goToForgotPassword() {
 }
 
 .mode-tab.active {
-  background: #ffffff;
-  color: #0052d9;
-  box-shadow: 0 4px 12px rgba(0, 82, 217, 0.12);
+  background: white;
+  color: #1e4fb4;
+  box-shadow: 0 2px 8px rgba(30, 79, 180, 0.1);
 }
 
 /* 错误提示 */
@@ -554,10 +622,22 @@ function goToForgotPassword() {
   align-items: center;
   gap: 8px;
   padding: 12px 14px;
-  background: #fff6f6;
+  background: #fff5f5;
   border-left: 4px solid #d32f2f;
-  border-radius: 8px;
+  border-radius: 6px;
   margin-bottom: 20px;
+  animation: slideInDown 0.3s ease-out;
+}
+
+@keyframes slideInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .error-icon {
@@ -587,7 +667,7 @@ function goToForgotPassword() {
 .form-label {
   font-size: 13px;
   font-weight: 600;
-  color: #0b2b66;
+  color: #1a202c;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -608,20 +688,20 @@ function goToForgotPassword() {
 .form-input {
   width: 100%;
   padding: 11px 40px 11px 38px;
-  border: 1px solid #d7e3ff;
-  border-radius: 10px;
+  border: 2px solid #e8eef5;
+  border-radius: 8px;
   font-size: 14px;
   font-family: inherit;
-  color: #0b2b66;
-  background: #f2f6ff;
+  color: #1a202c;
+  background: #fafbfc;
   transition: all 0.3s ease;
   outline: none;
 }
 
 .form-input:focus {
-  background: #ffffff;
-  border-color: #0052d9;
-  box-shadow: 0 0 0 3px rgba(0, 82, 217, 0.12);
+  background: white;
+  border-color: #1e4fb4;
+  box-shadow: 0 0 0 3px rgba(30, 79, 180, 0.1);
 }
 
 .form-input.has-error {
@@ -634,7 +714,7 @@ function goToForgotPassword() {
 }
 
 .form-input::placeholder {
-  color: #8ea2bf;
+  color: #a8b4c1;
 }
 
 /* 隐藏浏览器自带的密码显示按钮 */
@@ -702,13 +782,14 @@ function goToForgotPassword() {
 .forgot-password-btn {
   background: none;
   border: none;
-  color: #0052d9;
+  color: #1e4fb4;
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
   text-decoration: none;
   transition: opacity 0.2s;
   padding: 0;
+  display: inline-block;
 }
 
 .forgot-password-btn:hover {
@@ -719,10 +800,10 @@ function goToForgotPassword() {
 /* 提交按钮 */
 .submit-btn {
   padding: 12px 24px;
-  background: linear-gradient(135deg, #0052d9, #2f7bff);
+  background: linear-gradient(135deg, #1e4fb4 0%, #1a3f8a 100%);
   color: white;
   border: none;
-  border-radius: 10px;
+  border-radius: 8px;
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;
@@ -730,12 +811,12 @@ function goToForgotPassword() {
   margin-top: 8px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  box-shadow: 0 8px 20px rgba(0, 82, 217, 0.18);
+  box-shadow: 0 4px 12px rgba(30, 79, 180, 0.2);
 }
 
 .submit-btn:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 10px 24px rgba(0, 82, 217, 0.22);
+  box-shadow: 0 6px 20px rgba(30, 79, 180, 0.3);
 }
 
 .submit-btn:active:not(:disabled) {
@@ -774,7 +855,7 @@ function goToForgotPassword() {
   text-align: center;
   margin-top: 20px;
   padding-top: 20px;
-  border-top: 1px solid #e3e9f5;
+  border-top: 1px solid #e8eef5;
 }
 
 .footer-links p {
@@ -786,7 +867,7 @@ function goToForgotPassword() {
 .link-btn {
   background: none;
   border: none;
-  color: #0052d9;
+  color: #1e4fb4;
   font-weight: 600;
   cursor: pointer;
   text-decoration: none;
@@ -803,16 +884,16 @@ function goToForgotPassword() {
 /* 响应式设计 */
 @media (max-width: 480px) {
   .auth-content {
-    padding: 24px 18px;
-    border-radius: 14px;
+    padding: 30px 20px;
+    border-radius: 16px;
   }
 
   .app-title {
-    font-size: 18px;
+    font-size: 20px;
   }
 
   .main-title {
-    font-size: 17px;
+    font-size: 18px;
   }
 
   .dynamic-quote {
