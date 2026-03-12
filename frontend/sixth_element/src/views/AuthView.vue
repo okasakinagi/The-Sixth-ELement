@@ -396,18 +396,10 @@ function goToForgotPassword() {
             <button
               type="button"
               class="password-toggle"
-<<<<<<< Updated upstream
-              :class="{ 'password-hidden': !showPassword }"
-              @click="togglePasswordVisibility"
-              :aria-label="showPassword ? '隐藏密码' : '显示密码'"
-            >
-              👁️
-=======
               @click="toggleConfirmPasswordVisibility"
               :aria-label="showConfirmPassword ? '隐藏密码' : '显示密码'"
             >
               {{ showConfirmPassword ? '👁️‍🗨️' : '🙈' }}
->>>>>>> Stashed changes
             </button>
           </div>
           <p v-if="confirmPasswordError" class="error-text">
@@ -417,13 +409,9 @@ function goToForgotPassword() {
 
         <!-- 登录特有的辅助链接 -->
         <div v-if="authMode === 'login'" class="form-helpers">
-<<<<<<< Updated upstream
           <button type="button" class="forgot-password-btn" @click="goToForgotPassword">
-=======
-          <router-link to="/reset-password" class="forgot-password-btn">
->>>>>>> Stashed changes
             忘记密码？
-          </router-link>
+          </button>
         </div>
 
         <!-- 提交按钮 -->
