@@ -1,16 +1,16 @@
 {
   "survey_generation": {
-    "api_key": "sk-uvayghhcjydixwrabzhrlojymaavgsjpuasjivbywgouvgro",
+    "api_key": "",
     "model": "Qwen/Qwen2.5-7B-Instruct",
     "base_url": "https://api.siliconflow.cn/v1/chat/completions"
   },
   "embedding": {
-    "api_key": "sk-uvayghhcjydixwrabzhrlojymaavgsjpuasjivbywgouvgro",
+    "api_key": "",
     "model": "Qwen/Qwen3-Embedding-4B",
     "base_url": "https://api.siliconflow.cn/v1/embeddings"
   },
   "diffculties": {
-    "api_key": "sk-uvayghhcjydixwrabzhrlojymaavgsjpuasjivbywgouvgro",
+    "api_key": "",
     "model": "Pro/deepseek-ai/DeepSeek-V3.2",
     "base_url": "https://api.siliconflow.cn/v1"
   }
