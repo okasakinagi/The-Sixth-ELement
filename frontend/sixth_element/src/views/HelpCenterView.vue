@@ -4,28 +4,29 @@
     <div v-if="mobileSidebarOpen" class="sidebar-overlay" @click="toggleSidebar"></div>
 
     <div class="help-shell">
+      <!-- 移动端菜单按钮 -->
+      <button 
+        v-if="isMobile"
+        class="mobile-toggle-btn"
+        @click="toggleSidebar"
+        :title="mobileSidebarOpen ? '关闭菜单' : '打开菜单'"
+        :class="{ 'open': mobileSidebarOpen }"
+      >
+        ▼
+      </button>
+
       <!-- 左侧导航 -->
       <aside 
         class="help-sidebar"
         :class="{ 
-          'collapsed': sidebarCollapsed, 
           'mobile-open': mobileSidebarOpen 
         }"
       >
-      <!-- 桌面端侧边栏切换按钮 -->
-      <button 
-        v-if="!isMobile"
-        class="desktop-toggle-btn"
-        @click="toggleSidebar"
-        :title="sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'"
-      >
-        ☰
-      </button>
 
       <div class="sidebar-header">
-        <h2 v-if="!sidebarCollapsed">帮助中心</h2>
-        <p v-if="!sidebarCollapsed" class="sidebar-subtitle">Help Center</p>
-        <div v-if="!sidebarCollapsed" class="search-container">
+        <h2>帮助中心</h2>
+        <p class="sidebar-subtitle">Help Center</p>
+        <div class="search-container">
           <input 
             type="text" 
             v-model="searchQuery" 
@@ -88,7 +89,6 @@
     <!-- 右侧内容 -->
     <main 
       class="help-content"
-      :class="{ 'expanded': sidebarCollapsed }"
     >
       <!-- 顶部导航 -->
       <div class="top-nav">
@@ -173,7 +173,6 @@ const activeItemId = ref('')
 const activeCategoryId = ref('')
 const showSearchResults = ref(false)
 const searchResults = ref([])
-const sidebarCollapsed = ref(false) // 控制帮助中心侧边栏的收起/展开状态
 const mobileSidebarOpen = ref(false) // 控制移动端侧边栏的打开/关闭状态
 const isMobile = ref(window.innerWidth <= 768) // 检测是否为移动端
 
@@ -638,9 +637,6 @@ const toggleSidebar = () => {
   // 在移动端切换侧边栏打开/关闭状态
   if (isMobile.value) {
     mobileSidebarOpen.value = !mobileSidebarOpen.value
-  } else {
-    // 在桌面端切换侧边栏收起/展开状态
-    sidebarCollapsed.value = !sidebarCollapsed.value
   }
 }
 
@@ -855,147 +851,9 @@ watch(
   background: #a8a8a8;
 }
 
-/* 为侧边栏内容添加过渡效果 */
-.sidebar-header {
-  transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1), transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.help-menu {
-  transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1), transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-  transition-delay: 0.1s;
-}
-
-.category-title {
-  transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1), transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-  transition-delay: 0.15s;
-}
-
-.menu-item {
-  transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1), transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-  transition-delay: 0.2s;
-}
-
-/* 收起状态 */
-.help-sidebar.collapsed .sidebar-header {
-  opacity: 0;
-  transform: translateX(-10px);
-  pointer-events: none;
-  transition-delay: 0s;
-}
-
-.help-sidebar.collapsed .help-menu {
-  opacity: 0;
-  transform: translateX(-10px);
-  pointer-events: none;
-  transition-delay: 0s;
-}
-
-.help-sidebar.collapsed .category-title {
-  opacity: 0;
-  transform: translateX(-10px);
-  pointer-events: none;
-  transition-delay: 0s;
-}
-
-.help-sidebar.collapsed .menu-item {
-  opacity: 0;
-  transform: translateX(-10px);
-  pointer-events: none;
-  transition-delay: 0s;
-}
-
-/* 展开状态 */
-.help-sidebar:not(.collapsed) .sidebar-header {
-  opacity: 1;
-  transform: translateX(0);
-  pointer-events: auto;
-}
-
-.help-sidebar:not(.collapsed) .help-menu {
-  opacity: 1;
-  transform: translateX(0);
-  pointer-events: auto;
-}
-
-.help-sidebar:not(.collapsed) .category-title {
-  opacity: 1;
-  transform: translateX(0);
-  pointer-events: auto;
-}
-
-.help-sidebar:not(.collapsed) .menu-item {
-  opacity: 1;
-  transform: translateX(0);
-  pointer-events: auto;
-}
-
-/* 确保收起时帮助菜单不可见 */
-.help-sidebar.collapsed .help-menu {
-  visibility: hidden;
-}
-
-.help-sidebar:not(.collapsed) .help-menu {
-  visibility: visible;
-}
-
-.help-sidebar.collapsed {
-  width: 40px;
-}
-
-/* 侧边栏切换按钮 */
-.desktop-toggle-btn {
-  position: absolute;
-  right: 12px;
-  top: 16px;
-  transform: none;
-  width: 32px;
-  height: 32px;
-  background: white;
-  border: none;
-  border-radius: 10px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  color: #4299e1;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  z-index: 1000;
-  overflow: visible;
-}
-
-.desktop-toggle-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(66, 153, 225, 0.3);
-  background: #f8f9ff;
-}
-
-.help-sidebar.collapsed .desktop-toggle-btn {
-  right: 8px;
-  top: 16px;
-}
-
-/* 确保侧边栏不遮挡按钮 */
+/* 确保侧边栏不遮挡内容 */
 .help-sidebar {
   overflow: visible;
-}
-
-/* 收起时隐藏标题和搜索框 */
-.help-sidebar.collapsed .sidebar-header h2,
-.help-sidebar.collapsed .search-box {
-  display: none;
-}
-
-.help-sidebar.collapsed .sidebar-header {
-  padding: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.help-sidebar.collapsed .help-menu {
-  display: none;
 }
 
 .sidebar-header {
@@ -1344,15 +1202,45 @@ watch(
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
 }
 
-.help-content.expanded {
-  width: min(1000px, 100%);
-}
+
 
 .top-nav {
   display: flex;
   justify-content: flex-end;
   align-items: center;
   margin-bottom: 32px;
+}
+
+/* 移动端切换按钮 */
+.mobile-toggle-btn {
+  position: fixed;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 40px;
+  height: 40px;
+  background: white;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  color: #4299e1;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 1003;
+}
+
+.mobile-toggle-btn:hover {
+  transform: translateX(-50%) scale(1.05);
+  box-shadow: 0 6px 16px rgba(66, 153, 225, 0.3);
+  background: #f8f9ff;
+}
+
+.mobile-toggle-btn.open {
+  transform: translateX(-50%) rotate(180deg);
 }
 
 .app-logo {
