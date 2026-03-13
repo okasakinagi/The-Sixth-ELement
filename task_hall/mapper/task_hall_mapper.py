@@ -1,6 +1,7 @@
 from django.db.models import Count, Q
 
 from core.models import Notification, Response, Survey, SurveyTag, Tag
+from core.points import difficulty_levels_for_min_reward
 
 
 class TaskHallMapper:
@@ -30,7 +31,11 @@ class TaskHallMapper:
             queryset = queryset.filter(status__in=status)
         min_reward = filters.get("min_reward")
         if min_reward is not None:
-            queryset = queryset.filter(reward_points__gte=min_reward)
+            levels = difficulty_levels_for_min_reward(min_reward)
+            if not levels:
+                queryset = queryset.none()
+            else:
+                queryset = queryset.filter(difficulty__in=levels)
         max_minutes = filters.get("max_minutes")
         if max_minutes is not None:
             queryset = queryset.filter(estimated_minutes__lte=max_minutes)

@@ -8,6 +8,7 @@ from urllib import request as url_request
 from django.utils import timezone
 
 from core.models import Questionnaire
+from core.points import reward_points_for_difficulty
 from survey_management.mapper.survey_management_mapper import SurveyManagementMapper
 
 
@@ -126,8 +127,7 @@ class SurveyManagementService:
         if user.points < budget_points:
             raise SurveyManagementError(422, "not enough points to publish survey")
 
-        if not survey.reward_points and budget_points > 0:
-            survey.reward_points = max(1, budget_points // target) if target else 0
+        survey.reward_points = reward_points_for_difficulty(survey.difficulty)
 
         survey.target = target
         survey.publish_cost_points = budget_points
@@ -310,7 +310,7 @@ class SurveyManagementService:
             "subtitle": survey.description or "",
             "description": survey.description or "",
             "link": None,
-            "reward_points": survey.reward_points,
+            "reward_points": reward_points_for_difficulty(survey.difficulty),
             "estimated_minutes": survey.estimated_minutes,
             "deadline": self._iso_str(survey.deadline) if survey.deadline else None,
             "status": self._to_api_status(survey.status, completed, target),
