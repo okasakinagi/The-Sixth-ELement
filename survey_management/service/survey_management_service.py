@@ -532,11 +532,26 @@ class SurveyManagementService:
             return {}
         if not isinstance(data, dict):
             return {}
-        return {
+
+        # Backward compatibility: support both flat config and nested survey_generation config.
+        flat = {
             "api_key": str(data.get("api_key") or "").strip(),
             "model": str(data.get("model") or "").strip(),
             "base_url": str(data.get("base_url") or "").strip(),
         }
+        survey_generation = data.get("survey_generation")
+        if isinstance(survey_generation, dict):
+            return {
+                "api_key": str(
+                    survey_generation.get("api_key") or flat["api_key"]
+                ).strip(),
+                "model": str(survey_generation.get("model") or flat["model"]).strip(),
+                "base_url": str(
+                    survey_generation.get("base_url") or flat["base_url"]
+                ).strip(),
+            }
+
+        return flat
 
     def _extract_json(self, text):
         match = re.search(r"\{[\s\S]*\}", text)
