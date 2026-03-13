@@ -558,7 +558,6 @@ const parseQuestionCount = (input) => {
     <main class="question-area">
       <div v-if="state.questions.length === 0 && !state.showTemplateGuide" class="empty-state">
         <p>点击下方 + 号，手动添加题目</p>
-        <p class="empty-hint">或使用上方 AI 功能快速生成问卷</p>
       </div>
 
       <div 

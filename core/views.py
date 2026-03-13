@@ -2,6 +2,7 @@ import hashlib
 import json
 import secrets
 from datetime import datetime, time, timedelta, timezone as dt_timezone
+from typing import Optional
 
 from django.conf import settings as django_settings
 from django.contrib.auth.hashers import check_password, make_password
@@ -290,7 +291,7 @@ def _send_verification_email(to_email: str, code: str, purpose: str):
     )
 
 
-def _issue_code(email: str, purpose: str) -> str | None:
+def _issue_code(email: str, purpose: str) -> Optional[str]:
     """
     为指定邮符1和 purpose 创建新验证码记录。
     如果处于冷却期内，返回 None （调用方应返回 429）。
