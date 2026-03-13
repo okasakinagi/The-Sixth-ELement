@@ -1788,8 +1788,13 @@ onUnmounted(() => {
   .user-subtitle {
     font-size: 14px;
   }
+
+  .status-row {
+    align-items: center;
+  }
   
   .status-pill {
+    margin: 0 auto;
     max-width: 220px;
   }
 
