@@ -8,9 +8,11 @@ urlpatterns = [
     path("auth/send-register-code", views.send_register_code),
     path("auth/login", views.login),
     path("auth/send-reset-code", views.send_reset_code),
-    path("auth/request-reset", views.request_password_reset),
+    # Keep old endpoint path but bind to canonical handler to avoid missing alias errors.
+    path("auth/request-reset", views.send_reset_code),
     path("auth/verify-reset-code", views.verify_reset_code),
-    path("auth/reset-password", views.reset_password),
+    # Keep old endpoint path but bind to canonical handler to avoid missing alias errors.
+    path("auth/reset-password", views.verify_reset_code),
     path("users/me", views.user_me),
     # Survey management routes are served by survey_management.urls
     path("surveys/<str:survey_id>/close", views.close_survey),
