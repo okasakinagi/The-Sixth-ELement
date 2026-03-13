@@ -7,6 +7,8 @@ const router = useRouter()
 const route = useRoute()
 
 const aiGenerating = ref(false)
+const loadFailed = ref(false)
+const loadFailedReason = ref('')
 
 const makeId = () => `q-${Date.now()}-${Math.floor(Math.random() * 10000)}`
 
@@ -159,29 +161,34 @@ const setQuestions = (questions) => {
   state.questions = normalizeQuestions(questions)
 }
 
-const loadDraft = async () => {
+const readStoredDraft = () => {
   const raw = sessionStorage.getItem('survey-draft')
-  if (raw) {
-    try {
-      const draft = JSON.parse(raw)
-      state.title = draft.title || state.title
-      state.description = draft.description || ''
-      state.source = draft.source || 'manual'
-      if (route.query.ai === '1' && Array.isArray(draft.questions) && draft.questions.length > 0) {
-        setQuestions(draft.questions)
-        return
-      }
-    } catch {
-      state.title = state.title
-    }
+  if (!raw) return null
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return null
   }
+}
 
-  if (route.params.id) {
+const writeStoredDraft = (payload) => {
+  sessionStorage.setItem('survey-draft', JSON.stringify(payload))
+}
+
+const loadDraft = async () => {
+  loadFailed.value = false
+  loadFailedReason.value = ''
+  const storedDraft = readStoredDraft()
+  const routeId = route.params.id ? String(route.params.id) : ''
+
+  // 编辑已有问卷时，优先以后端为准，避免被其它问卷的 session 数据污染。
+  if (routeId) {
     // 尝试从后端加载问卷详情与题目：草稿走 /surveys/drafts/{id}，已发布走 /surveys/{id}/fill
     try {
-      const detail = await getSurveyDetail(route.params.id)
+      const detail = await getSurveyDetail(routeId)
       state.title = detail.title || state.title
       state.description = detail.description || detail.subtitle || state.description
+      state.source = 'manual'
 
       // 如果源问卷不是草稿，提醒用户编辑将另存为新草稿
       if (detail.status && detail.status !== 'draft') {
@@ -193,7 +200,7 @@ const loadDraft = async () => {
       // 根据状态选择加载题目
       if (detail.status === 'draft') {
         const token = localStorage.getItem('access_token')
-        const res = await fetch(`/api/v1/surveys/drafts/${route.params.id}`, {
+        const res = await fetch(`/api/v1/surveys/drafts/${routeId}`, {
           method: 'GET',
           headers: { Authorization: `Bearer ${token}` },
         })
@@ -203,13 +210,24 @@ const loadDraft = async () => {
             setQuestions(
               data.questions.map((q) => ({ id: q.id, type: q.type, title: q.title, options: q.options || [], required: q.required, is_ai: q.is_ai }))
             )
+            writeStoredDraft({
+              ...(storedDraft || {}),
+              id: routeId,
+              sourceSurveyId: routeId,
+              title: state.title,
+              description: state.description,
+              questions: state.questions,
+              source: 'manual',
+            })
             return
           }
+          throw new Error('草稿题目返回为空')
         }
+        throw new Error('草稿题目加载失败')
       } else {
         // 已发布问卷，从填报接口加载题目
         const token = localStorage.getItem('access_token')
-        const res = await fetch(`/api/v1/surveys/${route.params.id}/fill`, {
+        const res = await fetch(`/api/v1/surveys/${routeId}/fill`, {
           method: 'GET',
           headers: { Authorization: `Bearer ${token}` },
         })
@@ -219,13 +237,52 @@ const loadDraft = async () => {
             setQuestions(
               data.questions.map((q) => ({ id: q.id, type: q.type, title: q.title, options: q.options || [], required: q.required, is_ai: q.is_ai }))
             )
+            writeStoredDraft({
+              ...(storedDraft || {}),
+              id: routeId,
+              sourceSurveyId: routeId,
+              title: state.title,
+              description: state.description,
+              questions: state.questions,
+              source: 'manual',
+            })
             return
           }
+          throw new Error('问卷题目返回为空')
         }
+        throw new Error('问卷题目加载失败')
       }
     } catch (err) {
-      // 如果后端加载失败，保持现有草稿/默认行为
       console.error('加载问卷内容失败:', err)
+      const canUseLocalFallback =
+        storedDraft &&
+        String(storedDraft.id || '') === routeId &&
+        Array.isArray(storedDraft.questions) &&
+        storedDraft.questions.length > 0
+
+      if (canUseLocalFallback) {
+        state.title = storedDraft.title || state.title
+        state.description = storedDraft.description || state.description
+        state.source = storedDraft.source || 'manual'
+        setQuestions(storedDraft.questions)
+        state.saveAsNewNotice = false
+        return
+      }
+
+      loadFailed.value = true
+      loadFailedReason.value = err?.message || '问卷加载失败，请返回重试'
+      return
+    }
+  }
+
+  // 新建流程沿用 session 数据
+  if (storedDraft) {
+    state.title = storedDraft.title || state.title
+    state.description = storedDraft.description || ''
+    state.source = storedDraft.source || 'manual'
+    if (route.query.ai === '1' && Array.isArray(storedDraft.questions) && storedDraft.questions.length > 0) {
+      setQuestions(storedDraft.questions)
+      return
     }
   }
 }
@@ -321,6 +378,11 @@ const markEdited = (question) => {
 }
 
 const openSaveModal = async () => {
+  if (route.params.id && loadFailed.value) {
+    alert(`当前问卷加载失败，已禁止保存以避免覆盖原题目。\n原因：${loadFailedReason.value || '未知错误'}`)
+    return
+  }
+
   // 先保存到后端（若存在草稿 id 或 route params），再打开保存确认/发布弹窗
   let result = { createdNew: false }
   try {
@@ -357,29 +419,52 @@ const buildQuestionsPayload = () => {
 const persistDraftToServer = async () => {
   let createdNew = false
   try {
-    const raw = sessionStorage.getItem('survey-draft')
-    const stored = raw ? JSON.parse(raw) : {}
-    let draftId = stored.id || route.params.id
+    if (route.params.id && loadFailed.value) {
+      throw new Error('问卷尚未正确加载，已禁止保存')
+    }
+
+    const stored = readStoredDraft() || {}
+    const routeId = route.params.id ? String(route.params.id) : ''
+    let draftId = stored.id || routeId
+    let sourceStatus = null
 
     // 如果当前页面是编辑已有问卷（route.params.id 存在），我们需要确保最终的 draftId 指向一个 draft。
-    // 情况：sessionStorage 中可能已有 id（但指向已发布问卷），因此无论 stored.id 是否存在，若 route.params.id 与 stored.id 不同或 stored.id 为空，都应检查源问卷状态并在必要时创建草稿副本。
-    if (route.params.id) {
+    if (routeId) {
       try {
-        const info = await getSurveyDetail(route.params.id)
-        // 如果 sessionStorage 没有 id，或者 sessionStorage 的 id 就是原始问卷 id（说明未创建草稿），或 info 不是 draft，则创建草稿副本
-        const storedIdMatchesSource = stored.id && stored.id === route.params.id
-        if (!storedIdMatchesSource && info && info.status !== 'draft') {
-          const created = await createSurveyDraft({ title: state.title || info.title || '未命名问卷', subtitle: state.description || info.description || '' })
-          draftId = created.id
-          createdNew = true
-        } else if (!storedIdMatchesSource && info && info.status === 'draft') {
-          // 源问卷本身就是 draft（可能是之前在其它地方创建的），则使用其 id
-          draftId = route.params.id
+        const info = await getSurveyDetail(routeId)
+        sourceStatus = info?.status || null
+
+        if (info && info.status === 'draft') {
+          // 源问卷是草稿时，始终写回源草稿，避免误写到其它问卷缓存。
+          draftId = routeId
+        } else if (info) {
+          // 已发布/已结束：优先复用当前源问卷对应的新草稿副本，否则新建副本。
+          const hasReusableClone =
+            stored.sourceSurveyId === routeId &&
+            stored.id &&
+            stored.id !== routeId
+
+          if (hasReusableClone) {
+            draftId = stored.id
+          } else {
+            const created = await createSurveyDraft({ title: state.title || info.title || '未命名问卷', subtitle: state.description || info.description || '' })
+            draftId = created.id
+            createdNew = true
+          }
         }
       } catch (err) {
         // 如果获取详情失败，继续使用现有 draftId（可能会在后续 update 调用中失败并被捕获）
         console.error('检查源问卷状态失败，继续尝试保存：', err)
       }
+    }
+
+    if (!draftId) {
+      const created = await createSurveyDraft({
+        title: state.title || '未命名问卷',
+        subtitle: state.description || '',
+      })
+      draftId = created.id
+      createdNew = true
     }
 
     const payload = {
@@ -392,7 +477,15 @@ const persistDraftToServer = async () => {
     await updateDraft(draftId, payload)
 
     // 更新本地 sessionStorage
-    sessionStorage.setItem('survey-draft', JSON.stringify({ ...stored, id: draftId, title: state.title, description: state.description, questions: state.questions }))
+    writeStoredDraft({
+      ...stored,
+      id: draftId,
+      sourceSurveyId: routeId || stored.sourceSurveyId || null,
+      sourceSurveyStatus: sourceStatus || stored.sourceSurveyStatus || null,
+      title: state.title,
+      description: state.description,
+      questions: state.questions,
+    })
     return { draftId, createdNew }
   } catch (err) {
     console.error('保存草稿到后端失败:', err)
@@ -773,7 +866,7 @@ const parseQuestionCount = (input) => {
       </div>
       <div class="toolbar-right">
         <button class="ghost-button" type="button">预览</button>
-        <button class="primary-button" type="button" @click="openSaveModal">{{ saveButtonLabel }}</button>
+        <button class="primary-button" type="button" @click="openSaveModal" :disabled="route.params.id && loadFailed">{{ saveButtonLabel }}</button>
         <div class="add-menu">
           <button class="add-button" type="button" @click="state.addMenuOpen = !state.addMenuOpen">+</button>
           <div v-if="state.addMenuOpen" class="add-panel">

@@ -12,6 +12,79 @@ function getAuthToken() {
   return localStorage.getItem('access_token');
 }
 
+const PUBLISH_ERROR_I18N_MAP = {
+  'not enough points to publish survey': '积分不足，无法发布问卷',
+  'survey must have at least one question before publish': '问卷至少需要 1 道题后才能发布',
+  'survey cannot be published': '当前问卷状态不允许发布',
+  'reward_points is required': '缺少每份奖励积分参数',
+  'budget_points must be >= reward_points * target': '预算积分必须大于等于 每份奖励积分 × 目标份数',
+  'budget_points must be a number': '预算积分必须是数字',
+  'reward_points must be a number': '每份奖励积分必须是数字',
+  'target must be a number': '目标份数必须是数字',
+  'target must be >= 1': '目标份数必须大于等于 1',
+};
+
+function localizePublishErrorText(text) {
+  const normalized = String(text || '').trim();
+  if (!normalized) return normalized;
+  const lower = normalized.toLowerCase();
+  return PUBLISH_ERROR_I18N_MAP[lower] || normalized;
+}
+
+function normalizeApiErrorText(value) {
+  if (value == null) return '';
+
+  if (typeof value === 'string') {
+    const text = value.trim();
+    if (!text || text === '{}' || text === '[]' || text === 'null' || text === 'undefined') {
+      return '';
+    }
+    return localizePublishErrorText(text);
+  }
+
+  if (Array.isArray(value)) {
+    const parts = value
+      .map((item) => normalizeApiErrorText(item))
+      .filter(Boolean);
+    return Array.from(new Set(parts)).join('；');
+  }
+
+  if (typeof value === 'object') {
+    const entries = Object.entries(value)
+      .map(([key, val]) => {
+        const msg = normalizeApiErrorText(val);
+        if (!msg) return '';
+        return `${key}: ${msg}`;
+      })
+      .filter(Boolean);
+    return Array.from(new Set(entries)).join('；');
+  }
+
+  return String(value);
+}
+
+function extractApiErrorMessage(payload, fallback) {
+  if (!payload || typeof payload !== 'object') {
+    return fallback;
+  }
+
+  const candidates = [
+    payload?.error?.details,
+    payload?.error?.message,
+    payload?.error,
+    payload?.details,
+    payload?.detail,
+    payload?.message,
+  ];
+
+  for (const candidate of candidates) {
+    const msg = normalizeApiErrorText(candidate);
+    if (msg) return msg;
+  }
+
+  return fallback;
+}
+
 /**
  * 获取问卷列表
  * GET /surveys
@@ -209,6 +282,8 @@ export async function publishSurvey(surveyId, data) {
   });
 
   if (!response.ok) {
+    const errorPayload = await response.json().catch(() => ({}));
+
     if (response.status === 401) {
       throw new Error('登录已过期，请重新登录');
     }
@@ -216,11 +291,9 @@ export async function publishSurvey(surveyId, data) {
       throw new Error('问卷不存在');
     }
     if (response.status === 422) {
-      const error = await response.json();
-      throw new Error(JSON.stringify(error.error.details || error.error.message));
+      throw new Error(extractApiErrorMessage(errorPayload, '发布参数不合法，请检查后重试'));
     }
-    const error = await response.json();
-    throw new Error(error.error || '发布问卷失败');
+    throw new Error(extractApiErrorMessage(errorPayload, '发布问卷失败'));
   }
 
   return await response.json();

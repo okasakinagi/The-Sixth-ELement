@@ -195,6 +195,17 @@ class SurveyManagementService:
         if survey.status != "draft":
             raise SurveyManagementError(409, "survey cannot be published")
 
+        questionnaire = survey.active_questionnaire
+        if not questionnaire:
+            raise SurveyManagementError(
+                422, "survey must have at least one question before publish"
+            )
+        questions = self.mapper.get_questions(questionnaire.id)
+        if len(questions) == 0:
+            raise SurveyManagementError(
+                422, "survey must have at least one question before publish"
+            )
+
         reward_points = data.get("reward_points")
         budget_points = data.get("budget_points")
         target = data.get("target")

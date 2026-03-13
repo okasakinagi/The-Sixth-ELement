@@ -25,6 +25,10 @@ const cancelEstimate = ref(null)
 const showPublishModal = ref(false)
 const showPublishConfigModal = ref(false)
 const isEvaluating = ref(false)
+const isPublishing = ref(false)
+const publishConfigMessage = ref('')
+const publishConfigMessageType = ref('info')
+const publishEvaluateSeq = ref(0)
 const publishTarget = ref(null)
 const publishConfig = ref({
   rewardPoints: 3,
@@ -43,6 +47,101 @@ const suggestedBoostPoints = computed(() => {
 const surveys = ref([])
 const loading = ref(false)
 const error = ref('')
+
+const setPublishConfigMessage = (message, type = 'info') => {
+  publishConfigMessage.value = message
+  publishConfigMessageType.value = type
+}
+
+const clearPublishConfigMessage = () => {
+  publishConfigMessage.value = ''
+  publishConfigMessageType.value = 'info'
+}
+
+const extractErrorMessage = (err) => {
+  if (!err) return '未知错误'
+
+  const INVALID_TEXT = new Set(['', '{}', '[]', 'null', 'undefined', '""', "''"])
+
+  const normalizeText = (value) => {
+    const text = String(value ?? '').trim()
+    if (!text || INVALID_TEXT.has(text)) return ''
+    if (/^[()（）\s]+$/.test(text)) return ''
+    return text
+  }
+
+  const pickMessage = (value) => {
+    if (value == null) return ''
+
+    if (typeof value === 'string') {
+      const text = normalizeText(value)
+      if (!text) return ''
+
+      // 尝试解析 JSON 字符串，例如 "{}" 或 "{\"message\":\"...\"}"
+      try {
+        const parsed = JSON.parse(text)
+        const parsedMsg = pickMessage(parsed)
+        if (parsedMsg) return parsedMsg
+      } catch {
+        // 非 JSON 字符串，直接使用
+      }
+
+      return text
+    }
+
+    if (Array.isArray(value)) {
+      const parts = value.map(pickMessage).filter(Boolean)
+      return Array.from(new Set(parts)).join('；')
+    }
+
+    if (typeof value === 'object') {
+      const candidates = [
+        value.message,
+        value.error,
+        value.detail,
+        value.details,
+        value.msg,
+      ]
+      for (const candidate of candidates) {
+        const msg = pickMessage(candidate)
+        if (msg) return msg
+      }
+      return ''
+    }
+
+    return normalizeText(value)
+  }
+
+  const raw = err
+  const message = pickMessage(raw)
+  return message || '未知错误'
+}
+
+const runPublishEvaluation = async (surveyId) => {
+  if (!surveyId) return
+
+  const currentSeq = ++publishEvaluateSeq.value
+  isEvaluating.value = true
+  setPublishConfigMessage('AI 正在评估问卷，评估期间你仍可随时取消。', 'info')
+
+  try {
+    const evaluation = await evaluateSurvey(surveyId)
+    if (currentSeq !== publishEvaluateSeq.value || !showPublishConfigModal.value) return
+
+    publishConfig.value.estimatedMinutes = evaluation.estimated_time_minutes || 5
+    publishConfig.value.difficultyLevel = evaluation.difficulty_level || 3
+    publishConfig.value.rewardPoints = publishConfig.value.difficultyLevel
+    setPublishConfigMessage('评估完成，可调整参数后发布。', 'success')
+  } catch (err) {
+    if (currentSeq !== publishEvaluateSeq.value || !showPublishConfigModal.value) return
+    console.error('Failed to evaluate survey:', err)
+    setPublishConfigMessage('AI 评估失败，已使用默认值。你可以继续发布，或取消后重试。', 'warning')
+  } finally {
+    if (currentSeq === publishEvaluateSeq.value) {
+      isEvaluating.value = false
+    }
+  }
+}
 
 const filteredSurveys = computed(() => {
   if (!hideCompleted.value) {
@@ -160,22 +259,14 @@ const handleConfirmPublishFromBuilder = async () => {
     estimatedMinutes: 5,
     difficultyLevel: 3
   }
+  clearPublishConfigMessage()
   showPublishConfigModal.value = true
 
   // AI 评估问卷难度（与从问卷列表点击发布的流程保持一致）
   if (draft.id) {
-    try {
-      isEvaluating.value = true
-      const evaluation = await evaluateSurvey(draft.id)
-      publishConfig.value.estimatedMinutes = evaluation.estimated_time_minutes || 5
-      publishConfig.value.difficultyLevel = evaluation.difficulty_level || 3
-      publishConfig.value.rewardPoints = publishConfig.value.difficultyLevel
-    } catch (err) {
-      console.error('Failed to evaluate survey:', err)
-      // 评估失败不影响发布，使用默认值
-    } finally {
-      isEvaluating.value = false
-    }
+    await runPublishEvaluation(draft.id)
+  } else {
+    setPublishConfigMessage('未找到问卷 ID，已使用默认发布配置。', 'warning')
   }
 }
 const openPublishConfig = async (survey) => {
@@ -187,32 +278,31 @@ const openPublishConfig = async (survey) => {
     estimatedMinutes: 5,
     difficultyLevel: 3
   }
+  clearPublishConfigMessage()
   showPublishConfigModal.value = true
-  
-  try {
-    isEvaluating.value = true
-    const evaluation = await evaluateSurvey(survey.id)
-    publishConfig.value.estimatedMinutes = evaluation.estimated_time_minutes || 5
-    publishConfig.value.difficultyLevel = evaluation.difficulty_level || 3
-    // 自动映射积分
-    publishConfig.value.rewardPoints = publishConfig.value.difficultyLevel
-  } catch (err) {
-    console.error('Failed to evaluate survey:', err)
-    // 评估失败不影响发布，使用默认值
-  } finally {
-    isEvaluating.value = false
-  }
+
+  await runPublishEvaluation(survey.id)
 }
 
 const closePublishConfig = () => {
+  publishEvaluateSeq.value += 1
+  isEvaluating.value = false
+  isPublishing.value = false
+  clearPublishConfigMessage()
   showPublishConfigModal.value = false
   publishTarget.value = null
 }
 
 const confirmPublish = async () => {
   if (!publishTarget.value) return
+  if (isEvaluating.value) {
+    setPublishConfigMessage('AI 评估尚未完成，请稍候或点击取消关闭。', 'warning')
+    return
+  }
   
   try {
+    isPublishing.value = true
+    setPublishConfigMessage('正在发布问卷，请稍候...', 'info')
     loading.value = true
     const boostPoints = publishConfig.value.speedBoostPoints || 0
     await publishSurvey(publishTarget.value.id, {
@@ -230,15 +320,17 @@ const confirmPublish = async () => {
     window.dispatchEvent(new CustomEvent('points-updated'))
   } catch (err) {
     // 检查是否是登录过期
-    if (err.message.includes('登录已过期')) {
+    const errMsg = extractErrorMessage(err)
+    if (errMsg.includes('登录已过期')) {
       handleTokenExpired(router)
       return
     }
-    error.value = err.message
+    setPublishConfigMessage(`发布失败：${errMsg}`, 'error')
     setTimeout(() => {
       error.value = ''
     }, 3000)
   } finally {
+    isPublishing.value = false
     loading.value = false
   }
 }
@@ -531,7 +623,7 @@ onUnmounted(() => {
             <span class="difficulty-value">{{ publishConfig.difficultyLevel }} 级</span>
             <span class="reward-points-badge">自动奖励 {{ publishConfig.rewardPoints }} 积分/份</span>
           </div>
-          <span class="hint">本结果由 系统智能评估，如有明显不合理可提交反馈。</span>
+          <span class="hint">本结果由系统智能评估，如有明显不合理可提交反馈。</span>
         </div>
         <div class="form-group">
           <label>目标份数</label>
@@ -568,9 +660,14 @@ onUnmounted(() => {
           </div>
         </div>
       </div>
+      <div v-if="publishConfigMessage" class="publish-config-tip" :class="`tip-${publishConfigMessageType}`">
+        {{ publishConfigMessage }}
+      </div>
       <div class="modal-actions">
-        <button class="ghost-button" type="button" @click="closePublishConfig" :disabled="isEvaluating">取消</button>
-        <button class="primary-button" type="button" @click="confirmPublish" :disabled="isEvaluating">确认发布</button>
+        <button class="ghost-button" type="button" @click="closePublishConfig">取消</button>
+        <button class="primary-button" type="button" @click="confirmPublish" :disabled="isEvaluating || isPublishing">
+          {{ isPublishing ? '发布中...' : (isEvaluating ? '评估中...' : '确认发布') }}
+        </button>
       </div>
     </div>
   </div>
@@ -1001,6 +1098,44 @@ onUnmounted(() => {
   color: #ffffff;
   font-weight: 600;
   cursor: pointer;
+}
+
+.primary-button:disabled,
+.ghost-button:disabled,
+.danger-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.publish-config-tip {
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.publish-config-tip.tip-info {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+}
+
+.publish-config-tip.tip-success {
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
+}
+
+.publish-config-tip.tip-warning {
+  background: #fffbeb;
+  color: #b45309;
+  border: 1px solid #fde68a;
+}
+
+.publish-config-tip.tip-error {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
 }
 
 .card-hint {
