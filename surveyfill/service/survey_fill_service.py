@@ -8,6 +8,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from core.models import PointsLog
+from core.points import reward_points_for_difficulty
 from surveyfill.mapper.survey_fill_mapper import SurveyFillMapper
 
 
@@ -41,6 +42,8 @@ class SurveyFillService:
             "id": str(survey.id),
             "title": survey.title,
             "subtitle": survey.description or "",
+            "estimated_minutes": survey.estimated_minutes,
+            "reward_points": reward_points_for_difficulty(survey.difficulty),
             "questions": question_payloads,
         }
 
@@ -128,7 +131,7 @@ class SurveyFillService:
         response.save(update_fields=["submitted_at"])
 
         # 提交即时发放积分（已取消审核机制）
-        reward = survey.reward_points or 0
+        reward = reward_points_for_difficulty(survey.difficulty)
         if reward > 0:
             with transaction.atomic():
                 user_obj = user.__class__.objects.select_for_update().get(pk=user.pk)

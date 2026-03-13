@@ -2,7 +2,6 @@ import hashlib
 import json
 import secrets
 from datetime import datetime, time, timedelta, timezone as dt_timezone
-from typing import Optional
 
 from django.conf import settings as django_settings
 from django.contrib.auth.hashers import check_password, make_password
@@ -27,6 +26,7 @@ from .models import (
     UserTag,
     UserTagWeight,
 )
+from .points import difficulty_levels_for_min_reward, reward_points_for_difficulty
 from core.managers.similarity_manager import SimilarityManager
 
 # 权重参数
@@ -165,7 +165,7 @@ def survey_response(survey):
         "title": survey.title,
         "description": survey.description,
         "link": None,
-        "reward_points": survey.reward_points,
+        "reward_points": reward_points_for_difficulty(survey.difficulty),
         "estimated_minutes": survey.estimated_minutes,
         "deadline": now_iso(survey.deadline) if survey.deadline else None,
         "status": survey.status,
@@ -291,7 +291,7 @@ def _send_verification_email(to_email: str, code: str, purpose: str):
     )
 
 
-def _issue_code(email: str, purpose: str) -> Optional[str]:
+def _issue_code(email: str, purpose: str) -> str | None:
     """
     为指定邮符1和 purpose 创建新验证码记录。
     如果处于冷却期内，返回 None （调用方应返回 429）。
@@ -478,6 +478,17 @@ def send_reset_code(request):
 
 
 @csrf_exempt
+def request_password_reset(request):
+    """兼容旧路由：等价于 send_reset_code。"""
+    return send_reset_code(request)
+
+
+@csrf_exempt
+def request_password_reset(request):
+    return send_reset_code(request)
+
+
+@csrf_exempt
 def verify_reset_code(request):
     """验证重置码并重置密码。"""
     if request.method != "POST":
@@ -519,6 +530,17 @@ def verify_reset_code(request):
             "user": {"id": str(user.id), "nickname": user.nickname},
         }
     )
+
+
+@csrf_exempt
+def reset_password(request):
+    """兼容旧路由：等价于 verify_reset_code。"""
+    return verify_reset_code(request)
+
+
+@csrf_exempt
+def reset_password(request):
+    return verify_reset_code(request)
 
 
 @csrf_exempt
@@ -608,7 +630,8 @@ def surveys(request):
     if status:
         queryset = queryset.filter(status=status)
     if min_points:
-        queryset = queryset.filter(reward_points__gte=int(min_points))
+        levels = difficulty_levels_for_min_reward(min_points)
+        queryset = queryset.filter(difficulty__in=levels) if levels else queryset.none()
     if max_minutes:
         queryset = queryset.filter(estimated_minutes__lte=int(max_minutes))
 
@@ -618,7 +641,7 @@ def surveys(request):
         {
             "id": str(survey.id),
             "title": survey.title,
-            "reward_points": survey.reward_points,
+            "reward_points": reward_points_for_difficulty(survey.difficulty),
             "estimated_minutes": survey.estimated_minutes,
             "deadline": now_iso(survey.deadline) if survey.deadline else None,
         }
@@ -744,7 +767,7 @@ def review_fill(request, fill_id):
 
     points_awarded = 0
     if status == "approved":
-        points_awarded = record.survey.reward_points
+        points_awarded = reward_points_for_difficulty(record.survey.difficulty)
         record.user.points += points_awarded
         record.user.activity_points += points_awarded
         record.user.save(update_fields=["points", "activity_points"])

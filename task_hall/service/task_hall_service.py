@@ -4,6 +4,7 @@ import random
 from django.conf import settings
 from django.utils import timezone
 
+from core.points import normalize_difficulty, reward_points_for_difficulty
 from core.services.similarity_service import SimilarityService
 from task_hall.mapper.task_hall_mapper import TaskHallMapper
 
@@ -16,14 +17,6 @@ class TaskHallError(Exception):
 
 
 class TaskHallService:
-    DIFFICULTY_REWARD_MAP = {
-        1: 1,
-        2: 2,
-        3: 3,
-        4: 4,
-        5: 5,
-    }
-
     STATUS_LIVE_INTERNAL = {"published", "active", "live"}
 
     STATUS_FILTER_MAP = {
@@ -280,8 +273,8 @@ class TaskHallService:
     def _to_task_card(
         self, survey, filled_count=0, match_score=None, match_reason="", is_random=False
     ):
-        difficulty = survey.difficulty or 3
-        reward = self._reward_points_by_difficulty(difficulty)
+        difficulty = normalize_difficulty(survey.difficulty)
+        reward = reward_points_for_difficulty(difficulty)
 
         target = survey.target or 0
         status = "active" if survey.status in self.STATUS_LIVE_INTERNAL else "closed"
@@ -326,17 +319,6 @@ class TaskHallService:
             "match_level": match_level,
             "match_reason": match_reason,
         }
-
-    def _reward_points_by_difficulty(self, difficulty):
-        try:
-            level = int(difficulty)
-        except (TypeError, ValueError):
-            level = 3
-        if level < 1:
-            level = 1
-        if level > 5:
-            level = 5
-        return self.DIFFICULTY_REWARD_MAP[level]
 
     def _public_survey_id(self, survey_id):
         return f"s_{survey_id}"
