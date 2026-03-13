@@ -2,6 +2,10 @@
 
 本文档描述用户填答问卷、获取填写记录和审核答卷的接口。
 
+> 说明（当前实现）：主流程已切换为“提交即发奖”。
+> `POST /surveys/{survey_id}/fills` 成功后会立即发放积分并返回 `status=submitted`。
+> 本文中的审核接口内容保留为兼容说明，不作为当前前端主流程。
+
 ## 约定
 
 - Base URL：`/api/v1`
@@ -62,8 +66,9 @@ Content-Type: application/json
 ```json
 {
   "id": "f_abc123...",
-  "status": "pending",
-  "points_awarded": 0
+  "status": "submitted",
+  "points_awarded": 5,
+  "points_expected": 5
 }
 ```
 
@@ -72,8 +77,9 @@ Content-Type: application/json
 | 字段 | 说明 |
 |------|------|
 | id | 填写记录ID |
-| status | 当前状态（提交时为 `pending`） |
-| points_awarded | 已发放积分（待审核时为 0） |
+| status | 当前状态（提交成功后为 `submitted`） |
+| points_awarded | 已发放积分（提交后即时发放） |
+| points_expected | 预期奖励积分（通常等于 `points_awarded`） |
 
 **验证规则：**
 

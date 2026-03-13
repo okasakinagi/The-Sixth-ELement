@@ -136,10 +136,17 @@ Query 参数：
 
 ```json
 {
+  "reward_points": 5,
   "budget_points": 600,
   "target": 120
 }
 ```
+
+参数说明（当前实现）：
+
+- `reward_points`：必填，每份问卷奖励积分（后端不再自动推测）
+- `budget_points`：必填，总预算，需满足 `budget_points >= reward_points * target`
+- `target`：必填，目标份数，且必须大于 0
 
 响应体：
 

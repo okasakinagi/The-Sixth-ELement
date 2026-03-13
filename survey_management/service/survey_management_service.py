@@ -195,8 +195,15 @@ class SurveyManagementService:
         if survey.status != "draft":
             raise SurveyManagementError(409, "survey cannot be published")
 
+        reward_points = data.get("reward_points")
         budget_points = data.get("budget_points")
         target = data.get("target")
+        if reward_points is None:
+            raise SurveyManagementError(422, "reward_points is required")
+        try:
+            reward_points = int(reward_points)
+        except (TypeError, ValueError):
+            raise SurveyManagementError(422, "reward_points must be a number")
         try:
             budget_points = int(budget_points)
         except (TypeError, ValueError):
@@ -206,16 +213,21 @@ class SurveyManagementService:
         except (TypeError, ValueError):
             raise SurveyManagementError(422, "target must be a number")
 
+        if reward_points < 0:
+            raise SurveyManagementError(422, "reward_points must be >= 0")
         if budget_points < 0:
             raise SurveyManagementError(422, "budget_points must be >= 0")
         if target <= 0:
             raise SurveyManagementError(422, "target must be >= 1")
+        if budget_points < reward_points * target:
+            raise SurveyManagementError(
+                422, "budget_points must be >= reward_points * target"
+            )
 
         if user.points < budget_points:
             raise SurveyManagementError(422, "not enough points to publish survey")
 
-        if not survey.reward_points and budget_points > 0:
-            survey.reward_points = max(1, budget_points // target) if target else 0
+        survey.reward_points = reward_points
 
         frontend_estimated = data.get("estimated_minutes")
         if frontend_estimated is not None:

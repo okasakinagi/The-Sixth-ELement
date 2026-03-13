@@ -216,6 +216,7 @@ const confirmPublish = async () => {
     loading.value = true
     const boostPoints = publishConfig.value.speedBoostPoints || 0
     await publishSurvey(publishTarget.value.id, {
+      reward_points: publishConfig.value.rewardPoints,
       budget_points: publishConfig.value.rewardPoints * publishConfig.value.targetCount + boostPoints,
       target: publishConfig.value.targetCount,
       estimated_minutes: publishConfig.value.estimatedMinutes,

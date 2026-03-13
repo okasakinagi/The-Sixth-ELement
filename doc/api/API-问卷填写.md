@@ -114,15 +114,19 @@
 ```json
 {
   "id": "f_xyz789",
-  "status": "pending",
-  "points_awarded": 0
+  "status": "submitted",
+  "points_awarded": 5,
+  "points_expected": 5
 }
 ```
 
 **字段说明：**
 - `id`：填写记录ID
-- `status`：`pending`（待审核）/ `approved`（已通过）/ `rejected`（已拒绝）
-- `points_awarded`：当前已发放积分（审核前为 0）
+- `status`：当前实现提交后为 `submitted`
+- `points_awarded`：本次已发放积分（提交后即时发放）
+- `points_expected`：预期奖励积分（通常等于 `points_awarded`）
+
+**说明（当前实现）**：主流程已取消“提交后等待审核再发奖”，改为提交成功后即时发放奖励积分。
 
 **后端校验规则：**
 1. 所有 `required: true` 的题目必须有答案

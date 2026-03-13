@@ -189,6 +189,7 @@ export async function resumeSurvey(surveyId) {
  * POST /surveys/{survey_id}/publish
  * @param {string} surveyId 问卷ID
  * @param {Object} data 发布数据
+ * @param {number} data.reward_points 每份奖励积分
  * @param {number} data.budget_points 预算积分
  * @param {number} data.target 目标份数
  */
