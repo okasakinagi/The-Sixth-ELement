@@ -13,60 +13,67 @@ POST /auth/register | POST /auth/login
 Authorization: Bearer <access_token>
 ```
 
-### 2️⃣ 核心操作（三选一）
+### 2️⃣ 核心操作（按角色）
 
-**A. 发布问卷**
+**A. 发布者：创建草稿并发布**
 ```bash
-POST /surveys
+POST /surveys/drafts
 {
-  "title": "问卷标题",
-  "link": "https://form.link",
-  "reward_points": 50
+  "title": "问卷标题"
 }
 ↓
-扣费：user.points -= 50
+PATCH /surveys/drafts/{id}   # 写入题目
 ↓
-等待他人填答
+POST /surveys/{id}/publish
+{
+  "reward_points": 5,
+  "budget_points": 600,
+  "target": 120
+}
+↓
+扣费：user.points -= budget_points
 ```
 
 **B. 填答问卷**
 ```bash
-GET /surveys?status=active          # 浏览列表
+GET /task-hall/tasks                # 浏览推荐任务
 ↓
-GET /surveys/{id}                   # 查看详情
+GET /surveys/{id}/fill              # 获取可填写问卷
 ↓
 POST /surveys/{id}/fills            # 提交答卷
 {
-  "duration_seconds": 180           # 必须填答至少 10 秒
-}
-```
-
-**C. 审核答卷**
-```bash
-POST /fills/{id}/review
-{
-  "status": "approved"              # 或 "rejected"
+  "duration_seconds": 180,
+  "answers": [...]
 }
 ↓
-若通过：user.points += reward_points
+提交成功即发放积分 points_awarded
+```
+
+**C. 查看记录/统计**
+```bash
+GET /fills/me                        # 我的填写记录
+GET /points/logs                     # 积分流水
+GET /surveys/{id}/analytics/summary  # 发布者看统计
 ```
 
 ### 3️⃣ 查看结果
 ```bash
-GET /points/logs                    # 查看积分变化
-↓
-GET /fills/me                       # 查看我的填答
+GET /task-hall/overview
+GET /task-hall/tasks
 ```
 
 ---
 
 ## 📊 接口速查表
 
-### 认证（2）
+### 认证（5）
 | 方法 | 路径 | 说明 |
 |------|------|------|
+| POST | /auth/send-register-code | 发送注册验证码 |
 | POST | /auth/register | 注册 |
 | POST | /auth/login | 登录 |
+| POST | /auth/send-reset-code | 发送重置验证码 |
+| POST | /auth/reset-password | 重置密码 |
 
 ### 用户（2）
 | 方法 | 路径 | 说明 |
@@ -74,25 +81,39 @@ GET /fills/me                       # 查看我的填答
 | GET | /users/me | 获取信息 |
 | PATCH | /users/me | 更新信息 |
 
-### 问卷（4）
+### 问卷管理（核心）
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | /surveys | 列表（分页） |
-| GET | /surveys/{id} | 详情 |
-| POST | /surveys | 发布 |
-| POST | /surveys/{id}/close | 关闭 |
+| GET | /surveys | 我的问卷列表 |
+| GET | /surveys/summary | 我的问卷统计 |
+| GET | /surveys/{id} | 问卷详情 |
+| DELETE | /surveys/{id} | 删除问卷 |
+| POST | /surveys/{id}/publish | 发布问卷 |
+| POST | /surveys/{id}/pause | 暂停 |
+| POST | /surveys/{id}/resume | 恢复 |
+| POST | /surveys/{id}/cancel | 取消发布并退款 |
 
-### 答卷（3）
+### 草稿与填写
 | 方法 | 路径 | 说明 |
 |------|------|------|
+| POST | /surveys/drafts | 创建草稿 |
+| GET | /surveys/drafts/{id} | 获取草稿 |
+| PATCH | /surveys/drafts/{id} | 保存草稿 |
+| POST | /surveys/drafts/{id}/ai-generate | AI生成题目 |
+| GET | /surveys/{id}/fill | 获取填写问卷 |
 | POST | /surveys/{id}/fills | 提交 |
 | GET | /fills/me | 我的填答 |
-| POST | /fills/{id}/review | 审核 |
 
-### 其他（2）
+### 任务大厅与其他
 | 方法 | 路径 | 说明 |
 |------|------|------|
+| GET | /task-hall/overview | 任务大厅概览 |
+| GET | /task-hall/tasks | 任务列表 |
+| POST | /task-hall/batch/refresh | 换一批 |
+| GET | /task-hall/guest-tasks | 访客任务 |
 | GET | /points/logs | 积分流水 |
+| GET | /points/summary | 积分汇总 |
+| POST | /points/update | 积分更新（管理用途） |
 | POST | /reports | 举报 |
 
 ---
@@ -116,9 +137,9 @@ GET /fills/me                       # 查看我的填答
 }
 ```
 
-### 问卷筛选参数
+### 任务大厅筛选参数
 ```
-GET /surveys?status=active&min_points=10&max_minutes=30
+GET /task-hall/tasks?status=active&min_reward=10&max_minutes=30&page=1&page_size=20
 ```
 
 ### 积分筛选参数
@@ -138,9 +159,8 @@ GET /points/logs?type=earn  // earn 或 spend
 
 ### 积分
 - 初始：20 分
-- 发布问卷：扣费（-reward_points）
-- 填答通过：加分（+reward_points）
-- 填答拒绝：不加分
+- 发布问卷：按预算扣费（-budget_points）
+- 提交答卷：即时加分（+reward_points）
 
 ### 信用分
 - 初始：80 分
@@ -155,16 +175,17 @@ GET /points/logs?type=earn  // earn 或 spend
 
 ### 用 Fetch
 ```javascript
-const response = await fetch('/api/v1/surveys', {
+const response = await fetch('/api/v1/surveys/s_1/fills', {
   method: 'POST',
   headers: {
     'Authorization': `Bearer ${token}`,
     'Content-Type': 'application/json'
   },
   body: JSON.stringify({
-    title: '问卷',
-    link: 'https://...',
-    reward_points: 50
+    duration_seconds: 180,
+    answers: [
+      { question_id: 'q_1', value: 'A' }
+    ]
   })
 });
 const data = await response.json();
@@ -172,10 +193,10 @@ const data = await response.json();
 
 ### 用 curl
 ```bash
-curl -X POST http://127.0.0.1:8000/api/v1/surveys \
+curl -X POST http://127.0.0.1:8000/api/v1/surveys/s_1/fills \
   -H "Authorization: Bearer TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"title":"问卷","link":"https://...","reward_points":50}'
+  -d '{"duration_seconds":180,"answers":[{"question_id":"q_1","value":"A"}]}'
 ```
 
 ## 📚 详细文档位置
@@ -184,8 +205,9 @@ curl -X POST http://127.0.0.1:8000/api/v1/surveys \
 |------|------|
 | 注册/登录细节 | API-认证.md |
 | 用户信息 | API-用户和问卷基础.md |
-| 问卷发布 | API-用户和问卷基础.md |
-| 填答与审核 | API-答卷提交和审核.md |
+| 问卷发布 | API-问卷管理.md |
+| 草稿制作 | API-问卷制作.md |
+| 填答与记录 | API-问卷填写.md / API-答卷提交和审核.md |
 | 积分明细 | API-积分和举报.md |
 | 完整说明 | API-总览.md |
 

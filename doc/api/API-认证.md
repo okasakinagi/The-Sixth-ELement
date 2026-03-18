@@ -1,6 +1,6 @@
-# 认证 API（Register & Login）
+# 认证 API
 
-本文档描述用户注册和登录相关接口。
+本文档描述注册、登录、验证码与密码重置接口。
 
 ## 约定
 
@@ -40,7 +40,40 @@
 
 ---
 
-## 注册接口
+## 注册流程
+
+当前注册采用两步：先发验证码，再携验证码注册。
+
+### 发送注册验证码
+
+`POST /auth/send-register-code`
+
+请求体：
+
+```json
+{
+  "email": "alice@example.com"
+}
+```
+
+响应体：
+
+```json
+{
+  "message": "verification code sent",
+  "expires_in": 900
+}
+```
+
+可能错误码：
+
+- `422` 邮箱为空或已注册
+- `429` 发送频率过高
+- `500` 邮件发送失败
+
+---
+
+### 用户注册
 
 ### 用户注册
 
@@ -53,7 +86,8 @@ Content-Type: application/json
 {
   "email": "alice@example.com",
   "password": "securePassword123",
-  "nickname": "Alice"
+  "nickname": "Alice",
+  "code": "123456"
 }
 ```
 
@@ -62,8 +96,9 @@ Content-Type: application/json
 | 参数 | 类型 | 约束 | 说明 |
 |------|------|------|------|
 | email | string | 必填，<=128 | 邮箱地址，唯一 |
-| password | string | 必填，<=128 | 密码（明文存储，需自行加密） |
+| password | string | 必填 | 密码（最短 6 位） |
 | nickname | string | 必填，<=64 | 昵称 |
+| code | string | 必填 | 注册验证码 |
 
 **响应体：**
 
@@ -84,19 +119,12 @@ Content-Type: application/json
 - `expires_in`：token 有效期（秒），当前固定 3600 秒
 - `user.id`：系统生成的用户唯一ID（前缀 `u_`）
 
-**错误响应：**
-
-```json
-{
-  "error": "email already registered"
-}
-```
-
 **可能的错误码：**
 
 - `405` 方法不允许（非 POST）
-- `422` 参数校验失败：`email, password, nickname required`
-- `422` 邮箱已注册：`email already registered`
+- `422` 参数校验失败（邮箱/密码/昵称/验证码）
+- `422` 邮箱已注册
+- `401` 验证码无效或已过期
 
 ---
 
@@ -141,19 +169,62 @@ Content-Type: application/json
 - 登录成功会生成新的 `access_token`，覆盖之前的 token
 - 每次登录都重新生成 token
 
-**错误响应：**
-
-```json
-{
-  "error": "invalid credentials"
-}
-```
-
 **可能的错误码：**
 
 - `405` 方法不允许（非 POST）
-- `422` 参数校验失败：`email and password required`
-- `401` 凭证错误：`invalid credentials`
+- `422` 参数校验失败（邮箱和密码不能为空）
+- `401` 凭证错误（邮箱或密码错误）
+
+---
+
+## 密码重置流程
+
+### 发送重置验证码
+
+`POST /auth/send-reset-code`
+
+请求体：
+
+```json
+{
+  "email": "alice@example.com"
+}
+```
+
+响应体：
+
+```json
+{
+  "message": "verification code sent",
+  "expires_in": 900
+}
+```
+
+### 提交验证码并重置密码
+
+`POST /auth/reset-password`
+
+请求体：
+
+```json
+{
+  "email": "alice@example.com",
+  "code": "123456",
+  "new_password": "newSecurePassword123"
+}
+```
+
+响应体：
+
+```json
+{
+  "message": "password reset successful",
+  "user": {
+    "id": "1",
+    "nickname": "Alice"
+  }
+}
+```
 
 ---
 
@@ -164,7 +235,7 @@ Content-Type: application/json
 登录/注册后，前端应将 `access_token` 保存到 `localStorage`：
 
 ```javascript
-localStorage.setItem('accessToken', response.access_token);
+localStorage.setItem('access_token', response.access_token);
 localStorage.setItem('user', JSON.stringify(response.user));
 ```
 
@@ -176,7 +247,7 @@ localStorage.setItem('user', JSON.stringify(response.user));
 fetch('/api/v1/users/me', {
   method: 'GET',
   headers: {
-    'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
+    'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
     'Content-Type': 'application/json'
   }
 })
@@ -188,7 +259,7 @@ fetch('/api/v1/users/me', {
 
 ```javascript
 if (response.status === 401) {
-  localStorage.removeItem('accessToken');
+  localStorage.removeItem('access_token');
   localStorage.removeItem('user');
   // 跳转到登录页
   window.location.href = '/auth';

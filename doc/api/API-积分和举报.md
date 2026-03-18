@@ -1,6 +1,6 @@
-# 积分与报告 API
+# 积分与举报 API
 
-本文档描述用户积分流水查询和举报相关接口。
+本文档描述积分查询与举报接口。
 
 ## 约定
 
@@ -11,7 +11,18 @@
 
 ---
 
-## 积分流水 API
+## 积分接口说明
+
+当前代码存在两组积分接口：
+
+1. legacy：`/api/v1/points/logs`（`core.views.points_logs`）
+2. points_record：`/api/v1/points/summary`、`/api/v1/points/logs`、`/api/v1/points/update`
+
+说明：`/api/v1/points/logs` 路径在代码中存在同名实现，联调时请以当前前端实际消费的响应结构为准。
+
+---
+
+### Legacy 积分流水
 
 ### 获取积分流水记录
 
@@ -36,11 +47,11 @@ Authorization: Bearer <access_token>
 {
   "items": [
     {
-      "id": "p_abc123...",
+      "id": "123",
       "delta": 50,
       "reason": "完成问卷",
       "created_at": "2026-01-21T10:30:00Z",
-      "related_id": "s_survey123",
+      "related_id": "12",
       "related_type": "survey_fill"
     },
     {
@@ -56,7 +67,7 @@ Authorization: Bearer <access_token>
   "page_size": 20,
   "total": 45,
   "user": {
-    "id": "u_abc123...",
+    "id": "1",
     "points": 150,
     "credit_score": 85,
     "activity_points": 200,
@@ -69,11 +80,11 @@ Authorization: Bearer <access_token>
 
 | 字段 | 说明 |
 |------|------|
-| id | 流水记录唯一ID |
+| id | 流水记录ID |
 | delta | 积分变化量（正数=收入，负数=支出） |
 | reason | 变化原因 |
 | created_at | 发生时间 |
-| related_id | 关联资源ID（如 survey_id 或 fill_id） |
+| related_id | 关联资源ID（推断，可能为空） |
 | related_type | 关联资源类型：`survey_fill`（完成问卷）、`survey_publish`（发布问卷） |
 | has_honor | 是否具有荣誉身份（credit_score >= 85） |
 
@@ -81,13 +92,57 @@ Authorization: Bearer <access_token>
 
 | 原因 | delta | related_type | 说明 |
 |------|-------|--------------|------|
-| 完成问卷 | +50 | survey_fill | 用户填答问卷，被问卷主审核通过 |
+| 完成问卷 | +50 | survey_fill | 用户提交答卷后获得奖励（主流程） |
 | 发布问卷消耗 | -100 | survey_publish | 用户发布问卷，扣除预设的积分预算 |
 
 **可能的错误码：**
 
 - `401` 未登录或 Token 过期
 - `422` 参数错误（如 page 非数字）
+
+---
+
+---
+
+### points_record 汇总
+
+#### 获取积分汇总
+
+`GET /points/summary`
+
+响应示例：
+
+```json
+{
+  "user": {
+    "id": "u_1",
+    "nickname": "Alice",
+    "points": 150,
+    "activity_points": 200
+  },
+  "summary": {
+    "total_points": 150,
+    "total_activity_points": 200,
+    "recent_earned": 80,
+    "recent_spent": 20
+  }
+}
+```
+
+#### 更新积分（管理用途）
+
+`POST /points/update`
+
+请求示例：
+
+```json
+{
+  "delta": 10,
+  "reason": "活动奖励",
+  "ref_type": "admin_adjust",
+  "ref_id": "evt_01"
+}
+```
 
 ---
 
@@ -121,8 +176,8 @@ Content-Type: application/json
 
 ```json
 {
-  "id": "r_abc123...",
-  "status": "pending"
+  "id": "10",
+  "status": "open"
 }
 ```
 
@@ -130,8 +185,8 @@ Content-Type: application/json
 
 | 字段 | 说明 |
 |------|------|
-| id | 举报记录唯一ID（前缀 `r_`） |
-| status | 举报状态：`pending`（待审核）、`reviewed`（已处理） |
+| id | 举报记录ID |
+| status | 当前实现默认 `open` |
 
 **举报原因示例：**
 
@@ -142,7 +197,7 @@ Content-Type: application/json
 
 - `401` 未登录或 Token 过期
 - `405` 方法不允许（非 POST）
-- `422` 参数校验失败：`target_type, target_id, reason required`
+- `422` 参数校验失败：举报目标类型、目标ID和原因不能为空
 - `422` target_type 非法（需为 `survey` 或 `user`）
 
 ---
@@ -154,7 +209,7 @@ Content-Type: application/json
 | 方式 | 积分 | 触发条件 |
 |------|------|---------|
 | 注册新账户 | +20 | 注册成功 |
-| 完成问卷 | 由发布者设定 | 问卷被审核通过 |
+| 完成问卷 | 由发布者设定 | 答卷提交成功（主流程即时发奖） |
 
 ### 积分消耗方式
 
@@ -170,7 +225,7 @@ Content-Type: application/json
 
 ### 活跃度积分（不可交易）
 
-- **获得**：完成问卷被审核通过时 +points_awarded
+- **获得**：完成问卷提交成功时 +points_awarded
 - **用途**：标识用户贡献度，用于排序和推荐
 
 ---

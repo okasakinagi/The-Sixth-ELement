@@ -202,7 +202,7 @@
 
 ### 存储位置
 
-状态存储在后端数据库 `UserProfile.current_status` 字段，通过 PATCH `/api/v1/profile/me` 接口读写。
+状态存储在后端画像字段（`current_status`），通过 PATCH `/api/v1/users/me/profile` 接口读写。
 
 ### 字符串格式
 

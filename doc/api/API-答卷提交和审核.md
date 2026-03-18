@@ -1,10 +1,9 @@
 # 答卷提交与审核 API
 
-本文档描述用户填答问卷、获取填写记录和审核答卷的接口。
+本文档描述填答提交、我的填答记录与兼容审核接口。
 
-> 说明（当前实现）：主流程已切换为“提交即发奖”。
-> `POST /surveys/{survey_id}/fills` 成功后会立即发放积分并返回 `status=submitted`。
-> 本文中的审核接口内容保留为兼容说明，不作为当前前端主流程。
+> 当前主流程：`POST /surveys/{survey_id}/fills` 成功后立即发放积分。
+> `POST /fills/{fill_id}/review` 仍可调用，但不作为前端主流程依赖。
 
 ## 约定
 
@@ -23,7 +22,7 @@
 {
   "id": "f_abc123...",
   "survey_id": "s_survey123",
-  "status": "pending",
+  "status": "submitted",
   "created_at": "2026-01-21T10:30:00Z"
 }
 ```
@@ -34,7 +33,7 @@
 |------|------|
 | id | 填写记录ID（前缀 `f_`） |
 | survey_id | 所属问卷ID |
-| status | 审核状态：`pending`（待审核）、`approved`（已通过）、`rejected`（已拒绝） |
+| status | 记录状态：常见为 `submitted`，兼容审核后可见 `approved` / `rejected` |
 | created_at | 提交时间 |
 
 ---
@@ -51,7 +50,10 @@ Authorization: Bearer <access_token>
 Content-Type: application/json
 
 {
-  "duration_seconds": 180
+  "duration_seconds": 180,
+  "answers": [
+    { "question_id": "q_1", "value": "选项A" }
+  ]
 }
 ```
 
@@ -59,7 +61,8 @@ Content-Type: application/json
 
 | 参数 | 类型 | 约束 | 说明 |
 |------|------|------|------|
-| duration_seconds | number | 可选 | 填答耗时（秒），用于防作弊验证 |
+| duration_seconds | number | 必填 | 填答耗时（秒），用于防作弊验证 |
+| answers | array | 必填 | 答案列表，元素含 `question_id` 与 `value` |
 
 **响应体：**
 
@@ -86,17 +89,17 @@ Content-Type: application/json
 - 填答时间不能过短（需 > 10 秒）
 - 一个用户对同一问卷只能提交一次
 - 不能填写自己发布的问卷
-- 问卷必须处于 `active` 状态
+- 问卷必须处于可填写状态（发布中且有已发布问卷内容）
 
 **可能的错误码：**
 
 - `401` 未登录或 Token 过期
-- `404` 问卷不存在：`survey not found`
+- `404` 问卷不存在
 - `405` 方法不允许（非 POST）
-- `422` 问卷已关闭：`survey not active`
-- `422` 不能填写自己的问卷：`cannot fill your own survey`
-- `422` 已填过该问卷：`already filled`
-- `422` 填答时间过短：`fill duration too short`
+- `422` 问卷不可填写（如未发布）
+- `422` 不能填写自己的问卷
+- `422` 已填过该问卷
+- `422` 填答时间过短
 
 ---
 
@@ -115,7 +118,7 @@ Authorization: Bearer <access_token>
 
 | 参数 | 类型 | 约束 | 说明 |
 |------|------|------|------|
-| status | string | 可选 | 筛选状态：`pending`、`approved`、`rejected`，不填则返回全部 |
+| status | string | 可选 | 记录状态筛选（`submitted` / `approved` / `rejected` 等） |
 | page | number | 可选，默认 1 | 页码 |
 | page_size | number | 可选，默认 20 | 每页数量 |
 
@@ -127,13 +130,13 @@ Authorization: Bearer <access_token>
     {
       "id": "f_abc123...",
       "survey_id": "s_survey123",
-      "status": "approved",
+      "status": "submitted",
       "created_at": "2026-01-20T15:30:00Z"
     },
     {
       "id": "f_def456...",
       "survey_id": "s_survey456",
-      "status": "pending",
+      "status": "submitted",
       "created_at": "2026-01-21T10:00:00Z"
     }
   ],
@@ -149,9 +152,9 @@ Authorization: Bearer <access_token>
 
 ---
 
-## 答卷审核
+## 兼容审核接口
 
-### 审核答卷
+### 审核答卷（兼容）
 
 **请求：**
 
@@ -187,33 +190,30 @@ Content-Type: application/json
 |------|------|
 | id | 填写记录ID |
 | status | 审核结果 |
-| points_awarded | 发放的积分 |
+| points_awarded | 本次审核发放积分 |
 
-**审核逻辑：**
+**审核逻辑（兼容）：**
 
 - **通过（approved）**：
   - 用户获得问卷设定的 `reward_points`
   - 用户的 `activity_points` 增加相同数值
   - 生成对应的积分流水记录（reason: "完成问卷"）
   
-- **拒绝（rejected）**：
-  - `points_awarded` 为 0
-  - 不产生任何积分变化
-  - 用户可重新填答该问卷
+- **拒绝（rejected）**：`points_awarded` 为 0，不产生积分变化
 
 **权限限制：**
 
 - 只有问卷发布者可以审核答卷
-- 同一答卷只能审核一次（status 必须为 `pending`）
+- 同一答卷只能审核一次（status 需为 `submitted`）
 
 **可能的错误码：**
 
 - `401` 未登录或 Token 过期
-- `404` 填写记录不存在：`fill record not found`
+- `404` 填写记录不存在
 - `405` 方法不允许（非 POST）
-- `403` 权限不足：`not survey owner`
-- `422` 参数错误：`status must be approved or rejected`
-- `422` 已审核过：`record already reviewed`
+- `403` 权限不足（非问卷所有者）
+- `422` 参数错误（status 非 approved/rejected）
+- `422` 已审核过
 
 ---
 
@@ -221,7 +221,7 @@ Content-Type: application/json
 
 ### 提交答卷
 
-用户在第三方问卷平台（Google Form 等）完成填答后，点击"提交"按钮时：
+用户在问卷填写页完成填答后，点击"提交"按钮时：
 
 ```javascript
 // 记录填答耗时
@@ -240,7 +240,8 @@ const response = await fetch(`/api/v1/surveys/${surveyId}/fills`, {
     'Content-Type': 'application/json'
   },
   body: JSON.stringify({
-    duration_seconds: duration
+    duration_seconds: duration,
+    answers: answersPayload
   })
 });
 
@@ -248,7 +249,7 @@ const data = await response.json();
 if (data.error) {
   alert(data.error); // 显示错误信息
 } else {
-  alert('答卷已提交，等待审核！');
+  alert(`答卷已提交，获得 ${data.points_awarded} 积分`);
   // 跳转回任务大厅
   navigate('/tasks');
 }
@@ -270,13 +271,13 @@ const data = await response.json();
 // 显示每条记录的状态和时间
 ```
 
-### 审核答卷（问卷发布者）
+### 审核答卷（仅兼容场景）
 
-在"问卷管理"页面的"待审核"标签中：
+在兼容审核场景中：
 
 ```javascript
-// 获取待审核的答卷列表
-const response = await fetch(`/api/v1/fills/me?status=pending`, {
+// 仅在兼容场景下使用 submitted 作为待审核状态
+const response = await fetch(`/api/v1/fills/me?status=submitted`, {
   headers: { 'Authorization': `Bearer ${accessToken}` }
 });
 
@@ -296,24 +297,23 @@ const result = await reviewResponse.json();
 if (result.error) {
   alert(result.error);
 } else {
-  alert(`答卷已${result.status === 'approved' ? '批准' : '拒绝'}，${result.points_awarded} 积分已发放`);
+  alert(`答卷已${result.status === 'approved' ? '批准' : '拒绝'}，本次发放 ${result.points_awarded} 积分`);
   // 刷新列表
 }
 ```
 
 ---
 
-## 状态流转图
+## 状态流转
 
 ```
-提交答卷
-   |
-   v
-pending (待审核)
-   |
-   +---> approved (已通过) --> 发放积分 --> 完成
-   |
-   +---> rejected (已拒绝) --> 无积分 --> 完成
+提交答卷（主流程）
+  |
+  +---> submitted + 即时发奖
+
+兼容审核链路
+  |
+  +---> approved / rejected
 ```
 
 ---
@@ -322,11 +322,11 @@ pending (待审核)
 
 ### 1. 用户提交后能否修改填答？
 
-否，一次提交后不能修改。如被拒绝，用户可以重新提交。
+否，一次提交后不能修改；同一用户对同一问卷只能提交一次。
 
 ### 2. 审核后能否反悔？
 
-不能。审核结果不可修改，需要另外设计"申诉"流程。
+不能。审核结果不可修改，需要额外申诉/管理流程支持。
 
 ### 3. 填答时间过短会怎样？
 

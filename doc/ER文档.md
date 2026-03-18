@@ -7,7 +7,7 @@
 1. 发布者创建 **SURVEY（任务）**
 2. 在站内配置 **QUESTIONNAIRE（问卷版本）→ QUESTION（题目）→ OPTION（选项）**
 3. 填写者开始答题生成 **RESPONSE（答卷）**，逐题写入 **ANSWER（答案）**
-4. 提交后进入（可选）风控/审核，最终发放积分（**POINTS_LOG**）并通知（**NOTIFICATION**）
+4. 提交后主流程即时发放积分（**POINTS_LOG**）；兼容模式下可走审核流程，并通知（**NOTIFICATION**）
 5. 异常行为由用户发起 **REPORT（举报）**，管理员处理留痕于 **AUDIT_LOG**
 
 ---
@@ -68,7 +68,7 @@
 * `owner_id`：发布者（FK → USER）
 * `title / description`
 * `estimated_minutes`：预计耗时
-* `reward_points`：填写通过后奖励
+* `reward_points`：每份填写奖励（主流程提交成功即发放，兼容审核链路可在 review 时发放）
 * `publish_cost_points`：发布成本（扣分）
 * `deadline`：截止时间
 * `status`：draft/published/closed/expired/rejected…
@@ -163,7 +163,8 @@
 
 **业务联动**
 
-* 提交后（submitted）→ 可进入审核 → approved 后触发积分与通知。
+* 当前主流程：提交后（submitted）即触发积分与通知。
+* 兼容链路：submitted → approved/rejected（用于 legacy review 接口）。
 
 ---
 
@@ -348,29 +349,30 @@
 
 ---
 
-### 3.2 站内填写（开始 → 保存 → 提交）
+### 3.2 站内填写（提交即发奖）
 
-1. 用户点击开始：
+1. 用户进入填写页后提交答案：
 
-   * 创建 RESPONSE(status=in_progress, started_at)
-2. 答题过程中保存：
+  * 一次请求提交 `answers + duration_seconds`
+2. 提交时校验：
 
-   * 对每题 upsert ANSWER（唯一键 response_id+question_id）
-3. 用户提交：
+  * 必填题、答案合法性、问卷状态、重复提交、不可填写自己问卷
+3. 提交成功：
 
-   * 校验必填题、答案合法性
-   * RESPONSE.status=submitted，记录 submitted_at、duration_seconds
+  * 创建 RESPONSE(status=submitted, submitted_at, duration_seconds)
+  * 批量写入 ANSWER
+  * 立即写积分流水 POINTS_LOG（fill_reward）并更新 USER.points/activity_points
 
 ---
 
-### 3.3 审核与积分结算（可选）
+### 3.3 审核与积分结算（兼容链路）
 
-* 自动/人工审核：
+* 自动/人工审核（兼容接口）：
 
   * 通过：RESPONSE.status=approved
 
-    * 发积分：POINTS_LOG(delta=+reward_points, ref=RESPONSE)
-    * 更新 USER.points
+    * 可发积分：POINTS_LOG(delta=+reward_points, ref=RESPONSE)
+    * 更新 USER.points（取决于是否已在提交时发放）
     * 发送 NOTIFICATION
   * 驳回：RESPONSE.status=rejected + 通知
 

@@ -1,277 +1,130 @@
 # API 总览
 
-本文件为后端 API 的总览文档。详细接口说明请见各专题文档。
+本文件按当前代码实现汇总后端接口。详细入参/出参请看各专题文档。
 
-## API 分类
+## 实际路由结构
 
-### 已实现接口（✅ 已在后端实现）
+- 统一前缀：`/api/v1`
+- 多应用挂载：`core`、`survey_management`、`task_hall`、`personal_homepage`
+- 子前缀挂载：
+   - `points_record` 挂载在 `/api/v1/points/`
+   - `user_profile_extractor` 挂载在 `/api/v1/profile/`
 
-- **认证**：doc/api/API-认证.md
-  - POST /auth/register - 用户注册
-  - POST /auth/login - 用户登录
+## 已实现接口（按领域）
 
-- **用户与问卷基础**：doc/api/API-用户和问卷基础.md
-  - GET /users/me - 获取当前用户信息
-  - PATCH /users/me - 更新当前用户信息
-  - GET /surveys - 获取问卷列表
-  - GET /surveys/{id} - 获取问卷详情
-  - POST /surveys - 创建并发布问卷
-  - POST /surveys/{id}/close - 关闭问卷
+### 认证与账号
 
-- **答卷提交与审核**：doc/api/API-答卷提交和审核.md
-  - POST /surveys/{id}/fills - 提交答卷
-  - GET /fills/me - 获取我的填写记录
-  - POST /fills/{id}/review - 审核答卷
+- `POST /auth/send-register-code`
+- `POST /auth/register`
+- `POST /auth/login`
+- `POST /auth/send-reset-code`
+- `POST /auth/reset-password`
+- `GET /users/me`
+- `PATCH /users/me`
 
-- **积分与报告**：doc/api/API-积分和举报.md
-  - GET /points/logs - 获取积分流水
-  - POST /reports - 创建举报
+### 问卷管理与制作
 
-### 规划中的接口（🚧 需要后续实现）
+- `GET /surveys`
+- `POST /surveys`
+- `GET /surveys/summary`
+- `POST /surveys/drafts`
+- `GET /surveys/drafts/{draft_id}`
+- `PATCH /surveys/drafts/{draft_id}`
+- `POST /surveys/drafts/{draft_id}/ai-generate`
+- `DELETE /surveys/drafts/{draft_id}/questions/{question_id}`
+- `GET /surveys/{survey_id}`
+- `DELETE /surveys/{survey_id}`
+- `POST /surveys/{survey_id}/publish`
+- `POST /surveys/{survey_id}/pause`
+- `POST /surveys/{survey_id}/resume`
+- `POST /surveys/{survey_id}/cancel`
+- `POST /surveys/{survey_id}/evaluate`
+- `POST /surveys/{survey_id}/close`（兼容入口）
 
-- **个人主页/编辑资料**：doc/api/API-个人界面.md
-  - GET /users/me/profile - 获取用户画像（待实现）
-  - PATCH /users/me/profile - 更新用户画像（待实现）
+### 问卷填写与记录
 
-- **任务大厅**：doc/api/API-任务大厅.md
-  - GET /task-hall/overview - 获取任务大厅概览（待实现）
-  - GET /task-hall/tasks - 获取任务列表（待实现）
-  - POST /task-hall/batch/refresh - 换一批/补位（待实现）
+- `GET /surveys/{survey_id}/fill`
+- `POST /surveys/{survey_id}/fills`
+- `GET /fills/me`
+- `POST /fills/{fill_id}/review`（兼容入口，非主流程）
 
-- **问卷管理**：doc/api/API-问卷管理.md
-  - GET /surveys/summary - 获取问卷统计（待实现）
-  - DELETE /surveys/{id} - 删除问卷（待实现）
-  - POST /surveys/{id}/pause - 暂停问卷（待实现）
-  - POST /surveys/{id}/resume - 恢复问卷（待实现）
+### 任务大厅
 
-- **问卷制作**：doc/api/API-问卷制作.md
-  - POST /surveys/drafts - 创建草稿（待实现）
-  - GET /surveys/drafts/{id} - 获取草稿（待实现）
-  - PATCH /surveys/drafts/{id} - 保存草稿（待实现）
-  - POST /surveys/drafts/{id}/ai-generate - AI生成题目（待实现）
+- `GET /task-hall/overview`
+- `GET /task-hall/tasks`
+- `POST /task-hall/batch/refresh`
+- `GET /task-hall/guest-tasks`
 
-- **问卷填写**：doc/api/API-问卷填写.md
-  - GET /surveys/{id}/fill - 获取填写界面问卷（待实现）
+### 数据分析
 
-- **数据分析**：doc/api/API-数据分析.md
-  - GET /surveys/{id}/analytics/summary - 获取分析概览（待实现）
-  - GET /surveys/{id}/analytics/questions - 获取题目统计（待实现）
+- `GET /surveys/{survey_id}/analytics/summary`
+- `GET /surveys/{survey_id}/analytics/questions`
+- `GET /surveys/{survey_id}/analytics/export`
+
+### 积分与举报
+
+- `GET /points/logs`（当前由 `core` 提供）
+- `GET /points/summary`
+- `GET /points/logs`（`points_record` 路面，注意同名路径并存）
+- `POST /points/update`
+- `POST /reports`
+
+### 画像与内部能力
+
+- `GET /users/me/profile`
+- `PATCH /users/me/profile`
+- `PUT /users/me/profile`
+- `GET /users/me/profile/matches`
+- `GET /profile/summary`
+- `POST /internal/similarity/compute`
+- `POST /internal/vector/encode`
+- `POST /internal/vector/generate-string`
+- `POST /internal/vector/generate`
+- `POST /internal/similarity/dismiss`
+- `POST /internal/similarity/abandon`
+- `POST /internal/similarity/abandon/{fill_id}`
 
 ---
 
-## 约定
+## 关键业务口径（与代码一致）
 
-### 基础信息
+1. 发布主流程使用 `POST /surveys/{survey_id}/publish`，入参必须包含 `reward_points`、`budget_points`、`target`，并满足 `budget_points >= reward_points * target`。
+2. 填写主流程为“提交即发奖”：`POST /surveys/{survey_id}/fills` 成功后立即发放积分并写入积分流水。
+3. `POST /fills/{fill_id}/review` 仍存在，但属于兼容逻辑，不是当前前端主流程依赖点。
+4. 积分接口存在双入口语义：`/points/logs` 在代码中有 legacy 与 points_record 两套实现，需要按前端实际消费结构选用。
+
+---
+
+## 通用约定
 
 - **Base URL**：`/api/v1`
-- **Content-Type**：`application/json`
-- **时间格式**：ISO 8601 + Z 时区（例如 `2026-01-21T10:30:00Z`）
+- **认证**：`Authorization: Bearer <access_token>`
+- **时间格式**：ISO 8601（UTC，示例：`2026-03-18T10:30:00Z`）
 
-### 认证
-
-- **方式**：Bearer Token
-- **头部**：`Authorization: Bearer <access_token>`
-- **生成**：注册/登录时返回
-- **过期处理**：收到 401 时提示重新登录
-
-### 错误响应
+错误响应统一形态：
 
 ```json
 {
-  "error": "错误信息描述"
+   "error": "错误信息"
 }
 ```
 
-### HTTP 状态码
+常见状态码：
 
-| 状态码 | 含义 |
-|--------|------|
-| 200 | 成功 |
-| 401 | 未认证或 Token 过期 |
-| 403 | 权限不足（如非所有者） |
-| 404 | 资源不存在 |
-| 405 | 方法不允许（如错误的 HTTP 方法） |
-| 422 | 参数校验失败 |
-| 500 | 服务器内部错误 |
-
----
-
-## 常见业务流程
-
-### 📝 用户发布问卷
-
-```
-1. POST /auth/login 或 /auth/register 登录/注册
-   ↓ 获得 access_token
-2. POST /surveys 发布问卷
-   ├─ 请求体包含 title, link, reward_points 等
-   ├─ 系统自动扣费：user.points -= reward_points
-   └─ 生成积分流水：PointsLog(reason: "发布问卷消耗")
-   ↓
-3. 问卷状态为 active，等待用户填答
-```
-
-### 📋 用户填答问卷
-
-```
-1. GET /surveys 浏览任务大厅中的问卷列表
-   ↓
-2. GET /surveys/{id} 点击问卷查看详情
-   ↓
-3. 跳转到 survey.link（第三方问卷平台，如 Google Form）
-   ↓
-4. 用户填答问卷（耗时 duration_seconds）
-   ↓
-5. 点击提交 → POST /surveys/{id}/fills
-   ├─ 请求体：{ duration_seconds: 180 }
-   ├─ 系统检查：
-   │  ├─ 是否为自己的问卷？
-   │  ├─ 是否重复填答？
-   │  └─ 填答时间是否过短？
-   └─ 返回填写记录 ID，状态为 pending
-   ↓
-6. GET /fills/me 查看我的填写记录
-```
-
-### ✅ 发布者审核答卷
-
-```
-1. 用户发布问卷后，等待他人的填答提交
-   ↓
-2. POST /fills/{id}/review 批准或拒绝答卷
-   ├─ 请求体：{ status: "approved" 或 "rejected" }
-   ├─ 若通过（approved）：
-   │  ├─ user.points += reward_points
-   │  ├─ user.activity_points += reward_points
-   │  └─ 生成积分流水：PointsLog(reason: "完成问卷")
-   └─ 若拒绝（rejected）：
-      └─ 不发放积分
-   ↓
-3. 填写者 GET /points/logs 查看新增的积分记录
-```
-
-### 💰 积分查询与举报
-
-```
-1. GET /points/logs 查看积分流水
-   ├─ 支持分页：page, page_size
-   ├─ 支持筛选：type (earn/spend)
-   └─ 返回用户信息和 has_honor 状态
-   ↓
-2. POST /reports 举报不当问卷或用户
-   ├─ 请求体：{ target_type, target_id, reason }
-   └─ 生成举报记录，状态为 pending
-```
+- `200` 成功
+- `401` 未认证或 Token 过期
+- `403` 权限不足
+- `404` 资源不存在
+- `405` 方法不允许
+- `409` 状态冲突
+- `422` 参数校验失败
+- `500` 服务器内部错误
 
 ---
 
-## 用户资源（AppUser）
+## 本次修订说明
 
-| 字段 | 说明 | 初始值 |
-|------|------|--------|
-| id | 用户ID（前缀 u_） | UUID |
-| nickname | 昵称 | 注册时提供 |
-| email | 邮箱（唯一） | 注册时提供 |
-| password | 密码 | 明文存储（需加密） |
-| credit_score | 信用分（0-100） | 80 |
-| points | 可用积分 | 20 |
-| activity_points | 活跃度积分（不可交易） | 0 |
-| school | 学校 | 空 |
-| tags | 兴趣标签（逗号分隔） | 空 |
-| token | 认证 token | 登录时生成 |
-| created_at | 注册时间 | 当前时间 |
-
----
-
-## 问卷资源（Survey）
-
-| 字段 | 说明 | 默认值 |
-|------|------|--------|
-| id | 问卷ID（前缀 s_） | UUID |
-| title | 标题 | 必填 |
-| description | 说明/副标题 | 可选 |
-| link | 第三方问卷链接 | 必填 |
-| reward_points | 奖励积分 | 0 |
-| difficulty | 难度等级（1-5） | 3 |
-| estimated_minutes | 预计耗时 | 可选 |
-| deadline | 截止日期 | 可选 |
-| status | 状态（active/closed） | active |
-| owner_id | 发布者ID | 当前用户 |
-| completed | 已完成份数 | 0 |
-| target | 目标份数 | 1 |
-| created_at | 创建时间 | 当前时间 |
-| updated_at | 最后修改时间 | 当前时间 |
-
----
-
-## 填写记录资源（FillRecord）
-
-| 字段 | 说明 | 默认值 |
-|------|------|--------|
-| id | 填写ID（前缀 f_） | UUID |
-| survey_id | 问卷ID | 必填 |
-| user_id | 填答者ID | 当前用户 |
-| duration_seconds | 填答耗时 | 可选 |
-| status | 审核状态 | pending |
-| points_awarded | 已发放积分 | 0 |
-| created_at | 提交时间 | 当前时间 |
-
----
-
-## 积分流水资源（PointsLog）
-
-| 字段 | 说明 | 示例 |
-|------|------|------|
-| id | 流水ID（前缀 p_） | p_abc123... |
-| user_id | 用户ID | u_abc123... |
-| delta | 变化量 | +50 或 -100 |
-| reason | 原因 | 完成问卷 / 发布问卷消耗 |
-| created_at | 发生时间 | 2026-01-21T10:30:00Z |
-
----
-
-## 举报资源（Report）
-
-| 字段 | 说明 | 枚举值 |
-|------|------|--------|
-| id | 举报ID（前缀 r_） | UUID |
-| reporter_id | 举报者ID | 当前用户 |
-| target_type | 被举报类型 | survey / user |
-| target_id | 被举报资源ID | s_... / u_... |
-| reason | 举报原因 | 自由文本（<=200） |
-| status | 举报状态 | pending / reviewed |
-| created_at | 举报时间 | 当前时间 |
-
----
-
-## 变更记录
-
-- **2026-01-21**：补全认证、用户、问卷、答卷、积分、举报等完整API文档
-- **2024-01-01**：初始化版本（草案）
-
----
-
-## 常见问题
-
-### Q: Token 的有效期是多久？
-A: 当前设计中，token 的有效期为 3600 秒（1小时），但实际未进行过期检查。建议后续完善此机制。
-
-### Q: 如何处理用户登出？
-A: 前端清除本地保存的 token 即可。后端无需额外操作。
-
-### Q: 问卷链接支持哪些第三方平台？
-A: 只要是可访问的 HTTP(S) 链接即可，常见的有：
-- Google Forms
-- 问卷星
-- 问卷网
-- Typeform
-- 自建表单
-
-### Q: 如何防止刷单（用户反复提交答卷）？
-A: 系统已检查唯一性约束（一个用户对一个问卷只能提交一次）。建议后续添加：
-- 时间间隔检查
-- 异常填答时间检测
-- IP 地址检查
-
-### Q: 审核答卷时能否批量操作？
-A: 当前接口不支持，只能逐个审核。建议后续增加批量接口。
+- 将“待实现”描述改为“已实现路由实况”。
+- 修正主流程：由“审核后发奖”改为“提交即发奖”。
+- 修正任务大厅与画像接口状态。
+- 补充多应用挂载结构，避免将项目误判为单应用 API。
