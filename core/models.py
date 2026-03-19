@@ -252,14 +252,196 @@ class AuditLog(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
 
-class Notification(models.Model):
-    user = models.ForeignKey(AppUser, on_delete=models.CASCADE)
-    type = models.CharField(max_length=32)
+class Message(models.Model):
+    """站内信（原Notification扩展）"""
+
+    # 原有字段 - 保留不动
+    user = models.ForeignKey(AppUser, on_delete=models.CASCADE)  # 接收者
+    type = models.CharField(max_length=32)  # 历史兼容字段
     title = models.CharField(max_length=200)
     content = models.TextField()
-    status = models.CharField(max_length=32, default="unread")
-    created_at = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(max_length=32, default="unread", db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     read_at = models.DateTimeField(blank=True, null=True)
+
+    # 新增字段 - 支持组队邀请和积分赠送
+    sender = models.ForeignKey(
+        AppUser,
+        on_delete=models.CASCADE,
+        related_name="sent_messages",
+        blank=True,
+        null=True,
+    )  # 发送者（系统消息时为null）
+
+    message_type = models.CharField(
+        max_length=32,
+        default="system",
+        choices=[
+            ("system", "系统消息"),
+            ("team_invite", "队伍邀请"),
+            ("points_gift", "积分赠送"),
+        ],
+    )  # 消息具体类型
+
+    ref_type = models.CharField(
+        max_length=32, blank=True, db_index=True
+    )  # 'team', 'user' 等
+    ref_id = models.BigIntegerField(blank=True, null=True, db_index=True)  # 关联对象ID
+
+    points_amount = models.IntegerField(default=0)  # 赠送的积分数
+    is_accepted = models.BooleanField(default=False)  # 邀请或赠送是否被接受
+
+    class Meta:
+        indexes = [
+            models.Index(
+                fields=["user", "status", "-created_at"],
+                name="msg_user_status_created_idx",
+            ),
+            models.Index(fields=["user", "-created_at"], name="msg_user_created_idx"),
+            models.Index(fields=["ref_type", "ref_id"], name="msg_ref_type_id_idx"),
+        ]
+
+
+class Team(models.Model):
+    """用户组队信息"""
+
+    owner = models.ForeignKey(
+        AppUser, on_delete=models.CASCADE, related_name="owned_teams"
+    )
+    title = models.CharField(max_length=200, blank=True)  # 队伍名（可选）
+    description = models.TextField(blank=True)  # 队伍描述
+    max_members = models.IntegerField(default=5)  # 最大成员数
+    status = models.CharField(
+        max_length=32,
+        default="active",
+        choices=[
+            ("active", "活跃"),
+            ("closed", "已关闭"),
+        ],
+    )
+
+    # 审计字段
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    closed_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["owner", "status"], name="team_owner_status_idx"),
+            models.Index(
+                fields=["status", "-created_at"], name="team_status_created_idx"
+            ),
+        ]
+
+    def __str__(self):
+        return f"Team({self.id}) - {self.owner.nickname}"
+
+
+class TeamMember(models.Model):
+    """队伍成员关联"""
+
+    team = models.ForeignKey(Team, on_delete=models.CASCADE, related_name="members")
+    user = models.ForeignKey(
+        AppUser, on_delete=models.CASCADE, related_name="team_memberships"
+    )
+
+    role = models.CharField(
+        max_length=32,
+        default="member",
+        choices=[
+            ("member", "普通成员"),
+            ("admin", "管理员"),
+        ],
+    )
+
+    status = models.CharField(
+        max_length=32,
+        default="joined",
+        choices=[
+            ("invited", "邀请中"),
+            ("joined", "已加入"),
+            ("left", "已离开"),
+            ("kicked", "被移除"),
+        ],
+    )
+
+    joined_at = models.DateTimeField(auto_now_add=True)
+    left_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["team", "user"], name="unique_team_member"),
+        ]
+        indexes = [
+            models.Index(fields=["team", "status"], name="tm_team_status_idx"),
+            models.Index(fields=["user", "status"], name="tm_user_status_idx"),
+            models.Index(fields=["team", "role"], name="tm_team_role_idx"),
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.user.nickname}({self.get_role_display()}) in Team({self.team.id})"
+        )
+
+
+class TeamInvitation(models.Model):
+    """组队邀请追踪表（管理邀请冷却和重试次数）"""
+
+    team = models.ForeignKey(Team, on_delete=models.CASCADE, related_name="invitations")
+    inviter = models.ForeignKey(
+        AppUser, on_delete=models.CASCADE, related_name="sent_invitations"
+    )
+    invitee = models.ForeignKey(
+        AppUser, on_delete=models.CASCADE, related_name="received_invitations"
+    )
+
+    # 邀请状态
+    status = models.CharField(
+        max_length=32,
+        default="pending",
+        choices=[
+            ("pending", "待处理"),
+            ("accepted", "已接受"),
+            ("rejected", "已拒绝"),
+            ("expired", "已过期"),
+        ],
+    )
+
+    # 冷却时间追踪
+    attempt_count = models.IntegerField(
+        default=1
+    )  # 邀请次数（1 or 2不受限，3+需10min冷却）
+    last_invited_at = models.DateTimeField(auto_now_add=True)  # 最后一次邀请时间
+
+    # 决议记录
+    accepted_at = models.DateTimeField(
+        blank=True, null=True
+    )  # 接受时间（接受后重置count）
+    rejected_at = models.DateTimeField(blank=True, null=True)
+
+    # 审计字段
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        # 同一team对一个invitee最多一条pending邀请
+        constraints = [
+            models.UniqueConstraint(
+                fields=["team", "invitee"],
+                condition=models.Q(status="pending"),
+                name="unique_team_invitee_pending",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["team", "status"], name="tinv_team_status_idx"),
+            models.Index(fields=["invitee", "status"], name="tinv_invitee_status_idx"),
+            models.Index(
+                fields=["inviter", "invitee"], name="tinv_inviter_invitee_idx"
+            ),
+        ]
+
+    def __str__(self):
+        return f"Invite {self.inviter.nickname} -> {self.invitee.nickname} to Team({self.team.id})"
 
 
 class Tag(models.Model):

@@ -1,6 +1,6 @@
 from django.db.models import Count, Q
 
-from core.models import Notification, Response, Survey, SurveyTag, Tag
+from core.models import Message, Response, Survey, SurveyTag, Tag
 
 
 class TaskHallMapper:
@@ -10,7 +10,9 @@ class TaskHallMapper:
 
     @staticmethod
     def list_surveys(filters):
-        queryset = TaskHallMapper._apply_filters(TaskHallMapper.base_queryset(), filters)
+        queryset = TaskHallMapper._apply_filters(
+            TaskHallMapper.base_queryset(), filters
+        )
         return queryset
 
     @staticmethod
@@ -71,7 +73,7 @@ class TaskHallMapper:
 
     @staticmethod
     def get_notices(user, limit=3):
-        notices = Notification.objects.filter(user=user).order_by("-created_at")[:limit]
+        notices = Message.objects.filter(user=user).order_by("-created_at")[:limit]
         return [
             {
                 "id": str(notice.id),
