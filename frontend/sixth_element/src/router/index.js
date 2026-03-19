@@ -28,6 +28,18 @@ const router = createRouter({
       meta: { requiresAuth: false },
     },
     {
+      path: '/contacts',
+      name: 'contacts',
+      component: () => import('../views/ContactsView.vue'),
+      meta: { requiresAuth: false }, // Temporary: Allow access without login for testing
+    },
+    {
+      path: '/team/:teamId/manage',
+      name: 'team-manage',
+      component: () => import('../components/contacts/TeamManagement.vue'),
+      meta: { requiresAuth: false },
+    },
+    {
       path: '/',
       name: 'home',
       redirect: '/task-hall',
