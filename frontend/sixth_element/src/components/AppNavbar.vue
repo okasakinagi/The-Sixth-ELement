@@ -38,6 +38,12 @@ function isActive(routeName) {
         📋 任务大厅
       </RouterLink>
       <RouterLink
+        to="/contacts"
+        :class="['navbar-link', { active: isActive('contacts') }]"
+      >
+        👥 联系人与组队
+      </RouterLink>
+      <RouterLink
         to="/surveys"
         :class="['navbar-link', { active: isActive('survey-management') }]"
       >

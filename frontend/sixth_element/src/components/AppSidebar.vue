@@ -49,6 +49,15 @@ function toggleMobileMenu() {
         </RouterLink>
 
         <RouterLink
+          to="/contacts"
+          :class="['menu-item', { active: isActive('contacts') }]"
+          @click="closeMobileMenu"
+        >
+          <span class="menu-icon">👥</span>
+          <span class="menu-label">联系人与组队</span>
+        </RouterLink>
+
+        <RouterLink
           to="/surveys"
           :class="['menu-item', { active: isActive('survey-management') }]"
           @click="closeMobileMenu"
