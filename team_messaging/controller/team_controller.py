@@ -4,7 +4,6 @@ Team Management Controller
 """
 
 import json
-import re
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_exempt
@@ -114,8 +113,39 @@ def update_team(request, team_id):
 
         data = _parse_json(request)
         result = service.update_team(
-            user, team_id, title=data.get("title"), description=data.get("description")
+            user,
+            team_id,
+            title=data.get("title"),
+            description=data.get("description"),
+            max_members=_parse_int(data.get("max_members")),
         )
+        return JsonResponse(result, status=200)
+    except TeamServiceError as e:
+        return error(e.status, e.message)
+    except Exception as e:
+        return error(500, f"Internal server error: {str(e)}")
+
+
+@csrf_exempt
+@require_http_methods(["PATCH"])
+def set_member_role(request, team_id, user_id):
+    """设置成员角色（队长可任命/取消管理员）"""
+    user, err = require_auth(request)
+    if err:
+        return err
+
+    try:
+        team_id = _parse_int(team_id)
+        user_id = _parse_int(user_id)
+        if not team_id or not user_id:
+            return error(400, "队伍ID或用户ID无效")
+
+        data = _parse_json(request)
+        role = (data.get("role") or "").strip()
+        if not role:
+            return error(400, "角色不能为空")
+
+        result = service.set_team_member_role(user, team_id, user_id, role)
         return JsonResponse(result, status=200)
     except TeamServiceError as e:
         return error(e.status, e.message)
@@ -252,103 +282,42 @@ def reject_invitation(request, invitation_id):
         return error(e.status, e.message)
     except Exception as e:
         return error(500, f"Internal server error: {str(e)}")
-        pass
-    except Exception as e:
-        return JsonResponse({"error": str(e)}, status=400)
 
 
 @csrf_exempt
 @require_http_methods(["GET"])
-def get_team_members(request, team_id):
-    """获取队伍成员列表"""
+def get_my_team(request):
+    """★ Phase 2: 获取用户唯一的队伍（单队伍模式）"""
+    user, err = require_auth(request)
+    if err:
+        return err
+
     try:
-        # TODO: 实现获取队伍成员
-        pass
+        result = service.get_my_team(user)
+        return JsonResponse(result, status=200)
+    except TeamServiceError as e:
+        return error(e.status, e.message)
     except Exception as e:
-        return JsonResponse({"error": str(e)}, status=400)
-
-
-@csrf_exempt
-@require_http_methods(["PATCH"])
-def update_team(request, team_id):
-    """修改队伍信息（队长只）"""
-    try:
-        # TODO: 实现修改队伍
-        pass
-    except Exception as e:
-        return JsonResponse({"error": str(e)}, status=400)
-
-
-@csrf_exempt
-@require_http_methods(["DELETE"])
-def delete_team(request, team_id):
-    """解散队伍（队长只）"""
-    try:
-        # TODO: 实现解散队伍
-        pass
-    except Exception as e:
-        return JsonResponse({"error": str(e)}, status=400)
-
-
-@csrf_exempt
-@require_http_methods(["DELETE"])
-def remove_team_member(request, team_id, user_id):
-    """移除队伍成员（队长/管理员）"""
-    try:
-        # TODO: 实现移除成员
-        pass
-    except Exception as e:
-        return JsonResponse({"error": str(e)}, status=400)
-
-
-@csrf_exempt
-@require_http_methods(["POST"])
-def send_team_invitation(request, team_id):
-    """发送队伍邀请（检查10min冷却）"""
-    try:
-        # TODO: 实现发送邀请
-        # 需要检查：
-        # 1. 当前用户是否是队长或管理员
-        # 2. 目标用户是否已在队伍中
-        # 3. 是否已有待处理邀请
-        # 4. 冷却时间检查（第1、2次无限制，3+需10分钟）
-        pass
-    except Exception as e:
-        return JsonResponse({"error": str(e)}, status=400)
+        return error(500, f"Internal server error: {str(e)}")
 
 
 @csrf_exempt
 @require_http_methods(["GET"])
-def get_invitations(request):
-    """获取待处理邀请列表"""
+def check_invitation_cooldown(request, team_id, invitee_id):
+    """检查邀请冷却状态（用于前端显示倒计时）"""
+    user, err = require_auth(request)
+    if err:
+        return err
+
     try:
-        # TODO: 实现获取邀请列表
-        # 分页: page, page_size
-        pass
+        team_id = _parse_int(team_id)
+        invitee_id = _parse_int(invitee_id)
+        if not team_id or not invitee_id:
+            return error(400, "Invalid team_id or invitee_id")
+
+        result = service.check_invitation_cooldown(team_id, invitee_id)
+        return JsonResponse(result, status=200)
+    except TeamServiceError as e:
+        return error(e.status, e.message)
     except Exception as e:
-        return JsonResponse({"error": str(e)}, status=400)
-
-
-@csrf_exempt
-@require_http_methods(["PATCH"])
-def accept_invitation(request, invitation_id):
-    """接受邀请（重置attempt_count，创建TeamMember）"""
-    try:
-        # TODO: 实现接受邀请
-        # 创建TeamMember记录
-        # 更新TeamInvitation状态为accepted
-        # 更新Message为已读
-        pass
-    except Exception as e:
-        return JsonResponse({"error": str(e)}, status=400)
-
-
-@csrf_exempt
-@require_http_methods(["PATCH"])
-def reject_invitation(request, invitation_id):
-    """拒绝邀请"""
-    try:
-        # TODO: 实现拒绝邀请
-        pass
-    except Exception as e:
-        return JsonResponse({"error": str(e)}, status=400)
+        return error(500, f"Internal server error: {str(e)}")

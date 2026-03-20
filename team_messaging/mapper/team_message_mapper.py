@@ -5,6 +5,7 @@ Team Mapper
 
 from django.db.models import Q
 from django.utils import timezone
+from django.core.cache import cache
 from datetime import timedelta
 
 from core.models import Team, TeamMember, TeamInvitation, Message, AppUser, PointsLog
@@ -28,7 +29,7 @@ class TeamMapper:
             max_members=max_members,
         )
         # 队长自动加入
-        TeamMember.objects.create(team=team, user=owner, role="admin", status="joined")
+        TeamMember.objects.create(team=team, user=owner, role="owner", status="joined")
         return team
 
     @staticmethod
@@ -55,12 +56,14 @@ class TeamMapper:
         )
 
     @staticmethod
-    def update_team(team, title=None, description=None, status=None):
+    def update_team(team, title=None, description=None, status=None, max_members=None):
         """更新队伍信息"""
         if title is not None:
             team.title = title
         if description is not None:
             team.description = description
+        if max_members is not None:
+            team.max_members = max_members
         if status is not None:
             team.status = status
             if status == "closed":
@@ -81,6 +84,15 @@ class TeamMapper:
             member.status = "kicked"
             member.left_at = timezone.now()
             member.save()
+        return member
+
+    @staticmethod
+    def set_team_member_role(team_id, user_id, role):
+        """设置队伍成员角色"""
+        member = TeamMember.objects.filter(team_id=team_id, user_id=user_id).first()
+        if member:
+            member.role = role
+            member.save(update_fields=["role"])
         return member
 
 
@@ -173,10 +185,29 @@ class MessageMapper:
     """消息数据查询"""
 
     @staticmethod
-    def get_user_messages(user_id, page=1, page_size=20, status=None):
+    def _bump_message_cache_version(user_id):
+        """递增用户消息缓存版本号，失败时降级重置。"""
+        if not user_id:
+            return
+        cache_key = f"user:{user_id}:messages_cache_version"
+        try:
+            cache.incr(cache_key)
+        except Exception:
+            try:
+                current = cache.get(cache_key)
+                cache.set(cache_key, (current or 0) + 1, timeout=86400)
+            except Exception:
+                pass
+
+    @staticmethod
+    def get_user_messages(
+        user_id, page=1, page_size=20, message_type=None, status=None
+    ):
         """获取用户消息列表（分页）"""
         offset = (page - 1) * page_size
         query = Message.objects.filter(user_id=user_id)
+        if message_type:
+            query = query.filter(message_type=message_type)
         if status:
             query = query.filter(status=status)
         messages = query.select_related("user", "sender").order_by("-created_at")[
@@ -185,9 +216,11 @@ class MessageMapper:
         return messages
 
     @staticmethod
-    def get_user_messages_count(user_id, status=None):
+    def get_user_messages_count(user_id, message_type=None, status=None):
         """获取用户消息总数"""
         query = Message.objects.filter(user_id=user_id)
+        if message_type:
+            query = query.filter(message_type=message_type)
         if status:
             query = query.filter(status=status)
         return query.count()
@@ -221,6 +254,7 @@ class MessageMapper:
             ref_id=ref_id,
             points_amount=points_amount,
         )
+        MessageMapper._bump_message_cache_version(user_id)
         return message
 
     @staticmethod
@@ -231,6 +265,7 @@ class MessageMapper:
             message.status = "read"
             message.read_at = timezone.now()
             message.save()
+            MessageMapper._bump_message_cache_version(message.user_id)
         return message
 
     @staticmethod
@@ -240,6 +275,7 @@ class MessageMapper:
         if message:
             message.status = "deleted"
             message.save()
+            MessageMapper._bump_message_cache_version(message.user_id)
         return message
 
     @staticmethod
@@ -279,44 +315,3 @@ class PointsMapper:
             ref_id=ref_id,
         )
         return log
-
-        total = TeamInvitation.objects.filter(
-            invitee_id=user_id, status="pending"
-        ).count()
-
-        return invitations, total
-
-    # TODO: 实现其他方法
-
-
-class MessageMapper:
-    """消息数据查询"""
-
-    @staticmethod
-    def get_user_messages(
-        user_id, page=1, page_size=20, message_type=None, status=None
-    ):
-        """获取用户消息（分页）"""
-        query = Message.objects.filter(user_id=user_id)
-
-        if message_type:
-            query = query.filter(message_type=message_type)
-
-        if status:
-            query = query.filter(status=status)
-
-        offset = (page - 1) * page_size
-        messages = query.select_related("sender").order_by("-created_at")[
-            offset : offset + page_size
-        ]
-
-        total = query.count()
-
-        return messages, total
-
-    @staticmethod
-    def get_unread_count(user_id):
-        """获取未读消息数"""
-        return Message.objects.filter(user_id=user_id, status="unread").count()
-
-    # TODO: 实现其他方法

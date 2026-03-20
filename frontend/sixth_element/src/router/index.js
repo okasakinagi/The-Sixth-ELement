@@ -40,6 +40,12 @@ const router = createRouter({
       meta: { requiresAuth: false },
     },
     {
+      path: '/team/invitations',
+      name: 'team-invitations',
+      component: () => import('../components/contacts/TeamInvitations.vue'),
+      meta: { requiresAuth: false },
+    },
+    {
       path: '/',
       name: 'home',
       redirect: '/task-hall',

@@ -10,6 +10,7 @@ urlpatterns = [
     path("auth/send-reset-code", views.send_reset_code),
     path("auth/reset-password", views.verify_reset_code),
     path("users/me", views.user_me),
+    path("users/search", views.search_users),  # 通过邮箱搜索用户
     # Survey management routes are served by survey_management.urls
     path("surveys/<str:survey_id>/close", views.close_survey),
     path("surveys/<str:survey_id>/fill", survey_fill_controller.survey_fill_detail),

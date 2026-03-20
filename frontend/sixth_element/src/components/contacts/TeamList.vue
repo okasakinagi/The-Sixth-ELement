@@ -1,45 +1,86 @@
 
 <script setup>
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
+import * as teamApi from '@/utils/teamApi'
 
 const router = useRouter()
 const showCreateModal = ref(false)
+const isLoading = ref(true)
+const errorMessage = ref('')
 
 // Form State
 const startAnimation = ref(false)
 const newTeamName = ref('')
 const newTeamDescription = ref('')
 const newTeamIcon = ref('🚀') // Default icon
+const newTeamMaxMembers = ref(8)
 
 // Predefined icons for selection
 const availableIcons = ['🚀', '🛡️', '⚔️', '💎', '🎮', '📚', '💼', '🎨', '🦁', '⚡']
 
-// Mock single team state (null if no team)
-const myTeam = ref({ 
-  id: 1, 
-  name: 'Alpha Squad', 
-  members: 3, 
-  pendingTasks: 3, 
-  role: 'Member',
-  icon: '🛡️',
-  pooledPoints: 1250 // Points pooled by team
-})
+// Single team state loaded from API
+const myTeam = ref(null)
 
-// Mock members data for preview
-const teamMembers = reactive([
-  { id: 101, nickname: '我', role: 'Member', avatar: 'M' },
-  { id: 2, nickname: 'Captain Alice', role: 'Owner', avatar: 'A' },
-  { id: 3, nickname: 'Bob', role: 'Member', avatar: 'B' },
-])
-// const myTeam = ref(null) // Uncomment to test empty state
+// Members data for preview
+const teamMembers = reactive([])
 
 const canCreate = computed(() => {
   return newTeamName.value.trim().length > 0 && newTeamName.value.length <= 20
 })
 
-const isOwner = computed(() => myTeam.value && myTeam.value.role === 'Owner')
-const isAdmin = computed(() => myTeam.value && (myTeam.value.role === 'Admin' || myTeam.value.role === 'Owner'))
+const isOwner = computed(() => {
+  if (!myTeam.value) return false
+  const currentUserId = Number(localStorage.getItem('user_id'))
+  return myTeam.value.role === 'owner' || (currentUserId && currentUserId === myTeam.value.owner_id)
+})
+const isAdmin = computed(() => myTeam.value && (myTeam.value.role === 'admin' || myTeam.value.role === 'owner'))
+
+// 加载我的团队信息
+async function loadMyTeam() {
+  try {
+    isLoading.value = true
+    errorMessage.value = ''
+    const result = await teamApi.getMyTeam()
+    
+    // Phase 2: getMyTeam返回单个团队（或null）
+    if (result.team) {
+      myTeam.value = {
+        ...result.team,
+        role: result.my_role || 'member',
+      }
+      
+      // 加载团队成员
+      teamMembers.length = 0
+      if (result.members && Array.isArray(result.members)) {
+        teamMembers.push(...result.members)
+      }
+    } else {
+      myTeam.value = null
+      teamMembers.length = 0
+    }
+  } catch (error) {
+    errorMessage.value = error.message || '加载团队失败'
+    myTeam.value = null
+    teamMembers.length = 0
+  } finally {
+    isLoading.value = false
+  }
+}
+
+function handleTeamUpdated() {
+  loadMyTeam()
+}
+
+// 初始化时加载数据
+onMounted(() => {
+  loadMyTeam()
+  window.addEventListener('team:updated', handleTeamUpdated)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('team:updated', handleTeamUpdated)
+})
 
 function openCreateModal() {
   showCreateModal.value = true
@@ -48,6 +89,7 @@ function openCreateModal() {
   newTeamName.value = ''
   newTeamDescription.value = ''
   newTeamIcon.value = availableIcons[Math.floor(Math.random() * availableIcons.length)]
+  newTeamMaxMembers.value = 8
 }
 
 function closeCreateModal() {
@@ -55,21 +97,52 @@ function closeCreateModal() {
   setTimeout(() => { showCreateModal.value = false }, 300)
 }
 
-function createTeam() {
+async function createTeam() {
   if (!canCreate.value) return
   
-  // Simulate API call
-  myTeam.value = {
-    id: Date.now(),
-    name: newTeamName.value,
-    members: 1,
-    pendingTasks: 0,
-    role: 'Owner',
-    icon: newTeamIcon.value,
-    pooledPoints: 0
+  try {
+    const normalizedMaxMembers = Math.max(2, Math.min(20, Number(newTeamMaxMembers.value) || 8))
+    const data = {
+      title: newTeamName.value,
+      description: newTeamDescription.value,
+      icon: newTeamIcon.value,
+      max_members: normalizedMaxMembers
+    }
+    
+    const result = await teamApi.createTeam(data)
+    
+    // 更新本地UI
+    myTeam.value = {
+      id: result.id,
+      title: result.title,
+      description: result.description,
+      icon: result.icon || newTeamIcon.value,
+      role: 'owner',
+      members_count: 1,
+      max_members: result.max_members || normalizedMaxMembers,
+      created_at: result.created_at
+    }
+    const currentUserId = Number(localStorage.getItem('user_id'))
+    const currentNickname = localStorage.getItem('user_nickname') || '我'
+    teamMembers.length = 0
+    teamMembers.push({
+      id: currentUserId || Date.now(),
+      user_id: currentUserId || null,
+      user_nickname: currentNickname,
+      nickname: currentNickname,
+      role: 'owner',
+      status: 'joined',
+      joined_at: result.created_at,
+    })
+    
+    closeCreateModal()
+    
+    // 可选：显示成功提示
+    console.log('团队创建成功:', myTeam.value.title)
+  } catch (error) {
+    errorMessage.value = error.message || '创建团队失败'
+    console.error('创建团队错误:', error)
   }
-  
-  closeCreateModal()
 }
 
 function manageTeam() {
@@ -78,16 +151,37 @@ function manageTeam() {
   }
 }
 
-function handleLeaveOrDisband() {
-  if (isOwner.value) {
-    if (confirm('确定要【解散】队伍吗？此操作不可逆，队伍所有数据将被清除。')) {
-      myTeam.value = null
+async function handleLeaveOrDisband() {
+  if (!myTeam.value) return
+  
+  const confirmMsg = isOwner.value 
+    ? '确定要【解散】队伍吗？此操作不可逆，队伍所有数据将被清除。'
+    : '确定要退出队伍吗？'
+  
+  if (!confirm(confirmMsg)) return
+  
+  try {
+    if (isOwner.value) {
+      // 队长删除队伍
+      await teamApi.deleteTeam(myTeam.value.id)
+    } else {
+      // 普通成员退出队伍
+      await teamApi.removeTeamMember(myTeam.value.id, Number(getCurrentUserId()))
     }
-  } else {
-    if (confirm('确定要退出队伍吗？')) {
-      myTeam.value = null
-    }
+    
+    myTeam.value = null
+    teamMembers.length = 0
+    errorMessage.value = ''
+    window.dispatchEvent(new CustomEvent('team:updated'))
+  } catch (error) {
+    errorMessage.value = error.message || (isOwner.value ? '解散队伍失败' : '退出队伍失败')
+    console.error('队伍操作错误:', error)
   }
+}
+
+// 获取当前用户ID（从localStorage）
+function getCurrentUserId() {
+  return localStorage.getItem('user_id') || ''
 }
 </script>
 
@@ -97,8 +191,20 @@ function handleLeaveOrDisband() {
       <h2>我的队伍</h2>
     </div>
 
+    <!-- Loading State -->
+    <div v-if="isLoading" class="loading-container">
+      <div class="loading-spinner"></div>
+      <p>加载中...</p>
+    </div>
+
+    <!-- Error State -->
+    <div v-if="errorMessage && !isLoading" class="error-message">
+      ⚠️ {{ errorMessage }}
+      <button @click="loadMyTeam" class="retry-btn">重试</button>
+    </div>
+
     <!-- Empty State: Enhanced Dashed Box -->
-    <div v-if="!myTeam" class="empty-team-state" @click="openCreateModal">
+    <div v-if="!myTeam && !isLoading && !errorMessage" class="empty-team-state" @click="openCreateModal">
       <div class="empty-content">
         <div class="empty-illustration">
           <div class="circle-bg"></div>
@@ -114,16 +220,16 @@ function handleLeaveOrDisband() {
     </div>
 
     <!-- Single Team Card -->
-    <div v-else class="team-card single-view">
+    <div v-else-if="myTeam && !isLoading" class="team-card single-view">
       <div class="card-content">
         <div class="card-header">
           <div class="team-identity">
             <div class="team-avatar">{{ myTeam.icon || '🛡️' }}</div>
             <div>
               <div class="name-row">
-                <h3 class="team-name">{{ myTeam.name }}</h3>
+                <h3 class="team-name">{{ myTeam.title }}</h3>
                 <span class="role-badge" :class="myTeam.role.toLowerCase()">
-                  {{ myTeam.role === 'Owner' ? '队长' : (myTeam.role === 'Admin' ? '管理员' : '队员') }}
+                  {{ myTeam.role === 'owner' ? '队长' : (myTeam.role === 'admin' ? '管理员' : '队员') }}
                 </span>
               </div>
             </div>
@@ -138,29 +244,33 @@ function handleLeaveOrDisband() {
         
         <div class="stats-grid">
           <div class="stat-item">
-            <span class="val">{{ myTeam.members }}</span>
+            <span class="val">{{ teamMembers.length }}</span>
             <span class="lbl">成员</span>
           </div>
           <div class="stat-item">
-            <span class="val">{{ myTeam.pooledPoints }}</span>
-            <span class="lbl">队伍积分池</span>
+            <span class="val">{{ myTeam.max_members }}</span>
+            <span class="lbl">最多人数</span>
           </div>
         </div>
-        
+
         <div class="points-notice">
-          <span class="icon">ℹ️</span> 队员积分将归入队长账户用于发布问卷
+          <span class="icon">📈</span>
+          队员加入后，其后续填写问卷获得的积分会计入队长的账户中。
         </div>
 
         <!-- Inline Members Display -->
         <div class="members-preview-section">
           <h4>队伍成员</h4>
           <div class="members-grid-mini">
-            <div v-for="member in teamMembers" :key="member.id" class="member-card-mini">
-              <div class="avatar-mini">{{ member.avatar }}</div>
+            <div v-if="teamMembers.length === 0" class="no-members">
+              暂无成员
+            </div>
+            <div v-for="member in teamMembers" :key="member.user_id || member.id" class="member-card-mini">
+              <div class="avatar-mini">{{ (member.user_nickname || member.nickname)?.charAt(0) || '用户' }}</div>
               <div class="info-mini">
-                  <span class="name">{{ member.nickname }}</span>
+                  <span class="name">{{ member.user_nickname || member.nickname }}</span>
                   <span class="role-badge-mini" :class="member.role.toLowerCase()">
-                    {{ member.role === 'Owner' ? '队长' : (member.role === 'Admin' ? '管理' : '队员') }}
+                    {{ member.role === 'owner' ? '队长' : (member.role === 'admin' ? '管理' : '队员') }}
                   </span>
               </div>
             </div>
@@ -233,6 +343,17 @@ function handleLeaveOrDisband() {
                 rows="3"
               ></textarea>
             </div>
+
+            <div class="form-group">
+              <label>人数上限 (2-20)</label>
+              <input
+                v-model.number="newTeamMaxMembers"
+                type="number"
+                min="2"
+                max="20"
+                placeholder="默认 8"
+              />
+            </div>
           </div>
 
           <div class="modal-footer">
@@ -259,10 +380,46 @@ function handleLeaveOrDisband() {
   margin: 0 auto;
 }
 
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
 .header h2 {
   font-size: 20px;
   color: #1e293b;
-  margin-bottom: 16px;
+  margin: 0;
+  font-weight: 700;
+}
+
+.invitations-link {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s;
+}
+
+.invitations-link:hover {
+  background: #fcd34d;
+  border-color: #f59e0b;
+}
+
+.invitations-link .badge {
+  background: #f59e0b;
+  color: white;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -811,5 +968,139 @@ input:focus, textarea:focus {
 .modal-fade-enter-from,
 .modal-fade-leave-to {
   opacity: 0;
+}
+
+/* Loading State */
+.loading-container {
+  text-align: center;
+  padding: 48px 24px;
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  margin: 0 auto 16px;
+  border: 3px solid #e2e8f0;
+  border-top-color: #4f46e5;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-container p {
+  color: #64748b;
+  font-size: 14px;
+}
+
+/* Error State */
+.error-message {
+  background: #fee2e2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+  padding: 16px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.retry-btn {
+  background: #dc2626;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.retry-btn:hover {
+  background: #b91c1c;
+}
+
+/* No Members State */
+.no-members {
+  color: #94a3b8;
+  font-size: 13px;
+  padding: 24px;
+  text-align: center;
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 768px) {
+  .team-section {
+    padding: 16px 12px;
+  }
+
+  .team-card.single-view {
+    padding: 14px;
+    gap: 14px;
+  }
+
+  .card-header {
+    gap: 10px;
+  }
+
+  .team-identity {
+    gap: 10px;
+  }
+
+  .team-avatar {
+    min-width: 44px;
+    height: 44px;
+    font-size: 22px;
+  }
+
+  .team-name {
+    font-size: 17px;
+  }
+
+  .name-row {
+    flex-wrap: wrap;
+  }
+
+  .stats-grid {
+    gap: 14px;
+  }
+
+  .members-grid-mini {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .card-actions {
+    justify-content: stretch;
+  }
+
+  .action-btn.leave {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .modal-card {
+    width: calc(100% - 16px);
+    max-height: calc(100vh - 16px);
+    overflow-y: auto;
+  }
+
+  .modal-body,
+  .modal-header,
+  .modal-footer {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .modal-footer {
+    flex-direction: column;
+  }
+
+  .cancel-btn,
+  .confirm-btn {
+    width: 100%;
+  }
 }
 </style>

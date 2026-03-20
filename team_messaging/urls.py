@@ -6,6 +6,9 @@ urlpatterns = [
     # ========== 队伍管理 ==========
     path("teams", team_controller.create_team, name="create_team"),
     path(
+        "teams/mine", team_controller.get_my_team, name="get_my_team"
+    ),  # ★ Phase 2: 单队伍模式
+    path(
         "teams/<int:team_id>", team_controller.get_team_detail, name="get_team_detail"
     ),
     path(
@@ -19,6 +22,11 @@ urlpatterns = [
         "teams/<int:team_id>/members/<int:user_id>/remove",
         team_controller.remove_team_member,
         name="remove_team_member",
+    ),
+    path(
+        "teams/<int:team_id>/members/<int:user_id>/role",
+        team_controller.set_member_role,
+        name="set_member_role",
     ),
     # ========== 组队邀请 ==========
     path(
@@ -36,6 +44,12 @@ urlpatterns = [
         "invitations/<int:invitation_id>/reject",
         team_controller.reject_invitation,
         name="reject_invitation",
+    ),
+    # ========== 邀请冷却检查 ==========
+    path(
+        "teams/<int:team_id>/invite/<int:invitee_id>/cooldown",
+        team_controller.check_invitation_cooldown,
+        name="check_invitation_cooldown",
     ),
     # ========== 消息中心 ==========
     path("messages", message_controller.get_messages, name="get_messages"),
@@ -59,5 +73,10 @@ urlpatterns = [
         "messages/points-gift",
         message_controller.send_points_gift,
         name="send_points_gift",
+    ),
+    path(
+        "messages/points-gift/limit",
+        message_controller.get_points_gift_limit,
+        name="get_points_gift_limit",
     ),
 ]

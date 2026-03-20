@@ -131,11 +131,8 @@ CACHES = {
         "LOCATION": os.environ.get("REDIS_URL", "redis://127.0.0.1:6379/0"),
         "TIMEOUT": 3600,  # 1小时
         "OPTIONS": {
-            "CLIENT_CLASS": "django_redis.client.DefaultClient",
-            "CONNECTION_POOL_KWARGS": {
-                "max_connections": 50,
-                "retry_on_timeout": True,
-            },
+            "socket_connect_timeout": 5,
+            "socket_timeout": 5,
         },
     }
 }

@@ -54,7 +54,9 @@ export async function apiRequest(url, options = {}, router = null) {
         })
       }
       
-      throw new Error('登录已过期，请重新登录')
+      const error = new Error('登录已过期，请重新登录')
+      error.status = 401
+      throw error
     }
     
     // 处理其他HTTP错误
@@ -66,7 +68,9 @@ export async function apiRequest(url, options = {}, router = null) {
       } catch {
         // JSON解析失败，使用默认错误消息
       }
-      throw new Error(errorMessage)
+      const error = new Error(errorMessage)
+      error.status = response.status
+      throw error
     }
     
     // 尝试解析JSON响应

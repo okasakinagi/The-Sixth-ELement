@@ -6,8 +6,10 @@ Message Service
 from django.db import transaction
 from django.utils import timezone
 from django.core.cache import cache
+import logging
+import time
 
-from core.models import Message, AppUser, PointsLog
+from core.models import Message, AppUser, PointsLog, TeamInvitation
 from team_messaging.mapper.team_message_mapper import MessageMapper, PointsMapper
 
 
@@ -25,17 +27,91 @@ class MessageService:
 
     def __init__(self):
         self.message_mapper = MessageMapper()
+        self.logger = logging.getLogger(__name__)
+        # Redis 不可用时短暂熔断，直接降级到数据库，避免每次请求都阻塞重试。
+        self._cache_disabled_until = 0.0
+        self._cache_cooldown_seconds = 30
+
+    def _cache_enabled(self):
+        return time.time() >= self._cache_disabled_until
+
+    def _trip_cache_circuit(self, operation, key, error):
+        was_enabled = self._cache_enabled()
+        self._cache_disabled_until = time.time() + self._cache_cooldown_seconds
+        if was_enabled:
+            self.logger.warning(
+                "cache backend unavailable, fallback to DB for %ss. op=%s key=%s err=%s",
+                self._cache_cooldown_seconds,
+                operation,
+                key,
+                error,
+            )
+
+    def _safe_cache_get(self, key):
+        if not self._cache_enabled():
+            return None
+        try:
+            return cache.get(key)
+        except Exception as e:
+            self._trip_cache_circuit("get", key, e)
+            return None
+
+    def _safe_cache_set(self, key, value, timeout):
+        if not self._cache_enabled():
+            return
+        try:
+            cache.set(key, value, timeout)
+        except Exception as e:
+            self._trip_cache_circuit("set", key, e)
+
+    def _safe_cache_delete(self, key):
+        if not self._cache_enabled():
+            return
+        try:
+            cache.delete(key)
+        except Exception as e:
+            self._trip_cache_circuit("delete", key, e)
 
     def get_messages(self, user, page=1, page_size=20, message_type=None, status=None):
         """获取用户消息列表（分页、筛选）"""
+        version_key = f"user:{user.id}:messages_cache_version"
+        cache_version = self._safe_cache_get(version_key)
+        if cache_version is None:
+            cache_version = 0
+
+        cache_key = (
+            f"user:{user.id}:messages:v{cache_version}:"
+            f"p{page}:s{page_size}:t{message_type or 'all'}:st{status or 'all'}"
+        )
+        cached_result = self._safe_cache_get(cache_key)
+        if cached_result is not None:
+            return cached_result
+
         messages = self.message_mapper.get_user_messages(
-            user.id, page=page, page_size=page_size, status=status
+            user.id,
+            page=page,
+            page_size=page_size,
+            message_type=message_type,
+            status=status,
         )
         total_count = self.message_mapper.get_user_messages_count(
-            user.id, status=status
+            user.id, message_type=message_type, status=status
         )
 
-        return {
+        invite_ids = [
+            msg.ref_id
+            for msg in messages
+            if msg.message_type == "team_invite" and msg.ref_id
+        ]
+        invite_status_map = {
+            row["id"]: row["status"]
+            for row in TeamInvitation.objects.filter(
+                id__in=invite_ids,
+                invitee_id=user.id,
+            ).values("id", "status")
+        }
+
+        result = {
             "total": total_count,
             "page": page,
             "page_size": page_size,
@@ -45,27 +121,46 @@ class MessageService:
                     "title": msg.title,
                     "content": msg.content,
                     "message_type": msg.message_type,
+                    "sender_id": msg.sender_id,
                     "sender_nickname": msg.sender.nickname if msg.sender else "System",
                     "status": msg.status,
                     "created_at": msg.created_at.isoformat(),
                     "read_at": msg.read_at.isoformat() if msg.read_at else None,
+                    "ref_type": msg.ref_type,
+                    "ref_id": msg.ref_id,
+                    "points_amount": msg.points_amount,
+                    "is_accepted": (
+                        msg.is_accepted
+                        or invite_status_map.get(msg.ref_id) == "accepted"
+                    ),
+                    "invitation_status": (
+                        invite_status_map.get(msg.ref_id)
+                        if msg.message_type == "team_invite"
+                        else None
+                    ),
+                    "can_accept_invite": (
+                        msg.message_type == "team_invite"
+                        and invite_status_map.get(msg.ref_id) == "pending"
+                    ),
                 }
                 for msg in messages
             ],
         }
+        self._safe_cache_set(cache_key, result, 30)
+        return result
 
     def get_unread_count(self, user):
         """获取用户未读消息数（使用Redis缓存）"""
         cache_key = f"user:{user.id}:unread_msg_count"
 
         # 尝试从 Redis 读取
-        unread_count = cache.get(cache_key)
+        unread_count = self._safe_cache_get(cache_key)
 
         if unread_count is None:
             # 缓存 miss，从 DB 查询
             unread_count = self.message_mapper.get_unread_message_count(user.id)
             # 写入缓存（TTL 1小时）
-            cache.set(cache_key, unread_count, 3600)
+            self._safe_cache_set(cache_key, unread_count, 3600)
 
         return {"unread_count": unread_count}
 
@@ -83,7 +178,7 @@ class MessageService:
 
         # 清除未读数缓存
         cache_key = f"user:{user.id}:unread_msg_count"
-        cache.delete(cache_key)
+        self._safe_cache_delete(cache_key)
 
         return {"id": message_id, "status": "read"}
 
@@ -101,7 +196,7 @@ class MessageService:
 
         # 清除未读数缓存
         cache_key = f"user:{user.id}:unread_msg_count"
-        cache.delete(cache_key)
+        self._safe_cache_delete(cache_key)
 
         return {"id": message_id, "status": "deleted"}
 
@@ -115,6 +210,13 @@ class PointsGiftService:
     def __init__(self):
         self.message_mapper = MessageMapper()
         self.points_mapper = PointsMapper()
+        self.logger = logging.getLogger(__name__)
+
+    def _safe_cache_delete(self, key):
+        try:
+            cache.delete(key)
+        except Exception as e:
+            self.logger.warning("cache.delete failed for %s: %s", key, e)
 
     @transaction.atomic
     def send_points_gift(self, sender, receiver_id, points_amount, message=""):
@@ -130,24 +232,24 @@ class PointsGiftService:
 
         # 参数验证
         if points_amount <= 0:
-            raise MessageServiceError(400, "Points must be positive")
+            raise MessageServiceError(400, "赠送积分必须大于0")
 
         if points_amount > 5000:
-            raise MessageServiceError(400, "Cannot gift more than 5000 points at once")
+            raise MessageServiceError(400, "单次赠送积分不能超过5000")
 
         # 检查接收者
         try:
             receiver = AppUser.objects.get(id=receiver_id)
         except AppUser.DoesNotExist:
-            raise MessageServiceError(404, "Receiver not found")
+            raise MessageServiceError(404, "接收用户不存在")
 
         if receiver_id == sender.id:
-            raise MessageServiceError(400, "Cannot gift to yourself")
+            raise MessageServiceError(400, "不能给自己赠送积分")
 
         # 检查发送者积分充足
         if sender.points < points_amount:
             raise MessageServiceError(
-                400, f"Insufficient points (have {sender.points}, need {points_amount})"
+                400, f"积分不足（当前{sender.points}，需要{points_amount}）"
             )
 
         # 检查日赠送额度
@@ -156,7 +258,7 @@ class PointsGiftService:
             remaining = self.DAILY_GIFT_LIMIT - daily_total
             raise MessageServiceError(
                 429,
-                f"Daily gift limit exceeded (limit {self.DAILY_GIFT_LIMIT}, already sent {daily_total}, remaining {remaining})",
+                f"今日赠送积分已超上限（上限{self.DAILY_GIFT_LIMIT}，已赠送{daily_total}，剩余{remaining}）",
             )
 
         # 事务处理：扣减发送者、增加接收者、创建日志、创建消息
@@ -171,7 +273,7 @@ class PointsGiftService:
             user_id=sender.id,
             points_type="points_gift",
             delta=-points_amount,
-            reason=f"Gift {points_amount} points to {receiver.nickname}",
+            reason=f"向 {receiver.nickname} 赠送 {points_amount} 积分",
             ref_type="user",
             ref_id=receiver_id,
         )
@@ -181,7 +283,7 @@ class PointsGiftService:
             user_id=receiver_id,
             points_type="points_gift_receive",
             delta=points_amount,
-            reason=f"Received {points_amount} points from {sender.nickname}",
+            reason=f"收到 {sender.nickname} 赠送的 {points_amount} 积分",
             ref_type="user",
             ref_id=sender.id,
         )
@@ -191,18 +293,31 @@ class PointsGiftService:
             user_id=receiver_id,
             sender_id=sender.id,
             message_type="points_gift",
-            title=f"{sender.nickname} sent you {points_amount} points",
-            content=message or f"You received {points_amount} points!",
+            title=f"{sender.nickname} 向你赠送了 {points_amount} 积分",
+            content=message or f"你收到了 {points_amount} 积分",
             points_amount=points_amount,
             ref_type="user",
             ref_id=sender.id,
         )
 
-        # 清除接收者的未读数缓存
-        cache_key = f"user:{receiver_id}:unread_msg_count"
-        from django.core.cache import cache
+        # 给赠送方在与好友会话中保留一条记录，便于追溯互动历史。
+        self.message_mapper.create_message(
+            user_id=sender.id,
+            sender_id=receiver_id,
+            message_type="system",
+            title="积分赠送记录",
+            content=f"你已向 {receiver.nickname} 赠送 {points_amount} 积分。",
+            points_amount=points_amount,
+            ref_type="user",
+            ref_id=receiver_id,
+        )
 
-        cache.delete(cache_key)
+        # 清除接收者的未读数缓存（Redis 异常时不影响主流程）
+        cache_key = f"user:{receiver_id}:unread_msg_count"
+        self._safe_cache_delete(cache_key)
+
+        sender_cache_key = f"user:{sender.id}:unread_msg_count"
+        self._safe_cache_delete(sender_cache_key)
 
         return {
             "message_id": msg.id,
