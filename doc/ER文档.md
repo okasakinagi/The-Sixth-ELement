@@ -242,21 +242,108 @@
 
 ---
 
-### 2.12 NOTIFICATION（站内通知）
+### 2.12 MESSAGE（站内消息）
 
-**用途**：把“状态变化结果”推送给用户。
+**用途**：统一的站内消息系统，支持组队邀请、积分赠送、系统通知。
 
 **关键字段**
 
-* `user_id`（FK → USER）
-* `type`：通知类型（survey_published/response_approved/report_resolved…）
-* `title / content`
-* `status`：unread/read（或用 read_at 表示）
-* `created_at / read_at`
+* `user_id`（FK → USER）：消息接收者
+* `sender_id`（FK → USER, nullable）：消息发送者（系统消息时为null）
+* `type`：消息大类（system/custom）
+* `message_type`：消息具体类型（system/team_invite/points_gift）
+* `title / content`：消息标题和内容
+* `status`：unread/read/deleted
+* `ref_type / ref_id`：关联对象类型和ID（team_id等）
+* `points_amount`：赠送积分数（仅points_gift使用）
+* `is_accepted`：邀请或赠送是否被接受
+* `created_at / read_at / updated_at`
+
+**主要关系**
+
+* 1:N 接收者 → USER.id
+* 1:N 发送者 → USER.id (sender_id)
+* 关联 TEAM（ref_type='team', ref_id=team_id）
 
 ---
 
-### 2.13 TAG / SURVEY_TAG / USER_TAG（标签体系）
+### 2.13 TEAM（队伍）
+
+**用途**：支持用户组队填写问卷，积分统一给队长。
+
+**关键字段**
+
+* `owner_id`（FK → USER）：队长
+* `title`：队伍名（可选）
+* `description`：队伍描述
+* `max_members`：最大成员数（默认5）
+* `status`：active/closed
+* `created_at / updated_at / closed_at`
+
+**主要关系**
+
+* 1:N 队长 → USER.id
+* 1:N members → TEAM_MEMBER.team_id
+* 1:N invitations → TEAM_INVITATION.team_id
+
+---
+
+### 2.14 TEAM_MEMBER（队伍成员）
+
+**用途**：记录用户与队伍的关系、成员角色和状态。
+
+**关键字段**
+
+* `team_id`（FK → TEAM）
+* `user_id`（FK → USER）
+* `role`：member/admin（admin可邀请和踢人，member仅可填写）
+* `status`：invited/joined/left/kicked
+* `joined_at / left_at`
+
+**约束**
+
+* 唯一约束（team_id, user_id）
+
+**备注**
+
+* 队长通过 TEAM.owner_id 标识，不需要在role中指定owner
+* 填问卷的积分全部给队长（TEAM.owner_id）
+
+---
+
+### 2.15 TEAM_INVITATION（队伍邀请）
+
+**用途**：精确追踪邀请状态、管理邀请冷却时间和重试次数。
+
+**关键字段**
+
+* `team_id`（FK → TEAM）
+* `inviter_id`（FK → USER）：邀请者
+* `invitee_id`（FK → USER）：被邀请者
+* `status`：pending/accepted/rejected/expired
+* `attempt_count`：邀请次数（1、2无限制，3+需10分钟冷却）
+* `last_invited_at`：最后邀请时间
+* `accepted_at / rejected_at`：接受/拒绝时间
+* `created_at / updated_at`
+
+**冷却规则**
+
+```
+if attempt_count <= 2:
+    允许重新邀请（无时间限制）
+else if attempt_count > 2 and (now - last_invited_at) < 10分钟:
+    拒绝，告知还需等待X分钟
+else:
+    允许重新邀请
+
+当invitee接受邀请时：
+    attempt_count = 0  # 重置
+    status = 'accepted'
+```
+
+---
+
+### 2.16 TAG / SURVEY_TAG / USER_TAG（标签体系）
 
 **用途**：筛选与推荐的基础设施。
 

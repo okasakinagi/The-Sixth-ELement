@@ -19,6 +19,7 @@ INSTALLED_APPS = [
     "personal_homepage",
     "survey_management",
     "task_hall",
+    "team_messaging",
 ]
 
 MIDDLEWARE = [
@@ -126,9 +127,12 @@ DEFAULT_FROM_EMAIL = os.environ.get("EMAIL_PRIMARY_USER", "noreply@example.com")
 # 缓存配置
 CACHES = {
     "default": {
-        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
-        "LOCATION": "analytics-cache",
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": os.environ.get("REDIS_URL", "redis://127.0.0.1:6379/0"),
         "TIMEOUT": 3600,  # 1小时
-        "OPTIONS": {"MAX_ENTRIES": 1000},
+        "OPTIONS": {
+            "socket_connect_timeout": 5,
+            "socket_timeout": 5,
+        },
     }
 }

@@ -20,6 +20,7 @@ const showSuccessModal = ref(false)
 const showErrorModal = ref(false)
 const errorMessage = ref('')
 const awardedPoints = ref(0)
+const rewardFlowTip = ref('积分已到账')
 const submitting = ref(false)
 const validationErrors = ref(new Set())
 
@@ -230,6 +231,7 @@ async function handleSubmit() {
     awardedPoints.value = Number(
       result?.points_awarded ?? result?.points_expected ?? survey.value?.reward_points ?? 0,
     )
+    rewardFlowTip.value = result?.points_flow_message || '积分已到账'
     showSuccessModal.value = true
 
     // 通知全局浮动菜单刷新积分显示
@@ -483,7 +485,7 @@ function handleSuccessReturn() {
           <p class="success-message">感谢你的用心填答</p>
           <div class="success-reward">
             <span class="reward-text">+{{ awardedPoints }} 积分</span>
-            <span class="reward-sub">积分已到账</span>
+            <span class="reward-sub">{{ rewardFlowTip }}</span>
           </div>
           <p class="success-redirect">即将返回任务大厅...</p>
           <button class="btn-secondary" @click="handleSuccessReturn">提前返回</button>

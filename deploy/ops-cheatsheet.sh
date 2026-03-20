@@ -15,6 +15,7 @@
 #   §7  数据库辅助查询（SQL 直连）
 #   §8  Django 管理命令
 #   §9  日志与健康检查
+#   §10 系统公告消息（站内信）
 #
 # =============================================================================
 
@@ -439,3 +440,102 @@ docker compose up -d --no-deps web
 
 # ── §9.7  查看容器资源占用（CPU / 内存）
 docker stats --no-stream
+
+
+# =============================================================================
+# §10  系统公告消息（站内信）
+# =============================================================================
+# 说明：写入 core.models.Message，message_type='system'，sender=None。
+# 建议：公告文案控制在 500 字以内，标题清晰，避免重复群发。
+
+# ── §10.1  给单个用户发送系统公告（按邮箱）
+docker compose exec web python Main.py shell -c "
+from core.models import AppUser, Message
+EMAIL = 'user@example.com'          # ← 替换目标用户邮箱
+TITLE = '系统公告'                    # ← 替换标题
+CONTENT = '系统将于今晚 23:00 进行维护，预计 15 分钟。'  # ← 替换正文
+u = AppUser.objects.get(email=EMAIL)
+msg = Message.objects.create(
+    user=u,
+    sender=None,
+    type='system',
+    message_type='system',
+    title=TITLE,
+    content=CONTENT,
+    status='unread',
+    ref_type='announcement',
+)
+print(f'已发送给 {u.email}，message_id={msg.id}')
+"
+
+# ── §10.2  给多个用户发送系统公告（按邮箱列表，批量）
+docker compose exec web python Main.py shell -c "
+from core.models import AppUser, Message
+EMAILS = [
+    'user1@example.com',   # ← 替换邮箱
+    'user2@example.com',
+]
+TITLE = '系统公告'                     # ← 替换标题
+CONTENT = '问卷服务升级已完成，欢迎继续使用。'  # ← 替换正文
+users = list(AppUser.objects.filter(email__in=EMAILS))
+email_set = {u.email for u in users}
+missing = [e for e in EMAILS if e not in email_set]
+if missing:
+    print('以下邮箱不存在，将跳过:')
+    for e in missing:
+        print(' -', e)
+
+msgs = [
+    Message(
+        user=u,
+        sender=None,
+        type='system',
+        message_type='system',
+        title=TITLE,
+        content=CONTENT,
+        status='unread',
+        ref_type='announcement',
+    )
+    for u in users
+]
+if msgs:
+    Message.objects.bulk_create(msgs)
+print(f'发送完成：成功 {len(msgs)} 人，跳过 {len(missing)} 人')
+"
+
+# ── §10.3  给全体用户发送系统公告（谨慎使用）
+# ⚠ 生产环境建议在业务低峰执行；用户量大时会创建大量消息记录。
+docker compose exec web python Main.py shell -c "
+from core.models import AppUser, Message
+TITLE = '系统公告'  # ← 替换标题
+CONTENT = '平台新版本已上线，欢迎体验。'  # ← 替换正文
+
+users = AppUser.objects.all().only('id')
+batch_size = 1000
+buffer = []
+total = 0
+
+for u in users.iterator(chunk_size=batch_size):
+    buffer.append(
+        Message(
+            user_id=u.id,
+            sender=None,
+            type='system',
+            message_type='system',
+            title=TITLE,
+            content=CONTENT,
+            status='unread',
+            ref_type='announcement',
+        )
+    )
+    if len(buffer) >= batch_size:
+        Message.objects.bulk_create(buffer, batch_size=batch_size)
+        total += len(buffer)
+        buffer = []
+
+if buffer:
+    Message.objects.bulk_create(buffer, batch_size=batch_size)
+    total += len(buffer)
+
+print(f'全体公告发送完成，共 {total} 条消息')
+"

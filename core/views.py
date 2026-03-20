@@ -903,3 +903,36 @@ def create_report(request):
         status="open",
     )
     return JsonResponse({"id": str(report.id), "status": report.status})
+
+
+@csrf_exempt
+def search_users(request):
+    """通过邮箱搜索用户"""
+    if request.method != "GET":
+        return error(405, "请求方法不允许")
+
+    user, err = require_auth(request)
+    if err:
+        return err
+
+    email = request.GET.get("email", "").strip()
+    if not email:
+        return error(422, "邮箱不能为空")
+
+    # 不能搜索自己
+    if email == user.email:
+        return error(422, "不能搜索自己")
+
+    # 精确查找邮箱
+    target_user = AppUser.objects.filter(email=email).first()
+    if not target_user:
+        return error(404, "用户不存在")
+
+    return JsonResponse(
+        {
+            "id": str(target_user.id),
+            "nickname": target_user.nickname,
+            "email": target_user.email,
+            "points": target_user.points,
+        }
+    )

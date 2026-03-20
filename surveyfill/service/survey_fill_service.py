@@ -7,7 +7,7 @@ import re
 from django.db import transaction
 from django.utils import timezone
 
-from core.models import PointsLog
+from core.models import PointsLog, TeamMember
 from surveyfill.mapper.survey_fill_mapper import SurveyFillMapper
 
 
@@ -129,20 +129,67 @@ class SurveyFillService:
 
         # 提交即时发放积分（已取消审核机制）
         reward = survey.reward_points or 0
+        points_receiver_id = user.id
+        points_receiver_nickname = user.nickname
+        points_flow = "self"
+        points_flow_message = "积分已到账"
+
+        joined_team_member = (
+            TeamMember.objects.select_related("team", "team__owner")
+            .filter(user_id=user.id, status="joined", team__status="active")
+            .first()
+        )
+
+        if joined_team_member and joined_team_member.team.owner_id != user.id:
+            points_receiver_id = joined_team_member.team.owner_id
+            points_receiver_nickname = joined_team_member.team.owner.nickname
+            points_flow = "team_owner"
+            points_flow_message = (
+                f"你已加入队伍，积分已自动入账到队长 {points_receiver_nickname}"
+            )
+
         if reward > 0:
             with transaction.atomic():
                 user_obj = user.__class__.objects.select_for_update().get(pk=user.pk)
-                user_obj.points += reward
                 user_obj.activity_points += reward
-                user_obj.save(update_fields=["points", "activity_points"])
-                PointsLog.objects.create(
-                    user=user_obj,
-                    points_type="fill_reward",
-                    delta=reward,
-                    reason=f"填写问卷《{survey.title}》奖励",
-                    ref_type="survey",
-                    ref_id=survey.id,
-                )
+                if points_receiver_id == user_obj.id:
+                    user_obj.points += reward
+                    user_obj.save(update_fields=["points", "activity_points"])
+                    PointsLog.objects.create(
+                        user=user_obj,
+                        points_type="fill_reward",
+                        delta=reward,
+                        reason=f"填写问卷《{survey.title}》奖励",
+                        ref_type="survey",
+                        ref_id=survey.id,
+                    )
+                else:
+                    user_obj.save(update_fields=["activity_points"])
+                    receiver_obj = user.__class__.objects.select_for_update().get(
+                        pk=points_receiver_id
+                    )
+                    receiver_obj.points += reward
+                    receiver_obj.save(update_fields=["points"])
+                    PointsLog.objects.create(
+                        user=receiver_obj,
+                        points_type="fill_reward",
+                        delta=reward,
+                        reason=(
+                            f"队员 {user_obj.nickname} 填写问卷《{survey.title}》奖励入账"
+                        ),
+                        ref_type="survey",
+                        ref_id=survey.id,
+                    )
+                    PointsLog.objects.create(
+                        user=user_obj,
+                        points_type="fill_reward",
+                        delta=0,
+                        reason=(
+                            f"填写问卷《{survey.title}》完成，积分已转入队长 {receiver_obj.nickname}"
+                        ),
+                        ref_type="survey",
+                        ref_id=survey.id,
+                    )
             points_awarded = reward
         else:
             points_awarded = 0
@@ -152,6 +199,10 @@ class SurveyFillService:
             "status": response.status,
             "points_awarded": points_awarded,
             "points_expected": reward,
+            "points_receiver_id": points_receiver_id,
+            "points_receiver_nickname": points_receiver_nickname,
+            "points_flow": points_flow,
+            "points_flow_message": points_flow_message,
         }
 
     def _question_payload(self, question):

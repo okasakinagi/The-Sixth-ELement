@@ -89,10 +89,7 @@ class SimilarityManager:
 
     @staticmethod
     def deterministic_text_to_vector(text, dim=100):
-        """A simple deterministic placeholder vectorizer.
-
-        TODO: replace this with real embedding model/service.
-        """
+        """A simple deterministic placeholder vectorizer."""
         # Use sha256 to seed RNG deterministically
         h = hashlib.sha256(text.encode("utf-8")).digest()
         seed = int.from_bytes(h[:8], "big")

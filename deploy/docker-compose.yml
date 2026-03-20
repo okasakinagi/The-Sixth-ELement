@@ -23,6 +23,7 @@ services:
     image: backend:latest
     depends_on:
       - db
+      - redis
     env_file:
       - .env
     ports:
@@ -36,6 +37,19 @@ services:
       timeout: 5s
       retries: 5
       start_period: 60s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - redis_data:/data
 
   frontend:
     image: frontend:latest
@@ -51,3 +65,4 @@ services:
 
 volumes:
   db_data:
+  redis_data:
