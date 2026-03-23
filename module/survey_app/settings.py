@@ -128,7 +128,7 @@ DEFAULT_FROM_EMAIL = os.environ.get("EMAIL_PRIMARY_USER", "noreply@example.com")
 CACHES = {
     "default": {
         "BACKEND": "django.core.cache.backends.redis.RedisCache",
-        "LOCATION": os.environ.get("REDIS_URL", "redis://127.0.0.1:6379/0"),
+        "LOCATION": os.environ.get("REDIS_URL", "redis://redis:6379/0"),
         "TIMEOUT": 3600,  # 1小时
         "OPTIONS": {
             "socket_connect_timeout": 5,

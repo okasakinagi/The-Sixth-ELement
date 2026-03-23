@@ -1,11 +1,65 @@
-from django.urls import path, include
-from django.http import HttpResponse
+import time
+
+from django.core.cache import cache
+from django.db import connection
+from django.http import JsonResponse
+from django.urls import include, path
 from core import views
 
 
 def healthz(request):
-    # 简单的健康检查端点，返回 HTTP 200 表示服务存活
-    return HttpResponse("ok")
+    """后端健康检查：进程、数据库、缓存可用性。"""
+    checks = {}
+    overall_ok = True
+
+    # 应用进程存活
+    checks["app"] = {"ok": True}
+
+    # MySQL 连通性检查
+    db_start = time.perf_counter()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+            cursor.fetchone()
+        checks["db"] = {
+            "ok": True,
+            "latency_ms": round((time.perf_counter() - db_start) * 1000, 2),
+        }
+    except Exception as exc:
+        overall_ok = False
+        checks["db"] = {
+            "ok": False,
+            "error": str(exc),
+        }
+
+    # Redis 连通性检查
+    cache_start = time.perf_counter()
+    cache_key = "healthz:redis"
+    cache_value = "ok"
+    try:
+        cache.set(cache_key, cache_value, 10)
+        got = cache.get(cache_key)
+        if got != cache_value:
+            raise ValueError("cache roundtrip mismatch")
+        checks["redis"] = {
+            "ok": True,
+            "latency_ms": round((time.perf_counter() - cache_start) * 1000, 2),
+        }
+    except Exception as exc:
+        overall_ok = False
+        checks["redis"] = {
+            "ok": False,
+            "error": str(exc),
+        }
+
+    status = 200 if overall_ok else 503
+    return JsonResponse(
+        {
+            "ok": overall_ok,
+            "checks": checks,
+        },
+        status=status,
+    )
 
 
 urlpatterns = [
