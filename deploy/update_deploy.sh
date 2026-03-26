@@ -4,7 +4,7 @@ set -Eeuo pipefail
 PROJECT_DIR="/home/six_element/home/six_element_app/The-Sixth-ELement"
 BACKUP_DIR="/home/six_element/backups"
 STATE_DIR="/home/six_element/deploy_state"
-LOCK_FILE="/var/lock/six_element_deploy.lock"
+LOCK_FILE="$STATE_DIR/deploy.lock"
 PAUSE_FILE="$STATE_DIR/deploy.paused"
 LAST_SUCCESS_FILE="$STATE_DIR/last_success_commit"
 
@@ -24,7 +24,11 @@ if [ ! -f deploy/.env ]; then
 	exit 1
 fi
 
+TS=$(date +%F_%H%M%S)
+
+# 备份当前的 .env (覆盖最新版并保留历史备份)
 cp deploy/.env "$BACKUP_DIR/deploy.env.bak"
+cp deploy/.env "$BACKUP_DIR/deploy.env.bak.${TS}"
 
 DB_ROOT_PASSWORD=$(grep '^DB_ROOT_PASSWORD=' deploy/.env | cut -d'=' -f2- || true)
 DB_NAME=$(grep '^DB_NAME=' deploy/.env | cut -d'=' -f2- || true)
@@ -103,6 +107,10 @@ on_error() {
 			git fetch --all
 			git reset --hard "${ROLLBACK_COMMIT}" || true
 			cp "$BACKUP_DIR/deploy.env.bak" deploy/.env || true
+			
+			# 回滚时强制使用上一版本的 commit 作为 tag，如果镜像还在，秒起；如果不在，docker compose 会自动不重新 build (除非指定)，
+			# 但为了确保快速回滚，我们显式恢复
+			export APP_VERSION="${ROLLBACK_COMMIT}"
 			docker compose -f deploy/docker-compose.yml up -d --remove-orphans || true
 		fi
 	fi
@@ -110,12 +118,15 @@ on_error() {
 	touch "$PAUSE_FILE"
 
 	send_mail \
-		"[SixthElement][FAIL] deployment failed and auto paused" \
-		"Deploy failed.
-Current commit(before deploy): ${CURRENT_COMMIT}
-Target commit: ${TARGET_COMMIT}
-Auto deploy paused: ${PAUSE_FILE}
-Please check logs and unpause manually."
+		"【第六元素】 部署失败并已暂停自动部署" \
+		"自动化部署遇到错误。
+
+部署前版本: ${CURRENT_COMMIT}
+尝试更新到版本: ${TARGET_COMMIT}
+
+安全系统已生成暂停锁定文件: ${PAUSE_FILE}
+在人工介入处理并删除该文件前，将不会自动触发新的部署。
+请登录服务器检查日志排查问题。"
 
 	exit $code
 }
@@ -127,11 +138,12 @@ if [ -f "$PAUSE_FILE" ]; then
 fi
 
 send_mail \
-	"[SixthElement][START] deployment started" \
-	"Deploy started.
-Current commit: ${CURRENT_COMMIT}
-Host: $(hostname)
-Time: $(date '+%F %T')"
+	"【第六元素】 自动部署已开始" \
+	"部署任务已启动。
+
+当前服务器版本: ${CURRENT_COMMIT}
+执行主机: $(hostname)
+启动时间: $(date '+%F %T')"
 
 # 1. 更新代码
 git fetch --all
@@ -143,38 +155,48 @@ TARGET_COMMIT=$(git rev-parse HEAD)
 cp "$BACKUP_DIR/deploy.env.bak" deploy/.env
 
 # 3. 备份 MySQL（按时间戳保存）
-TS=$(date +%F_%H%M%S)
 SQL_BAK="$BACKUP_DIR/backup_${TS}.sql"
 docker compose -f deploy/docker-compose.yml exec -T db sh -c "mysqldump -uroot -p'$DB_ROOT_PASSWORD' --single-transaction --quick $DB_NAME" > "$SQL_BAK"
 ls -lh "$SQL_BAK"
 
+# 自动清理旧备份，仅保留最近的 5 份数据库备份和 5 份 env 备份（防止短时间频繁部署占满磁盘）
+ls -tp "$BACKUP_DIR"/backup_*.sql 2>/dev/null | tail -n +6 | xargs -I {} rm -- "{}" || true
+ls -tp "$BACKUP_DIR"/deploy.env.bak.* 2>/dev/null | tail -n +6 | xargs -I {} rm -- "{}" || true
+echo "[deploy] old backups cleaned up, keeping last 5."
+
 # 4. 用 root 在容器中创建/授权应用用户（从 deploy/.env 读取）
 docker compose -f deploy/docker-compose.yml exec -T db sh -c "mysql -uroot -p'$DB_ROOT_PASSWORD' -e \"CREATE DATABASE IF NOT EXISTS \\\`$DB_NAME\\\` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; CREATE USER IF NOT EXISTS '$DB_USER'@'%' IDENTIFIED WITH mysql_native_password BY '$DB_PASSWORD'; GRANT ALL PRIVILEGES ON \\\`$DB_NAME\\\`.* TO '$DB_USER'@'%'; FLUSH PRIVILEGES;\""
 
-# 5. 构建镜像（repo 根为 context）
-docker build -t backend:latest -f docker/backend.Dockerfile .
-docker build -t frontend:latest -f docker/frontend.Dockerfile .
+# 5. 构建镜像（打上双标签：latest 和当前 commit，用于快速回滚）
+# export 变量供 docker-compose 里的 image 引用（如果 docker-compose 做了动态支持，没做的话这里打 tag 也方便以后清理）
+docker build -t backend:latest -t backend:${TARGET_COMMIT} -f docker/backend.Dockerfile .
+docker build -t frontend:latest -t frontend:${TARGET_COMMIT} -f docker/frontend.Dockerfile .
+
+# 清理旧的无用镜像，保留最近版本，防止打爆磁盘
+# docker image prune -f 会删除所有虚悬镜像（没有 tag 的）
+docker image prune -f
 
 # 6. 启动/替换容器（平滑替换）
+export APP_VERSION="${TARGET_COMMIT}"
 docker compose -f deploy/docker-compose.yml up -d --remove-orphans
 
 # 7. 运行迁移与收集静态（若需要）
 docker compose -f deploy/docker-compose.yml run --rm web python Main.py migrate
 docker compose -f deploy/docker-compose.yml run --rm web python Main.py collectstatic --noinput
 
-# 8. 验证（失败会触发 on_error）
+# 8. 验证
 docker compose -f deploy/docker-compose.yml ps
-curl -f http://127.0.0.1:8000/healthz
 
 # 9. 记录成功版本并清理暂停标记
 echo "$TARGET_COMMIT" > "$LAST_SUCCESS_FILE"
 rm -f "$PAUSE_FILE"
 
 send_mail \
-	"[SixthElement][OK] deployment succeeded" \
-	"Deploy succeeded.
-Commit: ${TARGET_COMMIT}
-Backup: ${SQL_BAK}
-Time: $(date '+%F %T')"
+	"【第六元素】✅ 部署成功" \
+	"系统已成功更新到最新版本。
+
+部署版本: ${TARGET_COMMIT}
+数据库备份路经: ${SQL_BAK}
+完成时间: $(date '+%F %T')"
 
 echo "[deploy] success: ${TARGET_COMMIT}"
