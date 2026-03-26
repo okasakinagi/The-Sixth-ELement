@@ -2,9 +2,11 @@ version: "1.0"
 name: pipeline-20260207
 displayName: pipeline-20260207
 triggers:
-  trigger: auto
-  schedule:
-    - cron: "* * 8 * * ? *"
+  trigger: manual
+  push:
+    branches:
+      precise:
+        - "666"
 stages:
   - name: stage-532932c6
     displayName: 更新部署服务器
