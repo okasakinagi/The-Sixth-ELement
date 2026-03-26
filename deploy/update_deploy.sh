@@ -192,7 +192,7 @@ echo "$TARGET_COMMIT" > "$LAST_SUCCESS_FILE"
 rm -f "$PAUSE_FILE"
 
 send_mail \
-	"【第六元素】✅ 部署成功" \
+	"【第六元素】部署成功" \
 	"系统已成功更新到最新版本。
 
 部署版本: ${TARGET_COMMIT}

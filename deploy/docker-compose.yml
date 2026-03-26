@@ -2,6 +2,11 @@ services:
   db:
     image: mysql:8.0
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
       MYSQL_DATABASE: ${DB_NAME}
@@ -28,6 +33,11 @@ services:
     depends_on:
       - db
       - redis
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
     env_file:
       - .env
     ports:
@@ -51,6 +61,11 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
     ports:
       - "127.0.0.1:6379:6379"
     healthcheck:
@@ -66,6 +81,11 @@ services:
     ports:
       - "80:80"
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
     healthcheck:
       # 同时检查：前端静态页可用 + 前端容器到后端 web 服务的联通性
       test:
