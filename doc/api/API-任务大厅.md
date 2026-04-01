@@ -112,7 +112,7 @@
 
 `GET /task-hall/tasks`
 
-支持关键词检索、筛选、排序与分页。
+支持关键词检索、筛选与分页；`sort` 目前为兼容参数，实际展示顺序由后端推荐结果或随机降级决定。
 
 **查询参数：**
 
@@ -124,7 +124,7 @@
 | min_reward | number | 可选 | 最低奖励积分 |
 | max_minutes | number | 可选 | 最大耗时 |
 | status | string | 可选 | `active`/`closed`/`full` |
-| sort | string | 可选 | `recommend`/`reward_desc`/`newest`/`ending` |
+| sort | string | 可选 | 兼容参数，当前主要用于前端透传 |
 | page | number | 默认 1 | 页码 |
 | page_size | number | 默认 20，最大 50 | 每页数量 |
 
@@ -208,6 +208,16 @@
 - `401` 未登录或 Token 过期
 - `422` 参数校验失败
 
+### 4) 访客任务列表
+
+`GET /task-hall/guest-tasks?size=15`
+
+说明：
+
+- 该接口无需登录，返回随机抽样的可参与问卷。
+- `size` 默认 15，最小 1，最大 30。
+- 访客模式不走相似度推荐，主要用于未登录首页或引流页。
+
 ---
 
 ## 五、分层落地建议（任务大厅）
@@ -218,7 +228,7 @@
 - 统一响应结构
 
 ### Service（services/task_hall_service.py）
-- 实现推荐逻辑（基于用户画像、行为、热门度）
+- 实现推荐逻辑（当前以相似度排序为主，随机模式作为降级）
 - 组装任务卡片数据（合并 Survey + 用户信息 + 统计数据）
 - 处理排序、过滤、分页
 

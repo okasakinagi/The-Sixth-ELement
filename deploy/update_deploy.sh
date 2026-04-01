@@ -25,10 +25,11 @@ if [ ! -f deploy/.env ]; then
 fi
 
 TS=$(date +%F_%H%M%S)
+ENV_BAK="$BACKUP_DIR/deploy.env.bak.${TS}"
 
 # 备份当前的 .env (覆盖最新版并保留历史备份)
 cp deploy/.env "$BACKUP_DIR/deploy.env.bak"
-cp deploy/.env "$BACKUP_DIR/deploy.env.bak.${TS}"
+cp deploy/.env "$ENV_BAK"
 
 DB_ROOT_PASSWORD=$(grep '^DB_ROOT_PASSWORD=' deploy/.env | cut -d'=' -f2- || true)
 DB_NAME=$(grep '^DB_NAME=' deploy/.env | cut -d'=' -f2- || true)
@@ -196,7 +197,8 @@ send_mail \
 	"系统已成功更新到最新版本。
 
 部署版本: ${TARGET_COMMIT}
-数据库备份路经: ${SQL_BAK}
+数据库备份路径: ${SQL_BAK}
+环境变量备份路径: ${ENV_BAK}
 完成时间: $(date '+%F %T')"
 
 echo "[deploy] success: ${TARGET_COMMIT}"

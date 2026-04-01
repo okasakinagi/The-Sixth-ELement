@@ -212,7 +212,7 @@ function getCurrentUserId() {
           <span class="plus-icon">+</span>
         </div>
         <h3>您还没有加入任何队伍</h3>
-        <p>创建一个新队伍来协作完成问卷，或等待好友邀请。</p>
+        <p>创建一个新队伍来协作完成问卷，或等待伙伴邀请。</p>
         <button class="create-link">
           <span class="btn-icon">✨</span> 创建新队伍
         </button>

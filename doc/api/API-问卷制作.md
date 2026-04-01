@@ -1,6 +1,6 @@
 # 问卷制作 API（SurveyEntryView / SurveyAiPromptView / SurveyBuilderView）
 
-本文档描述“问卷制作 + AI 编辑器”三段式流程的接口，包括标题设定、AI 生成、编辑与自动保存。
+本文档描述“问卷制作 + AI 编辑器”三段式流程的接口，包括标题设定、AI 生成、编辑、自动保存与删除题目。
 
 ## 约定
 
@@ -164,27 +164,6 @@
 }
 ```
 
-### 保存草稿为问卷
-
-`POST /surveys`
-
-请求体：
-
-```json
-{
-  "draft_id": "draft_001"
-}
-```
-
-响应体：
-
-```json
-{
-  "id": "S-1204",
-  "status": "draft"
-}
-```
-
 ### 删除题目（可选细化接口）
 
 `DELETE /surveys/drafts/{draft_id}/questions/{question_id}`
@@ -196,6 +175,8 @@
   "success": true
 }
 ```
+
+> 说明：当前实现里没有单独的“保存草稿为问卷”接口。草稿创建后会保存在 draft 状态，正式投放请到 [API-问卷管理.md](API-问卷管理.md) 使用 `POST /surveys/{survey_id}/publish`。
 
 ---
 

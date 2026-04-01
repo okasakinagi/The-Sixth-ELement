@@ -90,8 +90,10 @@
 
 1. 发布主流程使用 `POST /surveys/{survey_id}/publish`，入参必须包含 `reward_points`、`budget_points`、`target`，并满足 `budget_points >= reward_points * target`。
 2. 填写主流程为“提交即发奖”：`POST /surveys/{survey_id}/fills` 成功后立即发放积分并写入积分流水。
-3. `POST /fills/{fill_id}/review` 仍存在，但属于兼容逻辑，不是当前前端主流程依赖点。
-4. 积分接口存在双入口语义：`/points/logs` 在代码中有 legacy 与 points_record 两套实现，需要按前端实际消费结构选用。
+3. 如果填答者已加入有效队伍且不是队长，填答奖励会记到队长账户，但填答者自身的 `activity_points` 仍会增加。
+4. `POST /fills/{fill_id}/review` 仍存在，但属于兼容逻辑，不是当前前端主流程依赖点。
+5. `POST /surveys/{survey_id}/cancel` 会把问卷状态置为 `ended` 并按当前规则退还剩余预算，删除问卷则会在删除前结算同一退款口径。
+6. 积分接口存在双入口语义：`/points/logs` 在代码中有 legacy 与 points_record 两套实现，需要按前端实际消费结构选用。
 
 ---
 

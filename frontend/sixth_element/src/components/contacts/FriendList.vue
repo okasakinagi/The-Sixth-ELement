@@ -24,7 +24,7 @@ const invitationError = ref('')
 const selectedTeamId = ref(null)
 const myTeam = ref(null)
 
-// 动态好友列表 - 从消息API加载
+// 动态伙伴列表 - 从消息API加载
 const friends = ref([])
 const loadingFriends = ref(false)
 const friendsError = ref('')
@@ -80,7 +80,7 @@ function isFriendInteractionMessage(msg) {
   if (msg.message_type !== 'system') {
     return true
   }
-  // 系统类型里仅保留“用户间互动”消息，避免把纯平台通知混进好友列表。
+  // 系统类型里仅保留“用户间互动”消息，避免把纯平台通知混进伙伴列表。
   return msg.ref_type === 'user' || msg.ref_type === 'team_invite'
 }
 
@@ -106,19 +106,19 @@ function ensureFriendInList(friend) {
 }
 
 /**
- * 从消息中提取好友列表
- * 好友定义：有互相发过的消息（系统消息除外）
+ * 从消息中提取伙伴列表
+ * 伙伴定义：有互相发过的消息（系统消息除外）
  */
 async function loadFriendsFromMessages() {
   try {
-    console.log('[LFF] 开始加载好友列表...')
+    console.log('[LFF] 开始加载伙伴列表...')
     loadingFriends.value = true
     friendsError.value = ''
     
     // 添加10秒超时机制，防止请求永远卡住
     friendsLoadingTimer.value = setTimeout(() => {
       if (loadingFriends.value) {
-        console.warn('[LFF] 好友列表加载超时(10s)，自动取消')
+        console.warn('[LFF] 伙伴列表加载超时(10s)，自动取消')
         loadingFriends.value = false
         friendsError.value = '加载超时，请刷新页面'
         friends.value = []
@@ -138,7 +138,7 @@ async function loadFriendsFromMessages() {
     // 提取与用户互动过的发送者（含邀请/赠送后的系统回执记录）
     messages.forEach(msg => {
       if (isFriendInteractionMessage(msg)) {
-        // 如果这个发送者还不在好友列表中，就加入
+        // 如果这个发送者还不在伙伴列表中，就加入
         if (!friendsMap.has(msg.sender_id)) {
           friendsMap.set(msg.sender_id, {
             id: msg.sender_id,
@@ -158,10 +158,10 @@ async function loadFriendsFromMessages() {
       }
     })
     
-    // 构建最终的好友列表
+    // 构建最终的伙伴列表
     let friendsList = Array.from(friendsMap.values())
     
-    // 添加系统消息虚拟好友（放在第一个）
+    // 添加系统消息虚拟伙伴（放在第一个）
     const systemMessages = messages.filter(m => m.message_type === 'system')
     if (systemMessages.length > 0) {
       friendsList.unshift({
@@ -175,7 +175,7 @@ async function loadFriendsFromMessages() {
       })
     }
     
-    console.log('[LFF] 好友列表加载完成:', friendsList.length, '个好友')
+    console.log('[LFF] 伙伴列表加载完成:', friendsList.length, '个伙伴')
     friends.value = friendsList
 
     const openFriendId = route.query.openFriendId
@@ -190,8 +190,8 @@ async function loadFriendsFromMessages() {
       }
     }
   } catch (error) {
-    friendsError.value = error.message || '加载好友失败'
-    console.error('[LFF] 加载好友错误:', error)
+    friendsError.value = error.message || '加载伙伴失败'
+    console.error('[LFF] 加载伙伴错误:', error)
     friends.value = []
   } finally {
     // 清除超时计时器
@@ -231,9 +231,9 @@ function scrollChatToBottom() {
 }
 
 /**
- * 加载与特定好友或系统消息的消息
- * @param {number|string} friendId - 好友ID (或 'system')
- * @param {boolean} isSystemFriend - 是否是系统消息虚拟好友
+ * 加载与特定伙伴或系统消息的消息
+ * @param {number|string} friendId - 伙伴ID (或 'system')
+ * @param {boolean} isSystemFriend - 是否是系统消息虚拟伙伴
  */
 async function loadChatMessages(friendId, isSystemFriend = false) {
   try {
@@ -250,11 +250,11 @@ async function loadChatMessages(friendId, isSystemFriend = false) {
     let filteredMessages = response.messages || []
     
     if (isSystemFriend) {
-      // 系统消息虚拟好友：只显示系统消息
+      // 系统消息虚拟伙伴：只显示系统消息
       currentChatType.value = 'system'
       filteredMessages = filteredMessages.filter(m => m.message_type === 'system')
     } else {
-      // 普通好友：显示来自该好友的所有消息（邀请、积分赠送等）
+      // 普通伙伴：显示来自该伙伴的所有消息（邀请、积分赠送等）
       currentChatType.value = 'friend'
       filteredMessages = filteredMessages.filter(m => m.sender_id === friendId)
     }
@@ -380,9 +380,9 @@ const activeDialogFriend = ref(null)
 
 function openFriendDialog(friend) {
   activeDialogFriend.value = friend
-  // 加载消息（系统消息虚拟好友需要特殊处理）
+  // 加载消息（系统消息虚拟伙伴需要特殊处理）
   loadChatMessages(friend.id, friend.isSystemFriend || false)
-  // 非系统好友才需要加载队伍信息（用于邀请功能）
+  // 非系统伙伴才需要加载队伍信息（用于邀请功能）
   if (!friend.isSystemFriend) {
     loadMyTeam()
   }
@@ -395,7 +395,7 @@ function closeFriendDialog() {
   invitationError.value = ''
 }
 
-// 页面加载时初始化好友列表
+// 页面加载时初始化伙伴列表
 loadFriendsFromMessages()
 
 async function handleTeamUpdated() {
@@ -550,16 +550,16 @@ async function performSearch() {
     const result = await teamApi.searchUserByEmail(email)
     console.log('[Search] 搜索成功，找到用户:', result.nickname)
     
-    // 检查这个用户是否已在好友列表中
+    // 检查这个用户是否已在伙伴列表中
     const existingFriend = friends.value.find(f => f.id === result.id)
     
     if (existingFriend) {
-      console.log('[Search] 用户已是好友，打开对话')
-      // 已是好友，直接打开对话
+      console.log('[Search] 用户已是伙伴，打开对话')
+      // 已是伙伴，直接打开对话
       openFriendDialog(existingFriend)
     } else {
-      console.log('[Search] 新用户，添加到好友列表')
-      // 新用户，添加到好友列表并打开对话
+      console.log('[Search] 新用户，添加到伙伴列表')
+      // 新用户，添加到伙伴列表并打开对话
       const newFriend = {
         id: result.id,
         nickname: result.nickname,
@@ -731,13 +731,13 @@ async function sendPointsGiftWithPayload(receiverId, amount) {
 <template>
   <div class="friend-section">
     <div class="header">
-      <h2>我的好友 <span class="count">({{ friends.length }})</span></h2>
+      <h2>我的伙伴 <span class="count">({{ friends.length }})</span></h2>
       <div class="search-area">
         <div class="search-box">
           <span class="search-icon" :class="{ searching: searching, pulse: searchHintPulse }">🔍</span>
           <input 
             v-model="emailSearch" 
-            placeholder="请输入邮箱搜索好友..." 
+            placeholder="请输入邮箱搜索伙伴..." 
             @keyup.enter="handleSearch"
             :disabled="searching"
           />
@@ -795,7 +795,7 @@ async function sendPointsGiftWithPayload(receiverId, amount) {
       <!-- Add Friend Card (Optional placeholder) -->
       <div class="friend-card add-card" @click="handleSearch">
         <div class="add-icon">+</div>
-        <span>添加好友</span>
+        <span>添加伙伴</span>
       </div>
     </div>
 
@@ -843,7 +843,7 @@ async function sendPointsGiftWithPayload(receiverId, amount) {
                 <div class="system-time">{{ new Date(msg.created_at).toLocaleTimeString() }}</div>
               </div>
 
-              <!-- 好友会话：队伍邀请 -->
+              <!-- 伙伴会话：队伍邀请 -->
               <div
                 v-else-if="msg.message_type === 'team_invite'"
                 :class="['system-message', 'invite-message', { 'accepted': msg.is_accepted }]"
@@ -877,7 +877,7 @@ async function sendPointsGiftWithPayload(receiverId, amount) {
                 <div class="system-time">{{ new Date(msg.created_at).toLocaleTimeString() }}</div>
               </div>
 
-              <!-- 好友会话：积分赠送 -->
+              <!-- 伙伴会话：积分赠送 -->
               <div v-else-if="msg.message_type === 'points_gift'" class="system-message points-message">
                 <div class="system-icon">🎁</div>
                 <div class="system-content">
@@ -887,7 +887,7 @@ async function sendPointsGiftWithPayload(receiverId, amount) {
                 <div class="system-time">{{ new Date(msg.created_at).toLocaleTimeString() }}</div>
               </div>
 
-              <!-- 好友会话：普通系统文本 -->
+              <!-- 伙伴会话：普通系统文本 -->
               <div v-else class="message-bubble received">
                 <div class="bubble-content">{{ msg.content }}</div>
                 <div class="bubble-time">{{ new Date(msg.created_at).toLocaleTimeString() }}</div>
@@ -909,7 +909,7 @@ async function sendPointsGiftWithPayload(receiverId, amount) {
             <button 
               class="action-btn gift-action"
               @click="openPointsGiftModal"
-              title="赠送积分给好友"
+              title="赠送积分给伙伴"
             >
               <span class="icon">🎁</span>
               <span class="label">赠送积分</span>

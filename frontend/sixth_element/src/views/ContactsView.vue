@@ -6,7 +6,7 @@ import TeamList from '../components/contacts/TeamList.vue'
 <template>
   <div class="contacts-page">
     <div class="header-section">
-      <h1>联系人与组队</h1>
+      <h1>伙伴与组队</h1>
     </div>
 
     <!-- Upper Section: Teams -->

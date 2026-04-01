@@ -71,7 +71,11 @@ Content-Type: application/json
   "id": "f_abc123...",
   "status": "submitted",
   "points_awarded": 5,
-  "points_expected": 5
+  "points_expected": 5,
+  "points_receiver_id": "u_1",
+  "points_receiver_nickname": "队长昵称",
+  "points_flow": "team_owner",
+  "points_flow_message": "你已加入队伍，积分已自动入账到队长 队长昵称"
 }
 ```
 
@@ -83,6 +87,10 @@ Content-Type: application/json
 | status | 当前状态（提交成功后为 `submitted`） |
 | points_awarded | 已发放积分（提交后即时发放） |
 | points_expected | 预期奖励积分（通常等于 `points_awarded`） |
+| points_receiver_id | 实际入账对象 ID |
+| points_receiver_nickname | 实际入账对象昵称 |
+| points_flow | `self` 或 `team_owner` |
+| points_flow_message | 前端可直接展示的提示语 |
 
 **验证规则：**
 
@@ -90,6 +98,7 @@ Content-Type: application/json
 - 一个用户对同一问卷只能提交一次
 - 不能填写自己发布的问卷
 - 问卷必须处于可填写状态（发布中且有已发布问卷内容）
+- 如果填答者已加入有效队伍且不是队长，奖励积分会自动记到队长账户，提交者自身只增加 `activity_points`。
 
 **可能的错误码：**
 

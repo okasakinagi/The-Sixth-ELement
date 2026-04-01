@@ -108,6 +108,11 @@ Query 参数：
 }
 ```
 
+说明：
+
+- 当前实现会在删除已发布/暂停问卷前先按同一退款口径结算可退还预算。
+- 与 `cancel` 的区别是：`delete` 会直接移除问卷，而 `cancel` 只会把问卷置为 `ended` 并保留数据。
+
 ### 暂停投放
 
 `POST /surveys/{survey_id}/pause`
@@ -134,6 +139,44 @@ Query 参数：
 }
 ```
 
+### 取消发布
+
+`POST /surveys/{survey_id}/cancel`
+
+响应体：
+
+```json
+{
+  "id": "S-1205",
+  "status": "ended",
+  "refund": 80
+}
+```
+
+说明：
+
+- 取消发布不会删除问卷数据，只会把状态改为 `ended`。
+- 退款按当前实现计算为：`max(0, 剩余总额 - 推断的加速预算)`。
+- 推断的加速预算 = `max(0, publish_cost_points - reward_points * target)`。
+
+### 问卷评估（兼容）
+
+`GET /surveys/{survey_id}/evaluate`
+
+响应体：
+
+```json
+{
+  "difficulty_level": 3,
+  "estimated_time_minutes": 5
+}
+```
+
+说明：
+
+- 该接口用于根据题目内容估算难度和预计填写时长。
+- 如果 AI 评估不可用，后端会退回到简单规则估算。
+
 ### 发布问卷（积分结算前确认）
 
 `POST /surveys/{survey_id}/publish`
@@ -154,6 +197,8 @@ Query 参数：
 - `budget_points`：必填，总预算，需满足 `budget_points >= reward_points * target`
 - `target`：必填，目标份数，且必须大于 0
 - 发布前约束：草稿问卷必须至少包含 1 道题，否则返回 `422`
+- 当前实现会把 `survey.reward_points` 直接写成请求体中的 `reward_points`，并把 `survey.publish_cost_points` 写成 `budget_points`。
+- 预算扣费会立即发生，发布成功后返回 `status: live`。
 
 响应体：
 

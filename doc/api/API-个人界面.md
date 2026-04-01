@@ -32,11 +32,10 @@
 {
   "id": "u_123",
   "nickname": "Alice",
-  "school": "某大学",
-  "tags": ["心理学", "产品"],
   "credit_score": 80,
   "points": 120,
-  "activity_points": 56
+  "activity_points": 56,
+  "has_honor": false
 }
 ```
 
@@ -112,9 +111,12 @@
   "nickname": "Alice",
   "credit_score": 80,
   "points": 120,
-  "activity_points": 56
+  "activity_points": 56,
+  "has_honor": false
 }
 ```
+
+> 说明：当前实现的 `GET /users/me` 只返回账号层字段；`school` 和 `tags` 是 `PATCH /users/me` 的写入输入，不会随响应原样返回。
 
 ### 获取当前用户画像（用于展示与匹配）
 

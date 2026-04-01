@@ -33,6 +33,7 @@
 说明：
 
 - `has_honor` 按 `credit_score >= 85` 计算。
+- 当前实现返回基础账号字段，不会在 `GET /users/me` 中直接返回 `school` 或 `tags`。
 
 ---
 
@@ -181,9 +182,14 @@
 ```json
 {
   "id": "34",
-  "status": "closed"
+  "status": "active"
 }
 ```
+
+说明：
+
+- 当前兼容入口会直接创建已发布问卷并扣除 `reward_points`。
+- 新的草稿发布流程请使用 `API-问卷管理.md` 中的 `POST /surveys/{survey_id}/publish`。
 
 说明：
 

@@ -34,8 +34,12 @@ POST /surveys/{id}/publish
 扣费：user.points -= budget_points
 ```
 
+如需提前结束投放，使用 `POST /surveys/{id}/cancel`；它会保留问卷数据并按当前规则退还未消耗预算。
+
 **B. 填答问卷**
 ```bash
+GET /task-hall/guest-tasks       # 未登录时可直接看随机任务
+↓
 GET /task-hall/tasks                # 浏览推荐任务
 ↓
 GET /surveys/{id}/fill              # 获取可填写问卷
@@ -48,6 +52,8 @@ POST /surveys/{id}/fills            # 提交答卷
 ↓
 提交成功即发放积分 points_awarded
 ```
+
+如果填答者已加入有效队伍且不是队长，奖励会自动记到队长账户，前端可用返回的 `points_flow` 与 `points_receiver_nickname` 展示。
 
 **C. 查看记录/统计**
 ```bash

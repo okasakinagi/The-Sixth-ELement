@@ -41,7 +41,7 @@ function isActive(routeName) {
         to="/contacts"
         :class="['navbar-link', { active: isActive('contacts') }]"
       >
-        👥 联系人与组队
+        👥 伙伴与组队
       </RouterLink>
       <RouterLink
         to="/surveys"

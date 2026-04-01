@@ -300,7 +300,7 @@ class PointsGiftService:
             ref_id=sender.id,
         )
 
-        # 给赠送方在与好友会话中保留一条记录，便于追溯互动历史。
+        # 给赠送方在与伙伴会话中保留一条记录，便于追溯互动历史。
         self.message_mapper.create_message(
             user_id=sender.id,
             sender_id=receiver_id,

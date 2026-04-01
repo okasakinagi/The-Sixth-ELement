@@ -54,7 +54,7 @@ function toggleMobileMenu() {
           @click="closeMobileMenu"
         >
           <span class="menu-icon">👥</span>
-          <span class="menu-label">联系人与组队</span>
+          <span class="menu-label">伙伴与组队</span>
         </RouterLink>
 
         <RouterLink

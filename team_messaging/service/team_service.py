@@ -376,7 +376,7 @@ class TeamService:
             ref_id=invitation.id,
         )
 
-        # 给邀请方在与该好友会话中也保留一条邀请记录，便于追踪邀请进度
+        # 给邀请方在与该伙伴会话中也保留一条邀请记录，便于追踪邀请进度
         msg_mapper.create_message(
             user_id=user.id,
             sender_id=invitee_id,

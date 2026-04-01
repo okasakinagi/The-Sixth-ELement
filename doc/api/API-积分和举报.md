@@ -18,7 +18,7 @@
 1. legacy：`/api/v1/points/logs`（`core.views.points_logs`）
 2. points_record：`/api/v1/points/summary`、`/api/v1/points/logs`、`/api/v1/points/update`
 
-说明：`/api/v1/points/logs` 路径在代码中存在同名实现，联调时请以当前前端实际消费的响应结构为准。
+说明：`/api/v1/points/logs` 在代码中有两套实现，实际挂载前缀不同，联调时请按前端实际调用的前缀区分响应结构。
 
 ---
 
@@ -88,6 +88,11 @@ Authorization: Bearer <access_token>
 | related_type | 关联资源类型：`survey_fill`（完成问卷）、`survey_publish`（发布问卷） |
 | has_honor | 是否具有荣誉身份（credit_score >= 85） |
 
+说明：
+
+- `related_id` / `related_type` 为最佳努力推断字段，未命中规则时可能为空。
+- `type=earn` / `type=spend` 只是 legacy 入口的快捷过滤，不等同于 points_type 全量枚举。
+
 **列表示例：**
 
 | 原因 | delta | related_type | 说明 |
@@ -104,7 +109,7 @@ Authorization: Bearer <access_token>
 
 ---
 
-### points_record 汇总
+### points_record 接口
 
 #### 获取积分汇总
 
@@ -129,6 +134,43 @@ Authorization: Bearer <access_token>
 }
 ```
 
+说明：
+
+- `recent_earned` / `recent_spent` 按最近 30 条积分记录统计。
+- 该接口适合个人中心顶部概览，不包含流水明细。
+
+#### 获取积分流水
+
+`GET /points/logs?type=&start_date=&end_date=&keyword=&sort=&page=1&page_size=20`
+
+响应示例：
+
+```json
+{
+  "items": [
+    {
+      "id": "123",
+      "type": "fill_reward",
+      "delta": 5,
+      "balance": 150,
+      "reason": "填写问卷《校园生活满意度调查》奖励",
+      "ref_type": "survey",
+      "ref_id": 34,
+      "created_at": "2026-01-21T10:30:00Z"
+    }
+  ],
+  "page": 1,
+  "page_size": 20,
+  "total": 1
+}
+```
+
+说明：
+
+- `type=earn` / `type=spend` 会按正负积分过滤；传具体值时则按 `points_type` 精确过滤。
+- `balance` 为后端根据当前余额逆推的流水余额，便于前端直接展示。
+- `ref_type` / `ref_id` 来自 `PointsLog` 原始字段，不做额外推断。
+
 #### 更新积分（管理用途）
 
 `POST /points/update`
@@ -143,6 +185,11 @@ Authorization: Bearer <access_token>
   "ref_id": "evt_01"
 }
 ```
+
+说明：
+
+- 该接口面向管理用途，不属于前端主流程。
+- `delta` 为正数时会同时增加 `activity_points`。
 
 ---
 
@@ -216,7 +263,7 @@ Content-Type: application/json
 | 方式 | 积分 | 说明 |
 |------|------|------|
 | 发布问卷 | 由用户设定 | 作为问卷奖励发布时扣除 |
-
+| 完成问卷 | 由发布者设定 | 答卷提交成功（主流程即时发奖，可能记到队长账户） |
 ### 信用分系统
 
 - **初始值**：80 分

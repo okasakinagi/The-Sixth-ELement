@@ -1,6 +1,6 @@
 # 问卷填写 API（Survey Fill）
 
-本文档描述“问卷填写”页面所需接口，包含问卷详情获取、提交答卷与保存草稿。
+本文档描述“问卷填写”页面所需接口，包含问卷详情获取、提交答卷与奖励入账说明。
 
 ## 约定
 
@@ -89,17 +89,18 @@
 
 ### 获取问卷详情（用于填写）
 
-**当前实现（临时）：**
+**当前实现：**
 
 `GET /surveys/{survey_id}`
 
-**推荐实现（新接口）：**
+**推荐/主流程接口：**
 
 `GET /surveys/{survey_id}/fill`
 
 响应体：`SurveyFill`（必须包含 `questions` 字段）
 
 **注意**：前端依赖 `questions` 数组来渲染题目，后端必须返回此字段。
+**说明**：当前控制器对 `GET /surveys/{survey_id}/fill` 不要求登录，但提交答卷仍然需要认证。
 
 ---
 
@@ -116,7 +117,11 @@
   "id": "f_xyz789",
   "status": "submitted",
   "points_awarded": 5,
-  "points_expected": 5
+  "points_expected": 5,
+  "points_receiver_id": "u_1",
+  "points_receiver_nickname": "队长昵称",
+  "points_flow": "team_owner",
+  "points_flow_message": "你已加入队伍，积分已自动入账到队长 队长昵称"
 }
 ```
 
@@ -125,8 +130,12 @@
 - `status`：当前实现提交后为 `submitted`
 - `points_awarded`：本次已发放积分（提交后即时发放）
 - `points_expected`：预期奖励积分（通常等于 `points_awarded`）
+- `points_receiver_id`：实际入账对象 ID，未加入队伍时为当前用户，加入有效队伍时为队长
+- `points_receiver_nickname`：实际入账对象昵称
+- `points_flow`：`self` / `team_owner`
+- `points_flow_message`：前端可直接展示的提示语
 
-**说明（当前实现）**：主流程已取消“提交后等待审核再发奖”，改为提交成功后即时发放奖励积分。
+**说明（当前实现）**：主流程已取消“提交后等待审核再发奖”，改为提交成功后即时发放奖励积分；如果提交者已加入有效队伍且不是队长，奖励会记到队长账户，但提交者自己的 `activity_points` 仍会增加。
 
 **后端校验规则：**
 1. 所有 `required: true` 的题目必须有答案
