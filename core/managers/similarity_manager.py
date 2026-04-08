@@ -1000,9 +1000,6 @@ class SimilarityManager:
             # 阶段1内核：最终分 = 兴趣匹配分 * 效率适配分 * 行为惩罚因子
             final_score = interest_score * (efficiency_score / 100.0) * penalty_factor
 
-            # 兼容旧接口：score 继续保持 [0,1]，避免影响现有 match_level 阈值。
-            compat_score = SimilarityManager._clamp(final_score / 100.0, 0.0, 1.0)
-
             if tag_score_norm >= 60:
                 reason = "标签硬匹配优先"
             elif semantic_score >= 60:
@@ -1018,7 +1015,7 @@ class SimilarityManager:
             ranked.append(
                 {
                     "survey_id": sid,
-                    "score": compat_score,
+                    "score": 0.0,
                     "final_score": SimilarityManager._clamp(final_score, 0.0, 100.0),
                     "interest_score": SimilarityManager._clamp(
                         interest_score, 0.0, 100.0
@@ -1033,5 +1030,42 @@ class SimilarityManager:
                 }
             )
 
-        ranked.sort(key=lambda x: x["score"], reverse=True)
+        # 排序主语义仍以 final_score 为准；随后计算兼容旧前端阈值的 score（0~1）。
+        ranked.sort(key=lambda x: x["final_score"], reverse=True)
+
+        if ranked:
+            total = len(ranked)
+            min_final = min(item["final_score"] for item in ranked)
+            max_final = max(item["final_score"] for item in ranked)
+            spread = max_final - min_final
+
+            for idx, item in enumerate(ranked):
+                absolute_component = SimilarityManager._clamp(
+                    float(item.get("final_score", 0.0)) / 100.0,
+                    0.0,
+                    1.0,
+                )
+
+                if total <= 1:
+                    rank_component = absolute_component
+                else:
+                    rank_component = 1.0 - (float(idx) / float(total - 1))
+
+                if spread > 1e-9:
+                    relative_component = (
+                        float(item.get("final_score", 0.0)) - min_final
+                    ) / spread
+                else:
+                    # 当本批候选分布非常接近时，使用相对名次拉开显示层次，避免“全部低匹配”。
+                    relative_component = rank_component
+
+                compat_score = SimilarityManager._clamp(
+                    (relative_component * 0.55)
+                    + (rank_component * 0.25)
+                    + (absolute_component * 0.20),
+                    0.0,
+                    1.0,
+                )
+                item["score"] = compat_score
+
         return ranked
