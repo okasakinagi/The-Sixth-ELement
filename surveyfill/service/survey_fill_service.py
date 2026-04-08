@@ -194,6 +194,13 @@ class SurveyFillService:
         else:
             points_awarded = 0
 
+        # 更新任务进度（捕获异常，不影响主流程）
+        try:
+            from task_hall.service.level_service import LevelService
+            LevelService.on_fill_submitted(user)
+        except Exception:
+            pass
+
         return {
             "id": str(response.id),
             "status": response.status,

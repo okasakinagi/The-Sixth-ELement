@@ -599,3 +599,55 @@ class SurveyUserSimilarity(models.Model):
         indexes = [
             models.Index(fields=["cosine"], name="survey_user_cosine_idx"),
         ]
+
+class DailyRecommendation(models.Model):
+    """每日推荐缓存：每用户每天一条，存储推荐问卷ID列表和已领取奖励ID列表。"""
+
+    user = models.ForeignKey(AppUser, on_delete=models.CASCADE)
+    date = models.DateField(db_index=True)
+    survey_ids = models.JSONField(default=list)
+    claimed_ids = models.JSONField(default=list)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "date"], name="unique_user_daily_rec"
+            )
+        ]
+        indexes = [
+            models.Index(fields=["user", "date"], name="daily_rec_user_date_idx"),
+        ]
+
+
+class TaskCompletion(models.Model):
+    """用户任务完成记录。
+
+    - task_code: 任务标识，如 'daily_fill_1', 'weekly_fill_10', 'daily_login'
+    - period_key: 任务周期标识，日任务用 '2026-04-08'，周任务用 '2026-W15'
+    - progress: 当前进度（如已填写问卷数）
+    - completed: 是否已达成完成条件
+    - claimed: 是否已手动领取奖励
+    """
+
+    user = models.ForeignKey(AppUser, on_delete=models.CASCADE)
+    task_code = models.CharField(max_length=64)
+    period_key = models.CharField(max_length=16, db_index=True)
+    progress = models.IntegerField(default=0)
+    completed = models.BooleanField(default=False)
+    claimed = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "task_code", "period_key"],
+                name="unique_user_task_period",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["user", "period_key"], name="taskcompletion_user_period_idx"
+            ),
+        ]

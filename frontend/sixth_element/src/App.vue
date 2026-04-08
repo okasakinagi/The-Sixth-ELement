@@ -2,6 +2,7 @@
 import { RouterView, useRouter, useRoute } from 'vue-router'
 import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import IntroModal from './components/IntroModal.vue'
+import DailyRecommendModal from './components/DailyRecommendModal.vue'
 import AppSidebar from './components/AppSidebar.vue'
 import GlobalFloatingMenu from './components/GlobalFloatingMenu.vue'
 
@@ -54,6 +55,7 @@ watch(() => route.name, (newName) => {
     return
   }
   tryShowIntro()
+  tryShowDailyModal()
 })
 
 function handleIntroClose() {
@@ -73,6 +75,25 @@ function handleOpenIntro() {
   introShowLoginGuide.value = false
   introStartAtProfile.value = false
   showIntroModal.value = true
+}
+
+// ---- 每日推荐弹窗 ----
+const showDailyModal = ref(false)
+
+function tryShowDailyModal() {
+  const name = route.name
+  if (name !== 'task-hall') return
+  if (!localStorage.getItem('access_token')) return
+  if (showIntroModal.value) return
+  const today = new Date().toISOString().slice(0, 10)
+  if (localStorage.getItem('sixth_element_daily_modal_date') === today) return
+  showDailyModal.value = true
+}
+
+function handleDailyModalClose() {
+  showDailyModal.value = false
+  const today = new Date().toISOString().slice(0, 10)
+  localStorage.setItem('sixth_element_daily_modal_date', today)
 }
 
 // ---- 侧边栏 & 浮动菜单显示逻辑 ----
@@ -98,6 +119,10 @@ const showGlobalFloatingMenu = computed(() => !isAuthPage(route.name))
     :start-at-profile="introStartAtProfile"
     :target-el="introTargetEl"
     @close="handleIntroClose"
+  />
+  <DailyRecommendModal
+    :visible="showDailyModal"
+    @close="handleDailyModalClose"
   />
 </template>
 

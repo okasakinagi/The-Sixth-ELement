@@ -125,3 +125,42 @@ def task_hall_guest_tasks(request):
         return error(exc.status, exc.message)
     except Exception as exc:
         return error(500, f"Internal server error: {str(exc)}")
+
+
+@csrf_exempt
+def task_hall_daily_recommendations(request):
+    """获取当前用户今日推荐的5个问卷，结果按天缓存。"""
+    if request.method != "GET":
+        return error(405, "Method not allowed")
+    user, err = require_auth(request)
+    if err:
+        return err
+    try:
+        payload = service.get_daily_recommendations(user)
+        return JsonResponse(payload, status=200)
+    except TaskHallError as exc:
+        return error(exc.status, exc.message)
+    except Exception as exc:
+        return error(500, f"Internal server error: {str(exc)}")
+
+
+@csrf_exempt
+def task_hall_claim_daily_bonus(request, survey_id):
+    """完成每日推荐问卷后领取额外奖励（activity_points+2，points+1）。"""
+    if request.method != "POST":
+        return error(405, "Method not allowed")
+    user, err = require_auth(request)
+    if err:
+        return err
+    # 支持 's_123' 和 '123' 两种格式
+    raw = str(survey_id)
+    sid = _parse_int(raw.split("_")[-1] if "_" in raw else raw)
+    if sid is None:
+        return error(400, "invalid survey_id")
+    try:
+        payload = service.claim_daily_bonus(user, sid)
+        return JsonResponse(payload, status=200)
+    except TaskHallError as exc:
+        return error(exc.status, exc.message)
+    except Exception as exc:
+        return error(500, f"Internal server error: {str(exc)}")

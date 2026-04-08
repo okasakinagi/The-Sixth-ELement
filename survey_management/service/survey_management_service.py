@@ -282,8 +282,13 @@ class SurveyManagementService:
             raise SurveyManagementError(500, "failed to publish survey")
 
         if budget_points > 0:
+            exp_gain = budget_points // 10
             user.points -= budget_points
-            user.save(update_fields=["points"])
+            if exp_gain > 0:
+                user.activity_points += exp_gain
+                user.save(update_fields=["points", "activity_points"])
+            else:
+                user.save(update_fields=["points"])
             self.mapper.create_points_log(
                 user=user,
                 delta=-budget_points,
@@ -291,6 +296,15 @@ class SurveyManagementService:
                 ref_type="survey",
                 ref_id=survey.id,
             )
+        else:
+            user.save(update_fields=[])
+
+        # 更新周任务进度（捕获异常，不影响主流程）
+        try:
+            from task_hall.service.level_service import LevelService
+            LevelService.on_survey_published(user)
+        except Exception:
+            pass
 
         return {
             "id": self._public_survey_id(survey.id),

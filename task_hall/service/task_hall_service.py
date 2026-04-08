@@ -2,8 +2,10 @@ from datetime import timezone as dt_timezone
 import random
 
 from django.conf import settings
+from django.db import transaction
 from django.utils import timezone
 
+from core.models import DailyRecommendation, PointsLog, Response, SurveyTag, UserTag
 from core.services.similarity_service import SimilarityService
 from task_hall.mapper.task_hall_mapper import TaskHallMapper
 
@@ -17,6 +19,10 @@ class TaskHallError(Exception):
 
 class TaskHallService:
     STATUS_LIVE_INTERNAL = {"published", "active", "live"}
+
+    DAILY_REC_COUNT = 5
+    DAILY_BONUS_ACTIVITY = 2
+    DAILY_BONUS_POINTS = 1
 
     STATUS_FILTER_MAP = {
         "active": ["published", "active", "live"],
@@ -237,11 +243,14 @@ class TaskHallService:
             if not match_reason:
                 match_reason = "基于你的标签偏好推荐"
 
+        sender_title = self._get_sender_title(survey.owner)
+
         return {
             "id": self._public_survey_id(survey.id),
             "title": survey.title,
             "subtitle": survey.description or "",
             "sender": survey.owner.nickname if survey.owner else "匿名",
+            "sender_title": sender_title,
             "type": self.mapper.get_task_type(survey.id),
             "estimated": survey.estimated_minutes or 0,
             "difficulty": difficulty,
@@ -253,6 +262,23 @@ class TaskHallService:
             "match_level": match_level,
             "match_reason": match_reason,
         }
+
+    def _get_sender_title(self, owner):
+        """根据发布者的 activity_points 计算称号"""
+        if not owner:
+            return ""
+        try:
+            from task_hall.service.level_service import LEVEL_TABLE
+            exp = owner.activity_points or 0
+            title = LEVEL_TABLE[0]["title"]
+            for entry in LEVEL_TABLE:
+                if exp >= entry["required_exp"]:
+                    title = entry["title"]
+                else:
+                    break
+            return title
+        except Exception:
+            return ""
 
     def _public_survey_id(self, survey_id):
         return f"s_{survey_id}"
@@ -292,3 +318,134 @@ class TaskHallService:
             if sid in surveys
         ]
         return {"items": items}
+
+    def get_daily_recommendations(self, user):
+        today = timezone.now().date()
+        rec = DailyRecommendation.objects.filter(user=user, date=today).first()
+
+        if rec:
+            survey_ids = list(rec.survey_ids)
+            claimed_ids = set(rec.claimed_ids)
+        else:
+            queryset = (
+                self.mapper.list_surveys({"status": list(self.STATUS_LIVE_INTERNAL)})
+                .exclude(owner=user)
+                .exclude(response__user=user)
+                .distinct()
+                .filter(active_questionnaire__status="published")
+            )
+            all_ids = list(queryset.values_list("id", flat=True))
+            ranked = SimilarityService.rank_candidate_surveys_for_user(
+                user_id=str(user.id),
+                candidate_survey_ids=all_ids,
+            )
+            if ranked:
+                survey_ids = [
+                    item["survey_id"] for item in ranked[: self.DAILY_REC_COUNT]
+                ]
+            else:
+                shuffled = all_ids[:]
+                random.shuffle(shuffled)
+                survey_ids = shuffled[: self.DAILY_REC_COUNT]
+            rec = DailyRecommendation.objects.create(
+                user=user, date=today, survey_ids=survey_ids, claimed_ids=[]
+            )
+            claimed_ids = set()
+
+        # 对已缓存的5个ID再次排名以获取分数和理由（向量已缓存，开销极小）
+        ranked_data = SimilarityService.rank_candidate_surveys_for_user(
+            user_id=str(user.id), candidate_survey_ids=survey_ids
+        )
+        score_map = {
+            item["survey_id"]: float(item.get("score", 0.0))
+            for item in (ranked_data or [])
+        }
+
+        surveys = {
+            s.id: s
+            for s in self.mapper.base_queryset().filter(id__in=survey_ids)
+        }
+        filled_counts = self.mapper.get_filled_counts(survey_ids)
+
+        items = []
+        for sid in survey_ids:
+            survey = surveys.get(sid)
+            if not survey:
+                continue
+            score = score_map.get(sid)
+            reason = self._build_daily_reason(user.id, sid, score)
+            card = self._to_task_card(
+                survey, filled_counts.get(sid, 0), match_score=score, match_reason=reason
+            )
+            card["bonus_claimed"] = sid in claimed_ids
+            card["daily_recommend"] = True
+            items.append(card)
+
+        return {"date": today.isoformat(), "items": items}
+
+    def claim_daily_bonus(self, user, survey_id):
+        today = timezone.now().date()
+        rec = DailyRecommendation.objects.filter(user=user, date=today).first()
+        if not rec:
+            raise TaskHallError(404, "今日推荐不存在，请先获取每日推荐")
+
+        if survey_id not in rec.survey_ids:
+            raise TaskHallError(403, "该问卷不在今日推荐列表中")
+
+        if survey_id in rec.claimed_ids:
+            raise TaskHallError(409, "该问卷的每日推荐奖励已领取")
+
+        submitted = Response.objects.filter(
+            user=user, survey_id=survey_id, status="submitted"
+        ).exists()
+        if not submitted:
+            raise TaskHallError(403, "请先完成该问卷后再领取奖励")
+
+        with transaction.atomic():
+            user_obj = user.__class__.objects.select_for_update().get(pk=user.pk)
+            user_obj.activity_points += self.DAILY_BONUS_ACTIVITY
+            user_obj.points += self.DAILY_BONUS_POINTS
+            user_obj.save(update_fields=["activity_points", "points"])
+            PointsLog.objects.create(
+                user=user_obj,
+                points_type="daily_bonus",
+                delta=self.DAILY_BONUS_POINTS,
+                reason="完成每日推荐问卷额外奖励",
+                ref_type="survey",
+                ref_id=survey_id,
+            )
+            new_claimed = list(rec.claimed_ids) + [survey_id]
+            rec.claimed_ids = new_claimed
+            rec.save(update_fields=["claimed_ids"])
+
+        return {
+            "bonus_activity_points": self.DAILY_BONUS_ACTIVITY,
+            "bonus_points": self.DAILY_BONUS_POINTS,
+            "claimed_ids": rec.claimed_ids,
+        }
+
+    def _build_daily_reason(self, user_id, survey_id, score):
+        """根据用户与问卷标签重叠生成中文推荐理由。"""
+        user_tag_types = set(
+            UserTag.objects.filter(user_id=user_id)
+            .select_related("tag")
+            .values_list("tag__type", flat=True)
+        )
+        survey_tag_types = set(
+            SurveyTag.objects.filter(survey_id=survey_id)
+            .select_related("tag")
+            .values_list("tag__type", flat=True)
+        )
+        overlap = user_tag_types & survey_tag_types
+        reasons = []
+        if "major" in overlap:
+            reasons.append("✔ 同专业")
+        if "interest" in overlap:
+            reasons.append("✔ 兴趣匹配")
+        if "school" in overlap:
+            reasons.append("✔ 同学校")
+        if not reasons and score is not None and score >= 0.2:
+            reasons.append("✔ 内容偏好匹配")
+        if not reasons:
+            reasons.append("✔ 为你智能推荐")
+        return "  ".join(reasons)

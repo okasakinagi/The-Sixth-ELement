@@ -1,10 +1,22 @@
 <script setup>
 import { useRouter, useRoute } from 'vue-router'
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
+import { getUserLevel } from '@/utils/levelApi'
 
 const router = useRouter()
 const route = useRoute()
 const isMobileMenuOpen = ref(false)
+const levelInfo = ref(null)
+
+onMounted(async () => {
+  if (localStorage.getItem('access_token')) {
+    try {
+      levelInfo.value = await getUserLevel(router)
+    } catch (e) {
+      // 非关键，静默失败
+    }
+  }
+})
 
 function isActive(routeName) {
   return route.name === routeName
@@ -35,6 +47,9 @@ function toggleMobileMenu() {
         <div class="brand-text">
           <p class="brand-title">第六元素</p>
           <p class="brand-subtitle">Survey Hub</p>
+        </div>
+        <div v-if="levelInfo" class="level-badge" :title="levelInfo.title">
+          <span class="level-num">Lv{{ levelInfo.level }}</span>
         </div>
       </div>
 
@@ -172,6 +187,17 @@ function toggleMobileMenu() {
   margin: 2px 0 0 0;
   font-size: 12px;
   color: rgba(255, 255, 255, 0.7);
+}
+
+.level-badge {
+  background: linear-gradient(135deg, #ffd700, #ffb400);
+  color: #333;
+  border-radius: 10px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .sidebar-menu {
