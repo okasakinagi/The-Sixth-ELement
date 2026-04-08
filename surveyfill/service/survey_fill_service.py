@@ -7,7 +7,8 @@ import re
 from django.db import transaction
 from django.utils import timezone
 
-from core.models import PointsLog, TeamMember
+from core.managers.similarity_manager import SimilarityManager
+from core.models import PointsLog, SurveyTag, TeamMember, UserTagWeight
 from surveyfill.mapper.survey_fill_mapper import SurveyFillMapper
 
 
@@ -19,6 +20,9 @@ class SurveyFillError(Exception):
 
 
 class SurveyFillService:
+    POSITIVE_WEIGHT_INCREMENT = 1.5
+    WEIGHT_MAX = 5.0
+
     def __init__(self):
         self.mapper = SurveyFillMapper()
 
@@ -193,6 +197,35 @@ class SurveyFillService:
             points_awarded = reward
         else:
             points_awarded = 0
+
+        # 推荐闭环（阶段5）：提交成功后，对当前问卷标签做正反馈增权。
+        try:
+            survey_tags = SurveyTag.objects.filter(survey_id=survey.id).select_related(
+                "tag"
+            )
+            with transaction.atomic():
+                for st in survey_tags:
+                    utw, _ = UserTagWeight.objects.select_for_update().get_or_create(
+                        user_id=user.id,
+                        tag=st.tag,
+                        defaults={"weight": 0.0},
+                    )
+                    new_weight = (
+                        float(utw.weight or 0.0) + self.POSITIVE_WEIGHT_INCREMENT
+                    )
+                    if new_weight > self.WEIGHT_MAX:
+                        new_weight = self.WEIGHT_MAX
+                    utw.weight = new_weight
+                    utw.save(update_fields=["weight", "updated_at"])
+        except Exception:
+            # 正反馈更新失败不影响主交流程。
+            pass
+
+        # 标签权重变更后失效用户向量，确保下次推荐立即使用新权重。
+        try:
+            SimilarityManager.invalidate_vector("user", str(user.id))
+        except Exception:
+            pass
 
         return {
             "id": str(response.id),

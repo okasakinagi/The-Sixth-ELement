@@ -4,11 +4,14 @@ UserProfile Mapper - 数据访问层
 """
 
 from django.db import transaction
-from core.models import AppUser, Tag, UserTag
+from core.managers.similarity_manager import SimilarityManager
+from core.models import AppUser, Tag, UserTag, UserTagWeight
 
 
 class UserProfileMapper:
     """用户画像数据访问映射器（基于Tag系统）"""
+
+    MANUAL_PROFILE_WEIGHT = 2.0
 
     # 标签类型常量（对应API文档中的画像字段）
     TAG_TYPE_GENDER = "gender"
@@ -129,12 +132,18 @@ class UserProfileMapper:
         with transaction.atomic():
             # 删除同类型的旧标签
             UserTag.objects.filter(user_id=user.id, tag__type=tag_type).delete()
+            UserTagWeight.objects.filter(user_id=user.id, tag__type=tag_type).delete()
 
             if tag_name:
                 # 创建或获取标签
                 tag, _ = Tag.objects.get_or_create(name=tag_name, type=tag_type)
                 # 创建用户标签关联
                 UserTag.objects.create(user=user, tag=tag)
+                UserTagWeight.objects.update_or_create(
+                    user_id=user.id,
+                    tag=tag,
+                    defaults={"weight": UserProfileMapper.MANUAL_PROFILE_WEIGHT},
+                )
                 return tag
             return None
 
@@ -154,16 +163,28 @@ class UserProfileMapper:
         with transaction.atomic():
             # 删除同类型的旧标签
             UserTag.objects.filter(user_id=user.id, tag__type=tag_type).delete()
+            UserTagWeight.objects.filter(user_id=user.id, tag__type=tag_type).delete()
 
             tags = []
             if tag_names:
                 seen = set()
                 for tag_name in tag_names:
-                    normalized_name = str(tag_name).strip() if tag_name is not None else ""
+                    normalized_name = (
+                        str(tag_name).strip() if tag_name is not None else ""
+                    )
                     if normalized_name and normalized_name not in seen:
                         seen.add(normalized_name)
-                        tag, _ = Tag.objects.get_or_create(name=normalized_name, type=tag_type)
+                        tag, _ = Tag.objects.get_or_create(
+                            name=normalized_name, type=tag_type
+                        )
                         UserTag.objects.create(user=user, tag=tag)
+                        UserTagWeight.objects.update_or_create(
+                            user_id=user.id,
+                            tag=tag,
+                            defaults={
+                                "weight": UserProfileMapper.MANUAL_PROFILE_WEIGHT
+                            },
+                        )
                         tags.append(tag)
             return tags
 
@@ -245,7 +266,15 @@ class UserProfileMapper:
                     user, UserProfileMapper.TAG_TYPE_SKILL, profile_data["skills"]
                 )
 
-            return UserProfileMapper.get_user_profile_dict(user)
+            result = UserProfileMapper.get_user_profile_dict(user)
+
+        # 画像变更后失效用户向量，确保推荐立即应用新标签权重。
+        try:
+            SimilarityManager.invalidate_vector("user", str(user.id))
+        except Exception:
+            pass
+
+        return result
 
     @staticmethod
     def delete_user_profile(user):
@@ -275,6 +304,13 @@ class UserProfileMapper:
         count, _ = UserTag.objects.filter(
             user_id=user.id, tag__type__in=profile_tag_types
         ).delete()
+        UserTagWeight.objects.filter(
+            user_id=user.id, tag__type__in=profile_tag_types
+        ).delete()
+        try:
+            SimilarityManager.invalidate_vector("user", str(user.id))
+        except Exception:
+            pass
         return count
 
     @staticmethod

@@ -146,12 +146,19 @@ class TaskHallService:
                 for survey in fallback
             ]
 
-        window = ranked[offset : offset + page_size]
+        candidate_ids = [item["survey_id"] for item in ranked]
+        candidate_filled_counts = self.mapper.get_filled_counts(candidate_ids)
+        window = self._apply_diversity_window(
+            ranked,
+            offset,
+            page_size,
+            candidate_filled_counts,
+        )
         id_order = [item["survey_id"] for item in window]
         survey_by_id = {
             s.id: s for s in queryset.filter(id__in=id_order).select_related("owner")
         }
-        filled_counts = self.mapper.get_filled_counts(id_order)
+        filled_counts = {sid: candidate_filled_counts.get(sid, 0) for sid in id_order}
 
         items = []
         for item in window:
@@ -167,6 +174,55 @@ class TaskHallService:
                 )
             )
         return items
+
+    def _apply_diversity_window(self, ranked, offset, page_size, filled_counts):
+        """多样性弹性排序：窗口内前80%按主分保持，后20%引入低热度探索项。"""
+        if not ranked or page_size <= 1:
+            return ranked[offset : offset + page_size]
+
+        base_window = ranked[offset : offset + page_size]
+        if len(base_window) <= 1:
+            return base_window
+
+        head_count = max(1, int(len(base_window) * 0.8))
+        if head_count >= len(base_window):
+            return base_window
+
+        tail_count = len(base_window) - head_count
+        head = list(base_window[:head_count])
+
+        base_ids = {item.get("survey_id") for item in base_window}
+        exploration_pool = []
+        for item in ranked:
+            sid = item.get("survey_id")
+            if sid in base_ids:
+                continue
+            interest_score = float(item.get("interest_score", 0.0) or 0.0)
+            efficiency_score = float(item.get("efficiency_score", 0.0) or 0.0)
+            if interest_score >= 60.0 and efficiency_score >= 80.0:
+                exploration_pool.append(item)
+
+        # 低热度优先（filled越小越优先），同热度下按原推荐分降序。
+        exploration_pool.sort(
+            key=lambda x: (
+                filled_counts.get(x.get("survey_id"), 0),
+                -float(x.get("score", 0.0) or 0.0),
+            )
+        )
+
+        selected = exploration_pool[:tail_count]
+        selected_ids = {item.get("survey_id") for item in selected}
+
+        if len(selected) < tail_count:
+            fallback_tail = [
+                item
+                for item in base_window[head_count:]
+                if item.get("survey_id") not in selected_ids
+            ]
+            need = tail_count - len(selected)
+            selected.extend(fallback_tail[:need])
+
+        return head + selected
 
     def _get_summary(self):
         # 仅统计那些处于可投放且有已发布问卷内容的问卷
