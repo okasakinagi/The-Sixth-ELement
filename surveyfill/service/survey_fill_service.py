@@ -198,7 +198,7 @@ class SurveyFillService:
         else:
             points_awarded = 0
 
-        # 推荐闭环：提交成功后，对当前问卷标签做正反馈增权。
+        # 推荐闭环（阶段5）：提交成功后，对当前问卷标签做正反馈增权。
         try:
             survey_tags = SurveyTag.objects.filter(survey_id=survey.id).select_related(
                 "tag"
@@ -218,6 +218,7 @@ class SurveyFillService:
                     utw.weight = new_weight
                     utw.save(update_fields=["weight", "updated_at"])
         except Exception:
+            # 正反馈更新失败不影响主交流程。
             pass
 
         # 标签权重变更后失效用户向量，确保下次推荐立即使用新权重。
