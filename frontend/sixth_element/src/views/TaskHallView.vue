@@ -15,6 +15,52 @@
       </div>
     </header>
 
+    <!-- 每日推荐区块 -->
+    <section v-if="!isGuest && dailyRecs.length > 0" class="daily-rec-section">
+      <div class="daily-rec-header">
+        <div class="daily-rec-title">
+          <span class="daily-rec-badge">每日推荐</span>
+          <span class="daily-rec-label">今日为你精选</span>
+          <span class="daily-rec-count">{{ dailyRecs.filter(r => r.bonus_claimed).length }}/{{ dailyRecs.length }} 已领取</span>
+        </div>
+        <button class="daily-rec-toggle" @click="dailyRecsCollapsed = !dailyRecsCollapsed">
+          {{ dailyRecsCollapsed ? '展开 ▾' : '收起 ▴' }}
+        </button>
+      </div>
+      <div v-if="!dailyRecsCollapsed" class="daily-rec-scroll">
+        <div
+          v-for="item in dailyRecs"
+          :key="item.id"
+          class="daily-rec-card"
+          :class="{ 'daily-rec-card--claimed': item.bonus_claimed }"
+        >
+          <div class="daily-rec-card-top">
+            <p class="daily-rec-card-title">{{ item.title }}</p>
+            <div class="daily-rec-pills">
+              <span class="pill time">{{ item.estimated }}min</span>
+              <span class="pill">+{{ item.reward }}</span>
+            </div>
+          </div>
+          <p class="daily-rec-reason">{{ item.match_reason }}</p>
+          <div class="daily-rec-card-actions">
+            <button class="ghost daily-rec-fill-btn" @click="openTaskFill(item)">去填写</button>
+            <button
+              v-if="!item.bonus_claimed"
+              class="daily-rec-claim-btn"
+              :disabled="dailyRecsClaiming === item.id"
+              @click="handleDailyClaim(item)"
+            >
+              {{ dailyRecsClaiming === item.id ? '...' : '领取奖励' }}
+            </button>
+            <span v-else class="daily-rec-claimed">✓ 已领</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 日周任务面板 -->
+    <DailyWeeklyTaskPanel v-if="!isGuest" />
+
     <section class="task-grid">
       <article v-for="task in filteredTasks" :key="task.id" class="task-card" @click="openTaskFill(task)">
         <div class="card-top">
@@ -59,6 +105,11 @@
             ×
           </button>
         </div>
+
+        <div class="card-sender">
+          <span class="sender-name">{{ task.sender }}</span>
+          <span v-if="task.sender_title" class="sender-title-badge">{{ task.sender_title }}</span>
+        </div>
       </article>
     </section>
 
@@ -81,7 +132,8 @@
 <script setup>
 import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { refreshTaskHallBatch, dismissSurvey, getGuestTasks } from '@/utils/taskHallApi'
+import { refreshTaskHallBatch, dismissSurvey, getGuestTasks, getDailyRecommendations, claimDailyBonus } from '@/utils/taskHallApi'
+import DailyWeeklyTaskPanel from '@/components/DailyWeeklyTaskPanel.vue'
 
 const keyword = ref('')
 const router = useRouter()
@@ -171,8 +223,45 @@ function stopDrag() {
   document.removeEventListener('touchend', stopDrag)
 }
 
+// 每日推荐
+const dailyRecs = ref([])
+const dailyRecsClaiming = ref(null)
+const dailyRecsCollapsed = ref(false)
+
+async function loadDailyRecs() {
+  if (isGuest.value) return
+  try {
+    const data = await getDailyRecommendations(router)
+    dailyRecs.value = Array.isArray(data.items) ? data.items : []
+  } catch (e) {
+    console.error('加载每日推荐失败:', e)
+  }
+}
+
+async function handleDailyClaim(item) {
+  if (isGuest.value) { showLoginPrompt(); return }
+  dailyRecsClaiming.value = item.id
+  try {
+    const rawId = extractRawId(item.id)
+    await claimDailyBonus(rawId, router)
+    item.bonus_claimed = true
+  } catch (e) {
+    const msg = e?.message || ''
+    if (msg.includes('先完成')) {
+      alert('请先完成该问卷，再来领取奖励哦～')
+    } else if (msg.includes('已领取')) {
+      item.bonus_claimed = true
+    } else {
+      alert('领取失败，请稍后重试')
+    }
+  } finally {
+    dailyRecsClaiming.value = null
+  }
+}
+
 onMounted(() => {
   loadInitialTasks()
+  loadDailyRecs()
 })
 
 onUnmounted(() => {
@@ -718,6 +807,31 @@ function handleFabClick(e) {
   transform: scale(1.1);
 }
 
+.card-sender {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 16px 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  margin-top: 4px;
+}
+
+.sender-name {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.sender-title-badge {
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(255, 193, 7, 0.18), rgba(255, 152, 0, 0.12));
+  border: 1px solid rgba(255, 193, 7, 0.35);
+  color: #ffc107;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
 .progress-wrapper {
   flex: 1;
   display: flex;
@@ -968,5 +1082,173 @@ function handleFabClick(e) {
   .task-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* ---- 每日推荐区块 ---- */
+.daily-rec-section {
+  background: #ffffff;
+  border: 1px solid #e3e9f5;
+  border-radius: 14px;
+  padding: 14px 16px;
+  box-shadow: 0 6px 20px rgba(0, 82, 217, 0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.daily-rec-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.daily-rec-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.daily-rec-badge {
+  background: linear-gradient(135deg, #0052d9, #2f7bff);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 20px;
+  letter-spacing: 0.06em;
+}
+
+.daily-rec-label {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0b2b66;
+}
+
+.daily-rec-count {
+  font-size: 12px;
+  color: #5c7599;
+}
+
+.daily-rec-toggle {
+  background: none;
+  border: 1px solid #d7e3ff;
+  border-radius: 8px;
+  padding: 5px 12px;
+  font-size: 12px;
+  color: #0052d9;
+  cursor: pointer;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.daily-rec-scroll {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.daily-rec-scroll::-webkit-scrollbar {
+  height: 4px;
+}
+
+.daily-rec-scroll::-webkit-scrollbar-thumb {
+  background: #d7e3ff;
+  border-radius: 4px;
+}
+
+.daily-rec-card {
+  background: #f6f8fb;
+  border: 1px solid #e3e9f5;
+  border-radius: 12px;
+  padding: 12px 14px;
+  min-width: 240px;
+  max-width: 280px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: box-shadow 0.2s;
+}
+
+.daily-rec-card:hover {
+  box-shadow: 0 6px 18px rgba(0, 82, 217, 0.08);
+}
+
+.daily-rec-card--claimed {
+  opacity: 0.65;
+}
+
+.daily-rec-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.daily-rec-card-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #0b2b66;
+  flex: 1;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.daily-rec-pills {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+
+.daily-rec-reason {
+  margin: 0;
+  font-size: 12px;
+  color: #2e7d32;
+  font-weight: 500;
+}
+
+.daily-rec-card-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 2px;
+}
+
+.daily-rec-fill-btn {
+  font-size: 12px;
+  padding: 5px 10px;
+}
+
+.daily-rec-claim-btn {
+  padding: 5px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  background: linear-gradient(135deg, #ffd700, #ffb400);
+  color: #333;
+  transition: filter 0.2s;
+}
+
+.daily-rec-claim-btn:hover { filter: brightness(1.05); }
+
+.daily-rec-claim-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.daily-rec-claimed {
+  font-size: 12px;
+  font-weight: 600;
+  color: #4caf50;
 }
 </style>

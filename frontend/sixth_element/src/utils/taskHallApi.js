@@ -78,3 +78,19 @@ export async function getGuestTasks(size = 15) {
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   return res.json()
 }
+
+/**
+ * 获取当前用户今日推荐的 5 个问卷（按天缓存）
+ * GET /task-hall/daily-recommendations
+ */
+export async function getDailyRecommendations(router = null) {
+  return await get('/task-hall/daily-recommendations', router)
+}
+
+/**
+ * 完成每日推荐问卷后领取额外奖励
+ * POST /task-hall/daily-recommendations/:surveyId/claim-bonus
+ */
+export async function claimDailyBonus(surveyId, router = null) {
+  return await post(`/task-hall/daily-recommendations/${surveyId}/claim-bonus`, {}, router)
+}
