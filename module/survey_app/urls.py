@@ -72,5 +72,4 @@ urlpatterns = [
     path("api/v1/", include("team_messaging.urls")),
     path("api/v1/points/", include("points_record.urls")),
     path("api/v1/profile/", include("user_profile_extractor.urls")),
-    path("api/v1/admin/", include("admin_backend.urls")),
 ]

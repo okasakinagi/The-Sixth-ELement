@@ -1,4 +1,4 @@
-<script setup>
+﻿<script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 
@@ -320,11 +320,6 @@ function switchMode(mode) {
 function goToForgotPassword() {
   router.push('/forgot-password')
 }
-
-// 前往管理员登录页面
-function goToAdminLogin() {
-  router.push('/admin/login')
-}
 </script>
 
 <template>
@@ -494,10 +489,6 @@ function goToAdminLogin() {
         <div v-if="authMode === 'login'" class="form-helpers">
           <button type="button" class="forgot-password-btn" @click="goToForgotPassword">
             忘记密码？
-          </button>
-          <span class="divider">|</span>
-          <button type="button" class="admin-login-btn" @click="goToAdminLogin">
-            管理员登录
           </button>
         </div>
 
@@ -807,28 +798,6 @@ function goToAdminLogin() {
 }
 
 .forgot-password-btn:hover {
-  opacity: 0.7;
-  text-decoration: underline;
-}
-
-.divider {
-  color: #ccc;
-  margin: 0 8px;
-}
-
-.admin-login-btn {
-  background: none;
-  border: none;
-  color: #667eea;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  text-decoration: none;
-  transition: opacity 0.2s;
-  padding: 0;
-}
-
-.admin-login-btn:hover {
   opacity: 0.7;
   text-decoration: underline;
 }
