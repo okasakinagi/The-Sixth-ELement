@@ -97,8 +97,9 @@ function handleDailyModalClose() {
 }
 
 // ---- 侧边栏 & 浮动菜单显示逻辑 ----
-const showSidebar = computed(() => !isAuthPage(route.name))
-const showGlobalFloatingMenu = computed(() => !isAuthPage(route.name))
+const isAdminPage = computed(() => route.name?.startsWith('admin-'))
+const showSidebar = computed(() => !isAuthPage(route.name) && !isAdminPage.value)
+const showGlobalFloatingMenu = computed(() => !isAuthPage(route.name) && !isAdminPage.value)
 </script>
 
 <template>
