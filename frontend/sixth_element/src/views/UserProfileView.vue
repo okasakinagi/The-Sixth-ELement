@@ -41,6 +41,74 @@
       </div>
     </div>
 
+    <!-- 等级与经验卡片 -->
+    <div class="level-exp-card">
+      <div class="level-exp-content" v-if="levelInfo">
+        <div class="level-card-header">
+          <div>
+            <p class="level-label">等级进度</p>
+            <p class="level-subtitle">当前称号：{{ levelInfo.title }}</p>
+          </div>
+          <div class="level-current-badge">Lv{{ levelInfo.level }}</div>
+        </div>
+        <div class="level-left">
+          <div class="level-badge">
+            <span class="level-icon">✨</span>
+            <span class="level-num">Lv{{ levelInfo.level }}</span>
+          </div>
+          <div class="level-details">
+            <div class="level-title-row">
+              <span class="level-title">{{ levelInfo.title }}</span>
+              <span class="level-exp-value">{{ levelInfo.exp }} EXP</span>
+            </div>
+            <div class="exp-progress-container">
+              <div class="exp-bar">
+                <div class="exp-fill" :style="{ width: levelInfo.progress_pct + '%' }"></div>
+              </div>
+              <div class="exp-text">
+                <span class="exp-current">{{ levelInfo.exp_in_level }}</span>
+                <span class="exp-divider">/</span>
+                <span class="exp-next">{{ levelInfo.exp_to_next }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="level-right">
+          <div class="next-level-info" v-if="!levelInfo.is_max_level">
+            <span class="next-arrow">→</span>
+            <span>下一称号：{{ levelInfo.next_title }}</span>
+            <span class="next-level-badge">Lv{{ levelInfo.next_level }}</span>
+          </div>
+          <div class="next-level-info max-level" v-else>
+            <span class="max-level-text">🌟 已达最高等级</span>
+          </div>
+        </div>
+      </div>
+      <div class="level-exp-content loading" v-else>
+        <div class="level-left">
+          <div class="level-badge loading-badge">
+            <span class="level-num">Lv-</span>
+          </div>
+          <div class="level-details">
+            <div class="level-title-row">
+              <span class="level-title">等级加载中</span>
+              <span class="level-exp-value">-- EXP</span>
+            </div>
+            <div class="exp-progress-container">
+              <div class="exp-bar">
+                <div class="exp-fill" style="width: 0%"></div>
+              </div>
+              <div class="exp-text">
+                <span class="exp-current">--</span>
+                <span class="exp-divider">/</span>
+                <span class="exp-next">--</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- 状态设置弹窗（仿微信） -->
     <div v-if="showStatusModal" class="status-modal-overlay" @click.self="closeStatusModal">
       <div class="status-modal">
@@ -344,6 +412,7 @@ import { ref, computed, onMounted, onBeforeUnmount, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { handleTokenExpired } from '@/utils/authHelper'
 import { getUserProfile, updateUserProfile, getCurrentUser } from '@/utils/profileApi'
+import { getUserLevel } from '@/utils/levelApi'
 
 const router = useRouter()
 
@@ -366,6 +435,7 @@ const defaultProfile = {
 
 const userData = ref({ ...defaultProfile })
 const userBasicInfo = ref({ nickname: '加载中...' })
+const levelInfo = ref(null)
 const isMobile = ref(window.innerWidth <= 768)
 const isLoading = ref(true)
 const errorMessage = ref('')
@@ -695,8 +765,21 @@ function stopDrag() {
 // 组件挂载时加载数据
 onMounted(() => {
   loadProfile()
+  loadLevelInfo()
   window.addEventListener('resize', handleResize)
 })
+
+async function loadLevelInfo() {
+  try {
+    const token = localStorage.getItem('access_token')
+    console.log('Token exists:', !!token)
+    console.log('Loading level info...')
+    levelInfo.value = await getUserLevel(router)
+    console.log('Level info loaded:', levelInfo.value)
+  } catch (e) {
+    console.error('获取等级信息失败:', e)
+  }
+}
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize)
@@ -1746,6 +1829,266 @@ onUnmounted(() => {
     width: 32px;
     height: 32px;
     font-size: 14px;
+  }
+
+  /* 等级经验卡片样式 */
+  .level-exp-card {
+    max-width: 1200px;
+    margin: 20px auto;
+    padding: 0 30px;
+  }
+
+  .level-exp-content {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 16px;
+    padding: 20px 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 8px 24px rgba(102, 126, 234, 0.4);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .level-exp-content::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    right: -10%;
+    width: 200px;
+    height: 200px;
+    background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+    border-radius: 50%;
+  }
+
+  .level-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex: 1;
+  }
+
+  .level-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    margin-bottom: 16px;
+    gap: 12px;
+  }
+
+  .level-label {
+    margin: 0;
+    font-size: 12px;
+    letter-spacing: 0.18em;
+    color: rgba(255, 255, 255, 0.8);
+    text-transform: uppercase;
+  }
+
+  .level-subtitle {
+    margin: 4px 0 0;
+    font-size: 15px;
+    color: #ffffff;
+    font-weight: 600;
+  }
+
+  .level-current-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px 16px;
+    border-radius: 999px;
+    color: #1a1a2e;
+    background: rgba(255, 255, 255, 0.9);
+    font-weight: 800;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
+  }
+
+  .level-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: linear-gradient(135deg, #ffd700 0%, #ffb400 100%);
+    border-radius: 20px;
+    padding: 10px 16px;
+    box-shadow: 0 8px 24px rgba(255, 182, 0, 0.3);
+  }
+
+  .level-num {
+    font-size: 26px;
+    font-weight: 900;
+    color: #1a1a2e;
+    letter-spacing: 1px;
+  }
+
+  .level-details {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .level-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .level-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: #ffffff;
+  }
+
+  .level-exp-value {
+    font-size: 14px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.9);
+    background: rgba(255, 255, 255, 0.2);
+    padding: 4px 12px;
+    border-radius: 8px;
+  }
+
+  .exp-progress-container {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .exp-bar {
+    height: 12px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .exp-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #00f260 0%, #0575e6 100%);
+    border-radius: 6px;
+    transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+  }
+
+  .level-exp-content.loading .level-badge {
+    background: rgba(255, 255, 255, 0.18);
+  }
+
+  .level-exp-content.loading .level-title,
+  .level-exp-content.loading .level-exp-value,
+  .level-exp-content.loading .exp-current,
+  .level-exp-content.loading .exp-next {
+    color: rgba(255, 255, 255, 0.65);
+  }
+
+  .level-exp-content.loading .exp-fill {
+    background: rgba(255, 255, 255, 0.22);
+  }
+
+  .exp-fill::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.3),
+      transparent
+    );
+    animation: shimmer 2s infinite;
+  }
+
+  @keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
+
+  .exp-text {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.9);
+    font-weight: 500;
+  }
+
+  .exp-current {
+    font-weight: 700;
+    color: #00f260;
+  }
+
+  .exp-divider {
+    color: rgba(255, 255, 255, 0.5);
+    margin: 0 4px;
+  }
+
+  .exp-next {
+    color: rgba(255, 255, 255, 0.7);
+  }
+
+  .level-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-left: 20px;
+    border-left: 2px solid rgba(255, 255, 255, 0.3);
+  }
+
+  .next-level-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255, 255, 255, 0.15);
+    padding: 10px 14px;
+    border-radius: 14px;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.95);
+  }
+
+  .next-level-info.max-level {
+    justify-content: center;
+    width: 100%;
+    background: rgba(255, 255, 255, 0.18);
+  }
+
+  .max-level-text {
+    font-size: 14px;
+    color: #ffecb3;
+    font-weight: 700;
+  }
+
+  .next-arrow {
+    color: #00f260;
+    font-weight: bold;
+  }
+
+  .next-level-badge {
+    background: rgba(255, 255, 255, 0.25);
+    color: #ffffff;
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-weight: 700;
+  }
+
+  .next-level-badge {
+    background: rgba(255, 255, 255, 0.2);
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-weight: 700;
+    color: #ffffff;
+  }
+
+  .max-level {
+    gap: 8px;
+  }
+
+  .star-icon {
+    font-size: 18px;
   }
 
   .profile-content {
