@@ -16,6 +16,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "corsheaders",
     "core",
+    "admin_backend",
     "personal_homepage",
     "survey_management",
     "task_hall",
