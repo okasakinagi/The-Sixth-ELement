@@ -48,12 +48,8 @@ function toggleMobileMenu() {
           <p class="brand-title">第六元素</p>
           <p class="brand-subtitle">Survey Hub</p>
         </div>
-        <div v-if="levelInfo" class="sidebar-level">
-          <div class="level-badge" :title="levelInfo.title">
-            <span class="level-icon">⭐</span>
-            <span class="level-num">Lv{{ levelInfo.level }}</span>
-          </div>
-          <div class="level-label-sidebar">{{ levelInfo.title }}</div>
+        <div v-if="levelInfo" class="level-badge" :title="levelInfo.title">
+          <span class="level-num">Lv{{ levelInfo.level }}</span>
         </div>
       </div>
 
@@ -193,39 +189,15 @@ function toggleMobileMenu() {
   color: rgba(255, 255, 255, 0.7);
 }
 
-.sidebar-level {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  align-items: flex-start;
-  margin-top: 10px;
-}
-
 .level-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
   background: linear-gradient(135deg, #ffd700, #ffb400);
-  color: #1f1f1f;
-  border-radius: 999px;
-  padding: 6px 12px;
-  font-size: 12px;
+  color: #333;
+  border-radius: 10px;
+  padding: 3px 8px;
+  font-size: 11px;
   font-weight: 700;
   flex-shrink: 0;
   white-space: nowrap;
-  box-shadow: 0 6px 18px rgba(255, 171, 0, 0.25);
-}
-
-.level-label-sidebar {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.85);
-  max-width: 180px;
-  line-height: 1.3;
-}
-
-.level-icon {
-  font-size: 12px;
-  transform: translateY(1px);
 }
 
 .sidebar-menu {

@@ -5,19 +5,12 @@ import { getUserLevel } from '@/utils/levelApi'
 
 const router = useRouter()
 const levelInfo = ref(null)
-const profileError = ref('')
 
 onMounted(async () => {
-  const token = localStorage.getItem('access_token')
-  if (token) {
+  if (localStorage.getItem('access_token')) {
     try {
       levelInfo.value = await getUserLevel(router)
-    } catch (e) {
-      profileError.value = e.message
-      console.error('获取等级信息失败:', e)
-    }
-  } else {
-    profileError.value = '未登录'
+    } catch (e) {}
   }
 })
 
@@ -54,10 +47,7 @@ const goBack = () => {
       </section>
 
       <!-- 等级卡片 -->
-      <section v-if="profileError" class="level-card error-card">
-        <p class="error-text">⚠️ {{ profileError }}</p>
-      </section>
-      <section v-else-if="levelInfo" class="level-card">
+      <section v-if="levelInfo" class="level-card">
         <div class="level-card-left">
           <div class="level-badge-big">Lv{{ levelInfo.level }}</div>
           <div class="level-text">
@@ -77,9 +67,6 @@ const goBack = () => {
           <p v-if="!levelInfo.is_max_level" class="level-next">下一称号：{{ levelInfo.next_title }}（Lv{{ levelInfo.next_level }}）</p>
           <p v-else class="level-next">🌟 已达最高等级</p>
         </div>
-      </section>
-      <section v-else class="level-card loading-card">
-        <p class="loading-text">加载中...</p>
       </section>
     </div>
   </div>
@@ -272,29 +259,5 @@ const goBack = () => {
   margin: 0;
   font-size: 12px;
   color: #5c7599;
-}
-
-.error-card {
-  background: #fff3cd;
-  border: 1px solid #ffc107;
-  justify-content: center;
-}
-
-.error-text {
-  color: #856404;
-  margin: 0;
-  padding: 12px;
-  text-align: center;
-}
-
-.loading-card {
-  justify-content: center;
-}
-
-.loading-text {
-  color: #5c7599;
-  margin: 0;
-  padding: 12px;
-  text-align: center;
 }
 </style>

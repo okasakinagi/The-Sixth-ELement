@@ -1,23 +1,13 @@
 <script setup>
-import { computed, ref, onMounted } from 'vue'
+import { computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { getUserLevel } from '@/utils/levelApi'
 
 const router = useRouter()
 const route = useRoute()
-const levelInfo = ref(null)
 
 const userInitial = computed(() => {
   const nickname = localStorage.getItem('user_nickname') || ''
   return nickname.charAt(0).toUpperCase() || '?'
-})
-
-onMounted(async () => {
-  if (localStorage.getItem('access_token')) {
-    try {
-      levelInfo.value = await getUserLevel(router)
-    } catch (e) {}
-  }
 })
 
 function handleLogout() {
@@ -68,16 +58,6 @@ function isActive(routeName) {
     </div>
 
     <div class="navbar-right">
-      <div v-if="levelInfo" class="level-indicator">
-        <div class="level-badge">
-          <span class="level-num">Lv{{ levelInfo.level }}</span>
-          <span class="level-title-nav">{{ levelInfo.title }}</span>
-        </div>
-        <div class="exp-mini-bar">
-          <div class="exp-mini-fill" :style="{ width: levelInfo.progress_pct + '%' }"></div>
-        </div>
-        <span class="exp-text">{{ levelInfo.exp_in_level }}/{{ levelInfo.exp_to_next }}</span>
-      </div>
       <RouterLink
         to="/profile"
         :class="['navbar-link', 'profile-link', { active: isActive('profile') }]"
@@ -198,60 +178,6 @@ function isActive(routeName) {
   gap: 6px;
 }
 
-.level-indicator {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  background: linear-gradient(135deg, #f8fafc, #f1f5f9);
-  border: 1px solid #e2e8f0;
-  border-radius: 20px;
-}
-
-.level-badge {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.level-num {
-  font-size: 13px;
-  font-weight: 700;
-  color: #1e3a5f;
-  background: linear-gradient(135deg, #ffd700, #ffb400);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.level-title-nav {
-  font-size: 11px;
-  color: #64748b;
-  font-weight: 500;
-}
-
-.exp-mini-bar {
-  width: 48px;
-  height: 4px;
-  background: #e2e8f0;
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-.exp-mini-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #3b82f6, #60a5fa);
-  border-radius: 2px;
-  transition: width 0.3s ease;
-}
-
-.exp-text {
-  font-size: 10px;
-  color: #94a3b8;
-  font-weight: 500;
-  min-width: 40px;
-}
-
 @media (max-width: 768px) {
   .app-navbar {
     padding: 12px 16px;
@@ -282,25 +208,16 @@ function isActive(routeName) {
     padding: 8px 12px;
   }
 
+  /* 第 2 行：个人资料 + 登出，确保登出按钮可见 */
   .navbar-right {
     order: 2;
     width: 100%;
     justify-content: flex-end;
     border-top: 1px solid #e8eef5;
     padding-top: 6px;
-    flex-wrap: wrap;
-    gap: 6px;
   }
 
-  .level-indicator {
-    order: -1;
-    padding: 4px 10px;
-  }
-
-  .exp-mini-bar {
-    width: 36px;
-  }
-
+  /* 第 3 行：导航链接 */
   .navbar-center {
     order: 3;
     width: 100%;
