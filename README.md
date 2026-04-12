@@ -119,7 +119,6 @@ Base URL：`/api/v1/`
 |------|------|------|
 | admin@sixth.com | Admin@123456 | 系统管理员 |
 
-**登录地址**：http://localhost:5173/admin/login
 
 ---
 
