@@ -119,80 +119,13 @@ const router = createRouter({
       component: HelpCenterView,
       meta: { requiresAuth: true },
     },
-    {
-      path: '/admin/login',
-      name: 'admin-login',
-      component: () => import('../views/AdminLoginView.vue'),
-      meta: { requiresAuth: false },
-    },
-    {
-      path: '/admin',
-      name: 'admin-home',
-      component: () => import('../views/AdminHomeView.vue'),
-      meta: { requiresAdmin: true },
-    },
-    {
-      path: '/admin/dashboard',
-      name: 'admin-dashboard',
-      component: () => import('../views/AdminDashboardView.vue'),
-      meta: { requiresAdmin: true },
-    },
-    {
-      path: '/admin/users',
-      name: 'admin-users',
-      component: () => import('../views/AdminUsersView.vue'),
-      meta: { requiresAdmin: true },
-    },
-    {
-      path: '/admin/surveys',
-      name: 'admin-surveys',
-      component: () => import('../views/AdminSurveysView.vue'),
-      meta: { requiresAdmin: true },
-    },
-    {
-      path: '/admin/analytics',
-      name: 'admin-analytics',
-      component: () => import('../views/AdminAnalyticsView.vue'),
-      meta: { requiresAdmin: true },
-    },
-    {
-      path: '/admin/risk',
-      name: 'admin-risk',
-      component: () => import('../views/AdminRiskView.vue'),
-      meta: { requiresAdmin: true },
-    },
-    {
-      path: '/admin/announcements',
-      name: 'admin-announcements',
-      component: () => import('../views/AdminAnnouncementsView.vue'),
-      meta: { requiresAdmin: true },
-    },
-    {
-      path: '/admin/logs',
-      name: 'admin-logs',
-      component: () => import('../views/AdminOperationLogsView.vue'),
-      meta: { requiresAdmin: true },
-    },
-
   ],
 })
 
 // 全局路由守卫：检查认证状态
 router.beforeEach((to, from, next) => {
   const token = localStorage.getItem('access_token')
-  const adminToken = localStorage.getItem('admin_token')
   const requiresAuth = to.meta.requiresAuth !== false
-  const requiresAdmin = to.meta.requiresAdmin === true
-
-  // 管理员路由检查
-  if (requiresAdmin) {
-    if (!adminToken) {
-      next({ name: 'admin-login' })
-      return
-    }
-    next()
-    return
-  }
 
   // 若需要认证但无token，重定向到登录页
   if (requiresAuth && !token) {
