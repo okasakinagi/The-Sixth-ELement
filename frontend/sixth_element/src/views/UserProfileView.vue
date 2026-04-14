@@ -17,7 +17,18 @@
             <span class="avatar-text">{{ userInitial }}</span>
           </div>
           <div class="user-basic-info">
-            <h1 class="username">{{ userBasicInfo.nickname || '未设置姓名' }}</h1>
+            <div class="username-row">
+              <h1 class="username">{{ userBasicInfo.nickname || '未设置姓名' }}</h1>
+              <div v-if="levelInfo" class="level-badge-small">
+                <span class="level-text-small">Lv{{ levelInfo.level }} · {{ levelInfo.title }}</span>
+                <div class="exp-wrapper" @mouseenter="showExpTooltip" @mouseleave="hideExpTooltip">
+                  <div class="exp-bar-tiny">
+                    <div class="exp-fill-tiny" :style="{ width: levelInfo.progress_pct + '%' }"></div>
+                  </div>
+                  <span class="exp-num" :class="{ show: showExp }">{{ levelInfo.exp_in_level }}/{{ levelInfo.exp_to_next }}</span>
+                </div>
+              </div>
+            </div>
             <p class="user-subtitle">{{ userData.college || '未设置学院' }} · {{ userData.major || '未设置专业' }}</p>
             <div class="status-row">
               <div
@@ -37,74 +48,6 @@
             <span class="edit-icon">✏️</span>
             编辑资料
           </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- 等级与经验卡片 -->
-    <div class="level-exp-card">
-      <div class="level-exp-content" v-if="levelInfo">
-        <div class="level-card-header">
-          <div>
-            <p class="level-label">等级进度</p>
-            <p class="level-subtitle">当前称号：{{ levelInfo.title }}</p>
-          </div>
-          <div class="level-current-badge">Lv{{ levelInfo.level }}</div>
-        </div>
-        <div class="level-left">
-          <div class="level-badge">
-            <span class="level-icon">✨</span>
-            <span class="level-num">Lv{{ levelInfo.level }}</span>
-          </div>
-          <div class="level-details">
-            <div class="level-title-row">
-              <span class="level-title">{{ levelInfo.title }}</span>
-              <span class="level-exp-value">{{ levelInfo.exp }} EXP</span>
-            </div>
-            <div class="exp-progress-container">
-              <div class="exp-bar">
-                <div class="exp-fill" :style="{ width: levelInfo.progress_pct + '%' }"></div>
-              </div>
-              <div class="exp-text">
-                <span class="exp-current">{{ levelInfo.exp_in_level }}</span>
-                <span class="exp-divider">/</span>
-                <span class="exp-next">{{ levelInfo.exp_to_next }}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="level-right">
-          <div class="next-level-info" v-if="!levelInfo.is_max_level">
-            <span class="next-arrow">→</span>
-            <span>下一称号：{{ levelInfo.next_title }}</span>
-            <span class="next-level-badge">Lv{{ levelInfo.next_level }}</span>
-          </div>
-          <div class="next-level-info max-level" v-else>
-            <span class="max-level-text">🌟 已达最高等级</span>
-          </div>
-        </div>
-      </div>
-      <div class="level-exp-content loading" v-else>
-        <div class="level-left">
-          <div class="level-badge loading-badge">
-            <span class="level-num">Lv-</span>
-          </div>
-          <div class="level-details">
-            <div class="level-title-row">
-              <span class="level-title">等级加载中</span>
-              <span class="level-exp-value">-- EXP</span>
-            </div>
-            <div class="exp-progress-container">
-              <div class="exp-bar">
-                <div class="exp-fill" style="width: 0%"></div>
-              </div>
-              <div class="exp-text">
-                <span class="exp-current">--</span>
-                <span class="exp-divider">/</span>
-                <span class="exp-next">--</span>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>
@@ -486,6 +429,7 @@ function dismissFloating() {
 const showStatusModal = ref(false)
 const selectedStatus = ref('')
 const statusDescription = ref('')
+const showExp = ref(false)
 
 // 预置状态配置
 const moodStatuses = [
@@ -639,6 +583,15 @@ const closeStatusModal = () => {
   showStatusModal.value = false
   selectedStatus.value = ''
   statusDescription.value = ''
+  showExp.value = false
+}
+
+const showExpTooltip = () => {
+  showExp.value = true
+}
+
+const hideExpTooltip = () => {
+  showExp.value = false
 }
 
 // 选择状态
@@ -999,6 +952,13 @@ onUnmounted(() => {
   padding-top: 45px;
 }
 
+.username-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 .username {
   font-size: 28px;
   font-weight: bold;
@@ -1007,8 +967,61 @@ onUnmounted(() => {
   -webkit-text-fill-color: transparent;
   background-clip: text;
   letter-spacing: 0.4px;
-  margin: 0 0 6px 0;
+  margin: 0;
   filter: drop-shadow(0 2px 4px rgba(30, 58, 95, 0.15));
+}
+
+.level-badge-small {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(135deg, #fafbff 0%, #f0f2ff 100%);
+  border: 1px solid #e0e3f0;
+  padding: 3px 10px 3px 8px;
+  border-radius: 20px;
+  box-shadow: 0 1px 4px rgba(80, 90, 160, 0.06);
+}
+
+.level-text-small {
+  font-size: 11px;
+  color: #5a5a8a;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
+.exp-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.exp-bar-tiny {
+  width: 36px;
+  height: 4px;
+  background: #e8ebf5;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.exp-fill-tiny {
+  height: 100%;
+  background: linear-gradient(90deg, #7c8df5, #9b6ddb);
+  border-radius: 2px;
+}
+
+.exp-num {
+  font-size: 10px;
+  color: #8888aa;
+  font-weight: 500;
+  opacity: 0;
+  transform: translateX(-3px);
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.exp-num.show {
+  opacity: 1;
+  transform: translateX(0);
 }
 
 .user-subtitle {

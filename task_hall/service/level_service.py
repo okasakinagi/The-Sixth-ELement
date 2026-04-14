@@ -3,9 +3,10 @@
 
 设计约定：
 - EXP 直接复用 AppUser.activity_points（不新增字段）
-- 等级表硬编码（20 级），无需 DB 存储
+- 等级表硬编码（30 级），无需 DB 存储
 - 任务定义硬编码，TaskCompletion 只记录进度与领取状态
 - period_key: 日任务 = 'YYYY-MM-DD'，周任务 = 'YYYY-WNN'
+- 8个称号，每4-5级变化，越往后升级所需经验越多
 """
 
 from django.db import transaction
@@ -13,41 +14,51 @@ from django.utils import timezone
 
 from core.models import AppUser, PointsLog, TaskCompletion
 
-# ─── 等级配置 ────────────────────────────────────────────────────────────────
+# ─── 等级配置（30级 + 8称号）────────────────────────────────────────────────
+# 每级所需经验 = round(前一级 * 1.15)，约每3-4级翻倍
+# 称号每4-5级变化一次
 LEVEL_TABLE = [
     {"level": 1,  "required_exp": 0,     "title": "新手探索者"},
-    {"level": 2,  "required_exp": 80,    "title": "初入门径"},
-    {"level": 3,  "required_exp": 200,   "title": "问卷新人"},
-    {"level": 4,  "required_exp": 380,   "title": "认真填答者"},
-    {"level": 5,  "required_exp": 600,   "title": "活跃参与者"},
-    {"level": 6,  "required_exp": 900,   "title": "数据贡献者"},
-    {"level": 7,  "required_exp": 1300,  "title": "调研积极分子"},
-    {"level": 8,  "required_exp": 1800,  "title": "问卷常客"},
-    {"level": 9,  "required_exp": 2500,  "title": "数据先锋"},
-    {"level": 10, "required_exp": 3500,  "title": "问卷达人"},
-    {"level": 11, "required_exp": 4800,  "title": "调研老手"},
-    {"level": 12, "required_exp": 6500,  "title": "数据精英"},
-    {"level": 13, "required_exp": 8500,  "title": "问卷专家"},
-    {"level": 14, "required_exp": 11000, "title": "调研骨干"},
-    {"level": 15, "required_exp": 14000, "title": "数据领袖"},
-    {"level": 16, "required_exp": 18000, "title": "问卷大师"},
-    {"level": 17, "required_exp": 23000, "title": "调研权威"},
-    {"level": 18, "required_exp": 29000, "title": "数据宗师"},
-    {"level": 19, "required_exp": 36000, "title": "问卷传奇"},
-    {"level": 20, "required_exp": 45000, "title": "调研专家"},
+    {"level": 2,  "required_exp": 50,    "title": "新手探索者"},
+    {"level": 3,  "required_exp": 110,   "title": "新手探索者"},
+    {"level": 4,  "required_exp": 180,   "title": "新手探索者"},
+    {"level": 5,  "required_exp": 260,   "title": "新手探索者"},
+    {"level": 6,  "required_exp": 350,   "title": "问卷新人"},
+    {"level": 7,  "required_exp": 460,   "title": "问卷新人"},
+    {"level": 8,  "required_exp": 590,   "title": "问卷新人"},
+    {"level": 9,  "required_exp": 750,   "title": "问卷新人"},
+    {"level": 10, "required_exp": 940,   "title": "问卷新人"},
+    {"level": 11, "required_exp": 1180,  "title": "活跃参与者"},
+    {"level": 12, "required_exp": 1470,  "title": "活跃参与者"},
+    {"level": 13, "required_exp": 1820,  "title": "活跃参与者"},
+    {"level": 14, "required_exp": 2240,  "title": "活跃参与者"},
+    {"level": 15, "required_exp": 2740,  "title": "活跃参与者"},
+    {"level": 16, "required_exp": 3350,  "title": "数据先锋"},
+    {"level": 17, "required_exp": 4090,  "title": "数据先锋"},
+    {"level": 18, "required_exp": 4980,  "title": "数据先锋"},
+    {"level": 19, "required_exp": 6070,  "title": "数据先锋"},
+    {"level": 20, "required_exp": 7390,  "title": "数据先锋"},
+    {"level": 21, "required_exp": 9000,  "title": "调研专家"},
+    {"level": 22, "required_exp": 10960, "title": "调研专家"},
+    {"level": 23, "required_exp": 13350, "title": "调研专家"},
+    {"level": 24, "required_exp": 16260, "title": "调研专家"},
+    {"level": 25, "required_exp": 19810, "title": "调研专家"},
+    {"level": 26, "required_exp": 24140, "title": "问卷大师"},
+    {"level": 27, "required_exp": 29400, "title": "问卷大师"},
+    {"level": 28, "required_exp": 35820, "title": "问卷大师"},
+    {"level": 29, "required_exp": 43620, "title": "问卷大师"},
+    {"level": 30, "required_exp": 53140, "title": "问卷大师"},
 ]
 
 # ─── 任务定义 ────────────────────────────────────────────────────────────────
 # target_count: 达成所需进度
 # reward_exp / reward_points: 领取奖励数值
 TASK_DEFINITIONS = {
-    # 日任务
-    "daily_login":   {"type": "daily", "desc": "今日登录平台",   "target": 1,  "reward_exp": 5,  "reward_points": 0},
-    "daily_fill_1":  {"type": "daily", "desc": "完成1份问卷",    "target": 1,  "reward_exp": 10, "reward_points": 1},
-    "daily_fill_3":  {"type": "daily", "desc": "完成3份问卷",    "target": 3,  "reward_exp": 30, "reward_points": 3},
-    # 周任务
-    "weekly_fill_10":   {"type": "weekly", "desc": "本周完成10份问卷", "target": 10, "reward_exp": 100, "reward_points": 10},
-    "weekly_publish_1": {"type": "weekly", "desc": "本周发布1份问卷", "target": 1,  "reward_exp": 50,  "reward_points": 5},
+    "daily_login":     {"type": "daily",  "desc": "今日登录平台",      "target": 1,  "reward_exp": 10,  "reward_points": 1},
+    "daily_fill_1":    {"type": "daily",  "desc": "完成1份问卷",       "target": 1,  "reward_exp": 20,  "reward_points": 2},
+    "daily_fill_3":    {"type": "daily",  "desc": "完成3份问卷",       "target": 3,  "reward_exp": 50,  "reward_points": 5},
+    "weekly_fill_10":  {"type": "weekly", "desc": "本周完成10份问卷",  "target": 10, "reward_exp": 150, "reward_points": 15},
+    "weekly_publish_1": {"type": "weekly", "desc": "本周发布1份问卷",  "target": 1,  "reward_exp": 80,  "reward_points": 8},
 }
 
 

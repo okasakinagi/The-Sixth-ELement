@@ -1,8 +1,33 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
+import { Line, Doughnut } from 'vue-chartjs'
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  ArcElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler
+} from 'chart.js'
 import { getDashboardStats, adminLogout, getAdminUser, getNotificationList, markAllNotificationsRead } from '@/utils/adminApi'
 import { useAdminTheme } from '@/composables/useAdminTheme'
+
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  ArcElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler
+)
 
 const router = useRouter()
 const stats = ref(null)
@@ -13,8 +38,93 @@ const showNotifications = ref(false)
 const animatedValues = ref({})
 const cardAnimationComplete = ref({})
 const notifications = ref([])
+const overviewData = ref({})
 const unreadCount = ref(0)
 const notifLoading = ref(false)
+
+const lineChartData = computed(() => ({
+  labels: ['周一', '周二', '周三', '周四', '周五', '周六', '周日'],
+  datasets: [{
+    label: '日活跃用户',
+    data: [120, 190, 230, 180, 210, 280, 320],
+    fill: true,
+    borderColor: '#667eea',
+    backgroundColor: 'rgba(102, 126, 234, 0.1)',
+    tension: 0.4,
+    pointBackgroundColor: '#667eea',
+    pointBorderColor: '#fff',
+    pointHoverRadius: 6,
+  }]
+}))
+
+const lineChartOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: {
+    legend: { display: false },
+    tooltip: {
+      backgroundColor: '#1a1a2e',
+      titleColor: '#fff',
+      bodyColor: '#fff',
+      padding: 12,
+      cornerRadius: 8,
+    }
+  },
+  scales: {
+    x: {
+      grid: { display: false },
+      ticks: { color: '#999' }
+    },
+    y: {
+      grid: { color: 'rgba(0,0,0,0.05)' },
+      ticks: { color: '#999' }
+    }
+  },
+  animation: {
+    duration: 1000,
+    easing: 'easeOutQuart'
+  }
+}
+
+const doughnutChartData = computed(() => ({
+  labels: ['已完成', '进行中', '未开始'],
+  datasets: [{
+    data: [65, 25, 10],
+    backgroundColor: ['#667eea', '#764ba2', '#e8ecf0'],
+    borderWidth: 0,
+    hoverOffset: 8,
+  }]
+}))
+
+const doughnutChartOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: {
+    legend: {
+      position: 'bottom',
+      labels: {
+        color: '#666',
+        padding: 16,
+        usePointStyle: true,
+        pointStyle: 'circle'
+      }
+    },
+    tooltip: {
+      backgroundColor: '#1a1a2e',
+      titleColor: '#fff',
+      bodyColor: '#fff',
+      padding: 12,
+      cornerRadius: 8,
+    }
+  },
+  cutout: '70%',
+  animation: {
+    animateRotate: true,
+    animateScale: true,
+    duration: 1000,
+    easing: 'easeOutQuart'
+  }
+}
 
 const { isDark, themeVars, initTheme, toggleTheme } = useAdminTheme()
 
@@ -107,6 +217,12 @@ async function loadData() {
     const data = await getDashboardStats()
     if (data) {
       stats.value = data
+      overviewData.value = {
+        totalUsers: data.total_users || 0,
+        activeToday: data.active_today || 0,
+        totalSurveys: data.total_surveys || 0,
+        totalResponses: data.total_responses || 0,
+      }
       initAnimations()
     }
     await loadNotifications()
@@ -187,6 +303,27 @@ function getDisplayValue(item, stat) {
   return animatedValues.value[item.id] || stat.value || 0
 }
 
+function getChangeDirection(item) {
+  if (!item.change) return 0
+  if (typeof item.change.value === 'string') {
+    return item.change.value.startsWith('+') ? 1 : item.change.value.startsWith('-') ? -1 : 0
+  }
+  return item.change.value > 0 ? 1 : -1
+}
+
+function getChangeText(item) {
+  if (!item.change) return ''
+  return typeof item.change.value === 'string' ? item.change.value : (item.change.value > 0 ? `+${item.change.value}` : item.change.value)
+}
+
+function getDisplayStats(item) {
+  if (!item.stats || item.stats.length === 0) return []
+  return item.stats.slice(0, 2).map(stat => ({
+    value: getDisplayValue(item, stat) + (stat.suffix || ''),
+    label: stat.label
+  }))
+}
+
 function goToPage(link) {
   router.push(link)
 }
@@ -241,8 +378,7 @@ onMounted(() => {
   <div class="admin-home" :class="{ dark: isDark }">
     <header class="top-nav">
       <div class="nav-left">
-        <span class="logo-icon">🚀</span>
-        <span class="logo-text">第六元素管理后台</span>
+        <span class="logo-text">第六元素</span>
       </div>
       <div class="nav-right">
         <button class="nav-small-btn" @click="router.push('/admin/announcements')" title="系统公告">
@@ -299,9 +435,43 @@ onMounted(() => {
     </header>
 
     <main class="main-content">
-      <div v-if="loading" class="loading-container">
-        <div class="loading-spinner"></div>
-        <p>加载中...</p>
+      <div class="platform-header">
+        <h1 class="platform-title">第六元素智慧管理平台</h1>
+        <p class="platform-subtitle">数据驱动 · 智能决策 · 高效管理</p>
+      </div>
+
+      <div class="charts-container">
+        <div class="chart-card line-chart">
+          <h3 class="chart-title">用户活跃趋势</h3>
+          <div class="chart-wrapper">
+            <Line :data="lineChartData" :options="lineChartOptions" />
+          </div>
+        </div>
+        <div class="chart-card doughnut-chart">
+          <h3 class="chart-title">问卷完成率</h3>
+          <div class="chart-wrapper">
+            <Doughnut :data="doughnutChartData" :options="doughnutChartOptions" />
+          </div>
+        </div>
+      </div>
+
+      <div class="quick-stats">
+        <div class="quick-stat">
+          <span class="quick-stat-value">{{ overviewData.totalUsers || 0 }}</span>
+          <span class="quick-stat-label">总用户</span>
+        </div>
+        <div class="quick-stat">
+          <span class="quick-stat-value">{{ overviewData.activeToday || 0 }}</span>
+          <span class="quick-stat-label">今日活跃</span>
+        </div>
+        <div class="quick-stat">
+          <span class="quick-stat-value">{{ overviewData.totalSurveys || 0 }}</span>
+          <span class="quick-stat-label">问卷总数</span>
+        </div>
+        <div class="quick-stat">
+          <span class="quick-stat-value">{{ overviewData.totalResponses || 0 }}</span>
+          <span class="quick-stat-label">回收答卷</span>
+        </div>
       </div>
 
       <div v-else class="cards-grid">
@@ -310,30 +480,22 @@ onMounted(() => {
           :key="item.id"
           class="menu-card"
           :class="{ animated: cardAnimationComplete[item.id] }"
-          :style="{ '--delay': index * 100 + 'ms', '--gradient': item.gradient }"
+          :style="{ '--delay': index * 80 + 'ms' }"
           @click="goToPage(item.link)"
         >
-          <div class="card-glow"></div>
-          <div class="card-icon">{{ item.icon }}</div>
+          <div class="card-header">
+            <div class="card-dot"></div>
+            <span class="card-change" :class="{ positive: getChangeDirection(item) > 0 }">
+              {{ getChangeText(item) }}
+            </span>
+          </div>
           <h2 class="card-title">{{ item.title }}</h2>
           <p class="card-subtitle">{{ item.subtitle }}</p>
-
-          <div class="card-stats">
-            <div v-for="(stat, idx) in item.stats" :key="idx" class="stat-item">
-              <span class="stat-value">{{ getDisplayValue(item, stat) }}</span>
-              <span class="stat-suffix">{{ stat.suffix }}</span>
-              <span class="stat-label">{{ stat.label }}</span>
+          <div class="card-stats-row">
+            <div v-for="(stat, idx) in getDisplayStats(item)" :key="idx" class="stat-mini">
+              <span class="stat-mini-value">{{ stat.value }}</span>
+              <span class="stat-mini-label">{{ stat.label }}</span>
             </div>
-          </div>
-
-          <div v-if="item.change" class="card-change" :class="{ positive: item.change.value > 0 || typeof item.change.value === 'string' }">
-            <span class="change-arrow">{{ typeof item.change.value === 'string' ? (item.change.value.startsWith('+') ? '↑' : '→') : (item.change.value > 0 ? '↑' : '↓') }}</span>
-            <span class="change-value">{{ item.change.value }}</span>
-            <span class="change-label">{{ item.change.label }}</span>
-          </div>
-
-          <div class="card-action">
-            <span>▸ 进入{{ item.title.split(' ')[0] }}</span>
           </div>
         </div>
       </div>
@@ -379,10 +541,8 @@ onMounted(() => {
 .logo-text {
   font-size: 20px;
   font-weight: 700;
-  background: var(--admin-accent-gradient, linear-gradient(135deg, #667eea 0%, #764ba2 100%));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: var(--admin-text-primary, #1a1a2e);
+  letter-spacing: 1px;
 }
 
 .nav-right {
@@ -693,6 +853,93 @@ onMounted(() => {
   margin: 0 auto;
 }
 
+.platform-header {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.platform-title {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--admin-text-primary, #1a1a2e);
+  margin: 0 0 8px 0;
+  letter-spacing: 2px;
+}
+
+.platform-subtitle {
+  font-size: 14px;
+  color: var(--admin-text-muted, #999999);
+  margin: 0;
+  letter-spacing: 4px;
+}
+
+.charts-container {
+  display: flex;
+  justify-content: center;
+  gap: 40px;
+  margin-bottom: 32px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.chart-card {
+  padding: 0;
+}
+
+.line-chart {
+  flex: 1;
+  min-width: 320px;
+  max-width: 480px;
+}
+
+.doughnut-chart {
+  flex: 0 0 200px;
+}
+
+.chart-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--admin-text-secondary, #666666);
+  margin: 0;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.chart-wrapper {
+  height: 240px;
+  position: relative;
+}
+
+.quick-stats {
+  display: flex;
+  justify-content: center;
+  gap: 32px;
+  margin-bottom: 24px;
+  padding: 16px 24px;
+  background: var(--admin-bg-card, #ffffff);
+  border-radius: 12px;
+  border: 1px solid var(--admin-border-color, #e8ecf0);
+}
+
+.quick-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 80px;
+}
+
+.quick-stat-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--admin-text-primary, #1a1a2e);
+}
+
+.quick-stat-label {
+  font-size: 12px;
+  color: var(--admin-text-muted, #999999);
+  margin-top: 4px;
+}
+
 .loading-container {
   display: flex;
   flex-direction: column;
@@ -718,167 +965,129 @@ onMounted(() => {
 
 /* 卡片网格 */
 .cards-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 28px;
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  padding: 0 40px;
+  margin-top: 24px;
 }
 
 .menu-card {
   position: relative;
   background: var(--admin-bg-card, #ffffff);
-  border-radius: 20px;
-  padding: 28px;
+  border-radius: 12px;
+  padding: 14px 18px;
   cursor: pointer;
-  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  transition: all 0.25s ease;
   opacity: 0;
-  transform: translateY(30px);
+  transform: translateY(20px);
   overflow: hidden;
   border: 1px solid var(--admin-border-color, #e8ecf0);
+  min-width: 120px;
+  max-width: 140px;
+  flex: 1;
+}
+
+.menu-card:hover {
+  transform: translateY(-2px);
+  border-color: #667eea;
 }
 
 .menu-card.animated {
-  animation: card-enter 0.6s ease forwards;
+  animation: card-fade-in 0.4s ease forwards;
   animation-delay: var(--delay);
 }
 
-@keyframes card-enter {
+@keyframes card-fade-in {
   to {
     opacity: 1;
     transform: translateY(0);
   }
 }
 
-.menu-card:hover {
-  transform: translateY(-8px);
-  box-shadow: 0 20px 50px rgba(102, 126, 234, 0.2);
-  border-color: transparent;
+.card-dot {
+  width: 6px;
+  height: 6px;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 
-.menu-card:hover .card-glow {
-  opacity: 1;
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
 }
 
-.menu-card:hover .card-icon {
-  transform: scale(1.15);
+.card-change {
+  font-size: 11px;
+  font-weight: 600;
+  color: #f5576c;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(245, 87, 108, 0.1);
 }
 
-.card-glow {
-  position: absolute;
-  top: -50%;
-  left: -50%;
-  width: 200%;
-  height: 200%;
-  background: radial-gradient(circle, var(--gradient) 0%, transparent 70%);
-  opacity: 0;
-  transition: opacity 0.4s ease;
-  pointer-events: none;
-}
-
-.card-icon {
-  font-size: 56px;
-  margin-bottom: 16px;
-  transition: transform 0.3s ease;
+.card-change.positive {
+  color: #2ecc71;
+  background: rgba(46, 204, 113, 0.1);
 }
 
 .card-title {
-  font-size: 22px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
   color: var(--admin-text-primary, #1a1a2e);
-  margin: 0 0 8px 0;
+  margin: 0 0 4px 0;
+  white-space: nowrap;
 }
 
 .card-subtitle {
-  font-size: 14px;
+  font-size: 11px;
   color: var(--admin-text-muted, #999999);
-  margin: 0 0 20px 0;
+  margin: 0 0 10px 0;
+  white-space: nowrap;
 }
 
-.card-stats {
+.card-stats-row {
   display: flex;
-  gap: 24px;
-  margin-bottom: 16px;
+  gap: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--admin-border-color, #e8ecf0);
 }
 
-.stat-item {
+.stat-mini {
   display: flex;
   flex-direction: column;
 }
 
-.stat-value {
-  font-size: 32px;
-  font-weight: 700;
-  background: var(--admin-accent-gradient);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  line-height: 1.2;
-}
-
-.stat-suffix {
+.stat-mini-value {
   font-size: 14px;
+  font-weight: 700;
+  color: var(--admin-text-primary, #1a1a2e);
+}
+
+.stat-mini-label {
+  font-size: 10px;
   color: var(--admin-text-muted, #999999);
-  margin-left: 2px;
-}
-
-.stat-label {
-  font-size: 12px;
-  color: var(--admin-text-muted, #999999);
-  margin-top: 4px;
-}
-
-.card-change {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 6px 12px;
-  background: var(--admin-bg-secondary, #f5f7fa);
-  border-radius: 20px;
-  font-size: 13px;
-  color: var(--admin-text-secondary, #666666);
-  margin-bottom: 16px;
-}
-
-.card-change.positive {
-  background: rgba(67, 233, 123, 0.15);
-  color: #2ecc71;
-}
-
-.card-change.negative {
-  background: rgba(245, 87, 108, 0.15);
-  color: #f5576c;
-}
-
-.change-arrow {
-  font-weight: 600;
-}
-
-.change-value {
-  font-weight: 600;
-}
-
-.change-label {
-  color: var(--admin-text-muted, #999999);
-  margin-left: 4px;
 }
 
 .card-action {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 14px;
+  gap: 4px;
+  margin-top: 10px;
+  font-size: 11px;
+  color: #667eea;
   font-weight: 500;
-  background: var(--admin-accent-gradient);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  opacity: 0;
-  transform: translateX(-10px);
-  transition: all 0.3s ease;
 }
 
-.menu-card:hover .card-action {
-  opacity: 1;
-  transform: translateX(0);
+.card-action .arrow {
+  transition: transform 0.2s ease;
+}
+
+.menu-card:hover .card-action .arrow {
+  transform: translateX(3px);
 }
 
 /* 响应式 */
@@ -895,8 +1104,44 @@ onMounted(() => {
     padding: 20px;
   }
 
+  .platform-header {
+    margin-bottom: 20px;
+  }
+
+  .platform-title {
+    font-size: 22px;
+  }
+
+  .charts-container {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .line-chart,
+  .doughnut-chart {
+    min-width: 100%;
+    max-width: 100%;
+  }
+
+  .chart-wrapper {
+    height: 200px;
+  }
+
   .cards-grid {
-    grid-template-columns: 1fr;
+    flex-direction: column;
+    align-items: center;
+    padding: 0;
+    margin-top: 16px;
+  }
+
+  .menu-card {
+    min-width: 100%;
+    max-width: 100%;
+  }
+
+  .quick-stats {
+    flex-wrap: wrap;
+    gap: 16px;
   }
 
   .username {
