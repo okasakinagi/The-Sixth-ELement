@@ -474,7 +474,7 @@ onMounted(() => {
         </div>
       </div>
 
-      <div v-else class="cards-grid">
+      <div class="cards-grid">
         <div
           v-for="(item, index) in menuItems"
           :key="item.id"

@@ -7,8 +7,22 @@ STATE_DIR="/home/six_element/deploy_state"
 LOCK_FILE="$STATE_DIR/deploy.lock"
 PAUSE_FILE="$STATE_DIR/deploy.paused"
 LAST_SUCCESS_FILE="$STATE_DIR/last_success_commit"
+DEPLOY_LOG_FILE="$STATE_DIR/update_deploy.log"
+MAX_DEPLOY_LOG_SIZE=$((50 * 1024 * 1024))
 
 mkdir -p "$BACKUP_DIR" "$STATE_DIR"
+touch "$DEPLOY_LOG_FILE"
+
+# 简单日志轮转，避免部署日志无限增长
+CURRENT_LOG_SIZE=$(wc -c < "$DEPLOY_LOG_FILE" 2>/dev/null || echo 0)
+if [ "$CURRENT_LOG_SIZE" -ge "$MAX_DEPLOY_LOG_SIZE" ]; then
+	mv "$DEPLOY_LOG_FILE" "${DEPLOY_LOG_FILE}.1" 2>/dev/null || true
+	: > "$DEPLOY_LOG_FILE"
+fi
+
+# 记录部署主流程日志，便于排障时直接查看部署命令输出
+exec > >(tee -a "$DEPLOY_LOG_FILE") 2>&1
+echo "[deploy] ===== $(date '+%F %T') deploy start ====="
 
 # 手动与自动部署共用文件锁，防止并发
 exec 9>"$LOCK_FILE"
