@@ -10,8 +10,8 @@ class Command(BaseCommand):
     help = "Create an admin user."
 
     def add_arguments(self, parser):
-        parser.add_argument("--email", type=str, default="admin@sixth.com")
-        parser.add_argument("--password", type=str, default="Admin@123456")
+        parser.add_argument("--email", type=str, default="")
+        parser.add_argument("--password", type=str, default="")
         parser.add_argument("--nickname", type=str, default="系统管理员")
 
     @transaction.atomic
