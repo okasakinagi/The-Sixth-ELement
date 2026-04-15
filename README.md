@@ -1,4 +1,4 @@
-﻿# 第六元素 · SurveyFiller
+# 第六元素 · SurveyFiller
 
 > 面向校园与社群的问卷互填平台——发布问卷、完成填写、赚取积分，形成公平可持续的互助闭环。
 
@@ -108,17 +108,6 @@ Base URL：`/api/v1/`
 - **IDVector / SurveyUserSimilarity**  向量推荐引擎
 - **Report**  举报记录
 - **Notification / AuditLog**  通知与审计日志
-
----
-
-## 管理员账号
-
-项目提供管理员后台功能，可使用以下账号登录：
-
-| 邮箱 | 密码 | 昵称 |
-|------|------|------|
-| admin@sixth.com | Admin@123456 | 系统管理员 |
-
 
 ---
 

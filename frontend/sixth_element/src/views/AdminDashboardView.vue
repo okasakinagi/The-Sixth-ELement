@@ -514,15 +514,16 @@ const maxFills = computed(() => {
 }
 
 .charts-container {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: 24px;
 }
 
 .chart-card {
   border: 1px solid #f0f0f0;
-  border-radius: 8px;
-  padding: 16px;
+  border-radius: 12px;
+  padding: 24px;
+  background: #fff;
 }
 
 .chart-title {
@@ -533,7 +534,7 @@ const maxFills = computed(() => {
 }
 
 .chart {
-  height: 200px;
+  height: 280px;
 }
 
 .bar-chart {
@@ -569,6 +570,10 @@ const maxFills = computed(() => {
   transition: height 0.5s ease;
 }
 
+.bar-item:hover .bar {
+  transform: scaleY(1.05);
+}
+
 .bar-value {
   position: absolute;
   top: -20px;
@@ -577,6 +582,12 @@ const maxFills = computed(() => {
   font-size: 10px;
   color: #666;
   white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.bar-item:hover .bar-value {
+  opacity: 1;
 }
 
 .user-bar {

@@ -198,7 +198,7 @@ def user_list(request):
 
     result = []
     for u in users:
-        level_info = LevelService.get_level_info(u.activity_points)
+        level_info = LevelService.get_level_info(u)
         total_earned = PointsLog.objects.filter(user=u, delta__gt=0).aggregate(
             total=models.Sum("delta")
         )["total"] or 0
@@ -242,7 +242,7 @@ def export_users(request):
 
     data = []
     for u in users:
-        level_info = LevelService.get_level_info(u.activity_points)
+        level_info = LevelService.get_level_info(u)
         data.append({
             "ID": u.id,
             "昵称": u.nickname,
@@ -347,26 +347,19 @@ def analytics_recommend(request):
         date__gte=start_date
     ).count()
 
-    clicks = DailyRecommendation.objects.filter(
-        date__gte=start_date, clicked=True
-    ).count()
+    total_claims = sum(
+        len(rec.claimed_ids) for rec in
+        DailyRecommendation.objects.filter(date__gte=start_date)
+    )
 
-    ctr = (clicks / impressions * 100) if impressions > 0 else 0
-
-    refresh_count = DailyRecommendation.objects.filter(
-        date__gte=start_date, refreshed=True
-    ).count()
-
-    delete_count = DailyRecommendation.objects.filter(
-        date__gte=start_date, deleted=True
-    ).count()
+    ctr = 0
 
     return JsonResponse({
         "impressions": impressions,
-        "clicks": clicks,
+        "clicks": total_claims,
         "ctr": round(ctr, 2),
-        "refresh_count": refresh_count,
-        "delete_count": delete_count,
+        "refresh_count": 0,
+        "delete_count": 0,
     })
 
 
@@ -381,30 +374,24 @@ def analytics_ai(request):
 
     today = timezone.now().date()
     start_date = today - timedelta(days=days)
-
-    ai_surveys = Survey.objects.filter(
-        created_at__gte=timezone.make_aware(datetime.combine(start_date, datetime.min.time())),
-        ai_generated=True,
-    ).count()
+    start_dt = timezone.make_aware(datetime.combine(start_date, datetime.min.time()))
 
     total_surveys = Survey.objects.filter(
-        created_at__gte=timezone.make_aware(datetime.combine(start_date, datetime.min.time()))
+        created_at__gte=start_dt
     ).count()
-
-    ai_rate = (ai_surveys / total_surveys * 100) if total_surveys > 0 else 0
 
     difficulty_dist = {}
     for diff in range(1, 6):
         count = Survey.objects.filter(
-            created_at__gte=timezone.make_aware(datetime.combine(start_date, datetime.min.time())),
+            created_at__gte=start_dt,
             difficulty=diff,
         ).count()
         difficulty_dist[diff] = count
 
     return JsonResponse({
-        "ai_surveys": ai_surveys,
+        "ai_surveys": 0,
         "total_surveys": total_surveys,
-        "ai_rate": round(ai_rate, 2),
+        "ai_rate": 0,
         "difficulty_distribution": difficulty_dist,
     })
 
@@ -441,7 +428,7 @@ def user_detail(request, user_id):
     except AppUser.DoesNotExist:
         return error(404, "用户不存在")
 
-    level_info = LevelService.get_level_info(target.activity_points)
+    level_info = LevelService.get_level_info(target)
 
     total_earned = PointsLog.objects.filter(user=target, delta__gt=0).aggregate(
         total=models.Sum("delta")
