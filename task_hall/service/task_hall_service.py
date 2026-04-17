@@ -320,9 +320,12 @@ class TaskHallService:
         }
 
     def _get_sender_title(self, owner):
-        """根据发布者的 activity_points 计算称号"""
+        """根据发布者的快照 title 字段返回称号，若为默认值则动态计算"""
         if not owner:
             return ""
+        # 优先使用快照字段（由 LevelService.get_level_info 回写）
+        if getattr(owner, "title", None) and owner.title != "新手探索者":
+            return owner.title
         try:
             from task_hall.service.level_service import LEVEL_TABLE
             exp = owner.activity_points or 0
@@ -419,7 +422,11 @@ class TaskHallService:
 
         surveys = {
             s.id: s
-            for s in self.mapper.base_queryset().filter(id__in=survey_ids)
+            for s in self.mapper.base_queryset().filter(
+                id__in=survey_ids,
+                status__in=self.STATUS_LIVE_INTERNAL,
+                active_questionnaire__status="published",
+            )
         }
         filled_counts = self.mapper.get_filled_counts(survey_ids)
 
@@ -481,7 +488,7 @@ class TaskHallService:
         }
 
     def _build_daily_reason(self, user_id, survey_id, score):
-        """根据用户与问卷标签重叠生成中文推荐理由。"""
+        """根据用户与问卷标签重叠及填写历史生成中文推荐理由。"""
         user_tag_types = set(
             UserTag.objects.filter(user_id=user_id)
             .select_related("tag")
@@ -500,6 +507,22 @@ class TaskHallService:
             reasons.append("✔ 兴趣匹配")
         if "school" in overlap:
             reasons.append("✔ 同学校")
+        # 检查用户是否填过同类标签的问卷（填写历史证据链）
+        if not reasons:
+            survey_tag_ids = set(
+                SurveyTag.objects.filter(survey_id=survey_id).values_list("tag_id", flat=True)
+            )
+            if survey_tag_ids:
+                filled_survey_ids = set(
+                    Response.objects.filter(user_id=user_id, status="submitted")
+                    .values_list("survey_id", flat=True)
+                )
+                if filled_survey_ids:
+                    similar_exists = SurveyTag.objects.filter(
+                        survey_id__in=filled_survey_ids, tag_id__in=survey_tag_ids
+                    ).exists()
+                    if similar_exists:
+                        reasons.append("✔ 你填过同类问卷")
         if not reasons and score is not None and score >= 0.2:
             reasons.append("✔ 内容偏好匹配")
         if not reasons:
