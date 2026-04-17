@@ -1,6 +1,10 @@
 from datetime import timezone as dt_timezone
+
+from django.db.models import Sum, Q
+from django.db.models.functions import TruncDate, TruncWeek, TruncMonth
 from django.utils import timezone
 
+from core.models import PointsLog
 from points_record.mapper.points_record_mapper import PointsRecordMapper
 
 
@@ -143,3 +147,37 @@ class PointsRecordService:
             raise
         except Exception as exc:
             raise PointsRecordError(500, f"Internal server error: {str(exc)}")
+
+    def get_points_trend(self, user, granularity="day", days=30):
+        """按日/周/月聚合积分变动，返回 [{date, income, expense, net}]"""
+        ALLOWED_GRANULARITY = {"day", "week", "month"}
+        if granularity not in ALLOWED_GRANULARITY:
+            raise PointsRecordError(400, f"granularity must be one of {ALLOWED_GRANULARITY}")
+        days = min(max(int(days), 1), 365)
+
+        since = timezone.now() - timezone.timedelta(days=days)
+        qs = PointsLog.objects.filter(user=user, created_at__gte=since)
+
+        trunc_fn = {"day": TruncDate, "week": TruncWeek, "month": TruncMonth}[granularity]
+
+        rows = (
+            qs.annotate(period=trunc_fn("created_at"))
+            .values("period")
+            .annotate(
+                income=Sum("delta", filter=Q(delta__gt=0)),
+                expense=Sum("delta", filter=Q(delta__lt=0)),
+            )
+            .order_by("period")
+        )
+
+        items = []
+        for row in rows:
+            income = row["income"] or 0
+            expense = row["expense"] or 0
+            items.append({
+                "date": row["period"].isoformat() if row["period"] else None,
+                "income": income,
+                "expense": abs(expense),
+                "net": income + expense,
+            })
+        return {"granularity": granularity, "days": days, "items": items}

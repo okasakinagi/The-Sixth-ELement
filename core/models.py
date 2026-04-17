@@ -7,6 +7,8 @@ class AppUser(models.Model):
     credit_score = models.IntegerField(default=0)
     points = models.IntegerField(default=0)
     activity_points = models.IntegerField(default=0)
+    level = models.IntegerField(default=1)
+    title = models.CharField(max_length=32, default="新手探索者")
     status = models.CharField(max_length=32, default="normal")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

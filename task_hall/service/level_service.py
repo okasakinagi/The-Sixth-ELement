@@ -90,6 +90,12 @@ class LevelService:
         exp_to_next = (next_level["required_exp"] - current["required_exp"]) if next_level else 0
         progress_pct = round(exp_in_level / exp_to_next * 100) if exp_to_next else 100
 
+        # 快照回写：若 level 或 title 发生变化，持久化到 AppUser
+        if user.level != current["level"] or user.title != current["title"]:
+            user.level = current["level"]
+            user.title = current["title"]
+            user.save(update_fields=["level", "title"])
+
         return {
             "exp": exp,
             "level": current["level"],
