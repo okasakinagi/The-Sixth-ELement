@@ -4,11 +4,12 @@ import { useRouter } from 'vue-router'
 import {
   getDashboardStats,
   getDashboardTrend,
+  exportDashboard,
 } from '@/utils/adminApi'
 import { useAdminTheme } from '@/composables/useAdminTheme'
 
 const router = useRouter()
-const { initTheme } = useAdminTheme()
+const { initTheme, themeVars } = useAdminTheme()
 const stats = ref(null)
 const trend = ref([])
 const loading = ref(true)
@@ -44,6 +45,32 @@ async function changeDays(days) {
   await fetchTrend()
 }
 
+async function handleExport() {
+  try {
+    const data = await exportDashboard(selectedDays.value)
+    if (data && data.trend) {
+      const csvHeader = ['日期', '新增用户', '新增问卷', '新增填写']
+      const csvRows = data.trend.map(row => [
+        row.date,
+        row.new_users,
+        row.new_surveys,
+        row.new_fills
+      ].join(','))
+      const csvContent = [csvHeader.join(','), ...csvRows].join('\n')
+      const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `dashboard_export_${new Date().toISOString().slice(0,10)}.csv`
+      link.click()
+      URL.revokeObjectURL(url)
+    }
+  } catch (e) {
+    console.error('Export failed:', e)
+    alert('导出失败')
+  }
+}
+
 onMounted(async () => {
   initTheme()
   await Promise.all([fetchStats(), fetchTrend()])
@@ -67,7 +94,16 @@ const maxFills = computed(() => {
 </script>
 
 <template>
-  <div class="admin-dashboard">
+  <div class="admin-dashboard" :style="{
+    '--admin-bg-primary': themeVars.bgPrimary,
+    '--admin-bg-secondary': themeVars.bgSecondary,
+    '--admin-bg-card': themeVars.bgCard,
+    '--admin-text-primary': themeVars.textPrimary,
+    '--admin-text-secondary': themeVars.textSecondary,
+    '--admin-text-muted': themeVars.textMuted,
+    '--admin-border-color': themeVars.borderColor,
+    '--admin-accent-gradient': themeVars.accentGradient,
+  }">
     <main class="admin-main">
       <header class="dashboard-header">
         <div class="breadcrumb">
@@ -79,6 +115,7 @@ const maxFills = computed(() => {
           <h1 class="page-title">总览仪表盘</h1>
           <div class="header-right">
             <span class="welcome-text">欢迎</span>
+            <button class="export-btn" @click="handleExport">📄 导出报表</button>
           </div>
         </div>
       </header>
@@ -229,144 +266,13 @@ const maxFills = computed(() => {
 .admin-dashboard {
   display: flex;
   min-height: 100vh;
-  background: #f5f7fa;
-}
-
-.admin-sidebar {
-  width: 240px;
-  background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
-  color: white;
-  display: flex;
-  flex-direction: column;
-  position: fixed;
-  height: 100vh;
-}
-
-.sidebar-header {
-  padding: 24px 20px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.sidebar-title {
-  font-size: 18px;
-  font-weight: bold;
-  margin: 0;
-}
-
-.sidebar-nav {
-  flex: 1;
-  padding: 16px 0;
-}
-
-.nav-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 20px;
-  color: rgba(255, 255, 255, 0.7);
-  text-decoration: none;
-  transition: all 0.3s;
-}
-
-.nav-item:hover,
-.nav-item.active {
-  background: rgba(255, 255, 255, 0.1);
-  color: white;
-}
-
-.nav-icon {
-  font-size: 18px;
-}
-
-.sidebar-footer {
-  padding: 20px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.admin-info {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.admin-name {
-  font-size: 14px;
-}
-
-.logout-btn {
-  background: rgba(255, 255, 255, 0.1);
-  border: none;
-  color: white;
-  padding: 6px 12px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 12px;
-}
-
-.logout-btn:hover {
-  background: rgba(255, 255, 255, 0.2);
-}
-
-.theme-toggle-btn {
-  background: rgba(255, 255, 255, 0.1);
-  border: none;
-  color: white;
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.3s ease;
-}
-
-.theme-toggle-btn:hover {
-  background: rgba(255, 255, 255, 0.25);
-  transform: scale(1.1);
+  background: var(--admin-bg-primary);
 }
 
 .admin-main {
   flex: 1;
   padding: 24px;
-}
-
-.theme-toggle-btn {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border: none;
-  color: white;
-  width: 36px;
-  height: 36px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 18px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.3s ease;
-  margin-left: 8px;
-}
-
-.theme-toggle-btn:hover {
-  transform: scale(1.1);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-}
-
-.logout-btn {
-  background: linear-gradient(135deg, #ff6b6b 0%, #ee5a5a 100%);
-  border: none;
-  color: white;
-  padding: 8px 16px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 13px;
-  margin-left: 8px;
-}
-
-.logout-btn:hover {
-  opacity: 0.9;
-  transform: translateY(-1px);
+  background: var(--admin-bg-primary);
 }
 
 .dashboard-header {
@@ -393,11 +299,11 @@ const maxFills = computed(() => {
 }
 
 .breadcrumb-sep {
-  color: #999;
+  color: var(--admin-text-muted);
 }
 
 .breadcrumb-current {
-  color: #666;
+  color: var(--admin-text-secondary);
 }
 
 .header-top {
@@ -409,20 +315,44 @@ const maxFills = computed(() => {
 .page-title {
   font-size: 24px;
   font-weight: bold;
-  color: #1a1a2e;
+  color: var(--admin-text-primary);
   margin: 0;
 }
 
 .welcome-text {
-  color: #666;
+  color: var(--admin-text-secondary);
   font-size: 14px;
+  margin-right: 16px;
+}
+
+.export-btn {
+  padding: 6px 12px;
+  background: var(--admin-accent-gradient);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: opacity 0.2s;
+}
+
+.export-btn:hover {
+  opacity: 0.9;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
 }
 
 .loading,
 .error {
   text-align: center;
   padding: 40px;
-  color: #666;
+  color: var(--admin-text-secondary);
 }
 
 .error {
@@ -437,7 +367,8 @@ const maxFills = computed(() => {
 }
 
 .stat-card {
-  background: white;
+  background: var(--admin-bg-card);
+  border: 1px solid var(--admin-border-color);
   border-radius: 12px;
   padding: 20px;
   display: flex;
@@ -448,7 +379,7 @@ const maxFills = computed(() => {
 
 .stat-icon {
   font-size: 32px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: var(--admin-accent-gradient);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
@@ -456,23 +387,24 @@ const maxFills = computed(() => {
 .stat-value {
   font-size: 28px;
   font-weight: bold;
-  color: #1a1a2e;
+  color: var(--admin-text-primary);
 }
 
 .stat-label {
   font-size: 14px;
-  color: #666;
+  color: var(--admin-text-secondary);
   margin-top: 4px;
 }
 
 .stat-today {
   font-size: 12px;
-  color: #888;
+  color: var(--admin-text-muted);
   margin-top: 4px;
 }
 
 .trend-section {
-  background: white;
+  background: var(--admin-bg-card);
+  border: 1px solid var(--admin-border-color);
   border-radius: 12px;
   padding: 24px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
@@ -488,7 +420,7 @@ const maxFills = computed(() => {
 .section-title {
   font-size: 18px;
   font-weight: bold;
-  color: #1a1a2e;
+  color: var(--admin-text-primary);
   margin: 0;
 }
 
@@ -499,16 +431,22 @@ const maxFills = computed(() => {
 
 .day-btn {
   padding: 6px 12px;
-  border: 1px solid #ddd;
-  background: white;
+  border: 1px solid var(--admin-border-color);
+  background: var(--admin-bg-secondary);
+  color: var(--admin-text-secondary);
   border-radius: 6px;
   cursor: pointer;
   font-size: 12px;
   transition: all 0.3s;
 }
 
+.day-btn:hover {
+  background: var(--admin-bg-card);
+  color: var(--admin-text-primary);
+}
+
 .day-btn.active {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: var(--admin-accent-gradient);
   color: white;
   border-color: transparent;
 }
@@ -520,16 +458,16 @@ const maxFills = computed(() => {
 }
 
 .chart-card {
-  border: 1px solid #f0f0f0;
+  border: 1px solid var(--admin-border-color);
   border-radius: 12px;
   padding: 24px;
-  background: #fff;
+  background: var(--admin-bg-secondary);
 }
 
 .chart-title {
   font-size: 14px;
   font-weight: 600;
-  color: #333;
+  color: var(--admin-text-primary);
   margin: 0 0 16px 0;
 }
 
@@ -580,7 +518,7 @@ const maxFills = computed(() => {
   left: 50%;
   transform: translateX(-50%);
   font-size: 10px;
-  color: #666;
+  color: var(--admin-text-secondary);
   white-space: nowrap;
   opacity: 0;
   transition: opacity 0.2s ease;
@@ -591,7 +529,7 @@ const maxFills = computed(() => {
 }
 
 .user-bar {
-  background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+  background: var(--admin-accent-gradient);
 }
 
 .survey-bar {
@@ -604,7 +542,7 @@ const maxFills = computed(() => {
 
 .bar-label {
   font-size: 10px;
-  color: #999;
+  color: var(--admin-text-muted);
   margin-top: 8px;
 }
 </style>

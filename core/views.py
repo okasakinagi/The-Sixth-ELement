@@ -443,6 +443,10 @@ def login(request):
     if not credential or not check_password(password, credential.password_hash):
         return error(401, "邮箱或密码错误")
 
+    # 更新用户活跃时间
+    user.last_active_at = timezone.now()
+    user.save(update_fields=["last_active_at"])
+
     token, _ = issue_token(user)
     return JsonResponse(
         {

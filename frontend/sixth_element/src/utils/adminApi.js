@@ -45,6 +45,10 @@ export async function getDashboardTrend(days = 7) {
   return request(`/dashboard/trend?days=${days}`)
 }
 
+export async function exportDashboard(days = 7) {
+  return request(`/dashboard/export?days=${days}`)
+}
+
 export async function getUserList(page = 1, pageSize = 20, search = '') {
   return request(`/users?page=${page}&page_size=${pageSize}&search=${encodeURIComponent(search)}`)
 }
@@ -80,10 +84,19 @@ export async function batchUpdateUserStatus(userIds, status) {
   })
 }
 
-export async function getSurveyList(page = 1, pageSize = 20, status = '', search = '') {
+export async function batchAdjustPoints(userIds, delta, reason = '管理员批量调整') {
+  return request(`/users/batch/points`, {
+    method: 'POST',
+    body: JSON.stringify({ user_ids: userIds, delta, reason }),
+  })
+}
+
+export async function getSurveyList(page = 1, pageSize = 20, status = '', search = '', startDate = '', endDate = '') {
   let url = `/surveys?page=${page}&page_size=${pageSize}`
   if (status) url += `&status=${status}`
   if (search) url += `&search=${encodeURIComponent(search)}`
+  if (startDate) url += `&start_date=${startDate}`
+  if (endDate) url += `&end_date=${endDate}`
   return request(url)
 }
 
@@ -125,8 +138,8 @@ export async function getAiAnalytics(days = 7) {
   return request(`/analytics/ai?days=${days}`)
 }
 
-export async function getRiskControl() {
-  return request('/risk')
+export async function getRiskControl(type = 'short_duration') {
+  return request(`/risk?type=${type}`)
 }
 
 export async function getAnnouncementList(page = 1, pageSize = 20) {

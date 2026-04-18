@@ -5,20 +5,43 @@ import { getRiskControl } from '@/utils/adminApi'
 import { useAdminTheme } from '@/composables/useAdminTheme'
 
 const router = useRouter()
-const { initTheme } = useAdminTheme()
+const { initTheme, themeVars } = useAdminTheme()
 const riskData = ref(null)
 const loading = ref(true)
+const currentType = ref('short_duration')
+const riskTypes = [
+  { key: 'short_duration', label: '短时长回答' },
+  { key: 'suspicious_users', label: '可疑用户' },
+  { key: 'abnormal_surveys', label: '异常问卷' },
+]
 
 async function fetchData() {
   loading.value = true
   try {
-    const data = await getRiskControl()
+    const data = await getRiskControl(currentType.value)
     riskData.value = data
   } catch (e) {
     console.error(e)
   } finally {
     loading.value = false
   }
+}
+
+async function changeType(type) {
+  currentType.value = type
+  await fetchData()
+}
+
+function getSeverityClass(severity) {
+  if (severity === 'high') return 'severity-high'
+  if (severity === 'medium') return 'severity-medium'
+  if (severity === 'low') return 'severity-low'
+  return ''
+}
+
+function formatDuration(seconds) {
+  if (!seconds) return '-'
+  return `${seconds}秒`
 }
 
 onMounted(() => {
@@ -28,11 +51,17 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="admin-dashboard">
+  <div class="admin-dashboard" :style="{
+    '--admin-bg-primary': themeVars.bgPrimary,
+    '--admin-bg-secondary': themeVars.bgSecondary,
+    '--admin-bg-card': themeVars.bgCard,
+    '--admin-text-primary': themeVars.textPrimary,
+    '--admin-text-secondary': themeVars.textSecondary,
+    '--admin-text-muted': themeVars.textMuted,
+    '--admin-border-color': themeVars.borderColor,
+    '--admin-accent-gradient': themeVars.accentGradient,
+  }">
     <main class="admin-main">
-      <button class="floating-home-btn" @click="router.push('/admin')" title="返回主界面">
-        🏠
-      </button>
       
       <header class="page-header">
         <div class="breadcrumb">
@@ -75,6 +104,66 @@ onMounted(() => {
         </section>
 
         <section class="section">
+          <h2 class="section-title">风控事件明细</h2>
+          <div class="type-tabs">
+            <button
+              v-for="rt in riskTypes"
+              :key="rt.key"
+              :class="['tab-btn', { active: currentType === rt.key }]"
+              @click="changeType(rt.key)"
+            >
+              {{ rt.label }}
+            </button>
+          </div>
+          <div v-if="riskData?.items?.length > 0" class="event-list">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>用户</th>
+                  <th v-if="currentType === 'short_duration'">问卷</th>
+                  <th v-if="currentType === 'short_duration'">填写时长</th>
+                  <th v-if="currentType === 'short_duration'">严重程度</th>
+                  <th v-if="currentType === 'suspicious_users'">事件类型</th>
+                  <th v-if="currentType === 'suspicious_users'">严重程度</th>
+                  <th v-if="currentType === 'abnormal_surveys'">问卷</th>
+                  <th v-if="currentType === 'abnormal_surveys'">发布者</th>
+                  <th v-if="currentType === 'abnormal_surveys'">严重程度</th>
+                  <th>时间</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="item in riskData.items" :key="item.id">
+                  <td>{{ item.id }}</td>
+                  <td>{{ item.user_nickname || '匿名' }}</td>
+                  <td v-if="currentType === 'short_duration'">{{ item.survey_title || '-' }}</td>
+                  <td v-if="currentType === 'short_duration'">{{ formatDuration(item.duration_seconds) }}</td>
+                  <td v-if="currentType === 'short_duration'">
+                    <span class="severity-badge" :class="getSeverityClass(item.severity)">{{ item.severity }}</span>
+                  </td>
+                  <td v-if="currentType === 'suspicious_users'">{{ item.event_type }}</td>
+                  <td v-if="currentType === 'suspicious_users'">
+                    <span class="severity-badge" :class="getSeverityClass(item.severity)">{{ item.severity }}</span>
+                  </td>
+                  <td v-if="currentType === 'abnormal_surveys'">{{ item.survey_title || '-' }}</td>
+                  <td v-if="currentType === 'abnormal_surveys'">{{ item.owner_nickname || '-' }}</td>
+                  <td v-if="currentType === 'abnormal_surveys'">
+                    <span class="severity-badge" :class="getSeverityClass(item.severity)">{{ item.severity }}</span>
+                  </td>
+                  <td>{{ item.created_at?.slice(0, 19) }}</td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="pagination-info">
+              共 {{ riskData.total }} 条记录，第 {{ riskData.page }} / {{ Math.ceil(riskData.total / riskData.page_size) }} 页
+            </div>
+          </div>
+          <div v-else class="empty-state">
+            <p>暂无风控事件记录</p>
+          </div>
+        </section>
+
+        <section class="section">
           <h2 class="section-title">风控说明</h2>
           <div class="info-cards">
             <div class="info-card">
@@ -100,7 +189,7 @@ onMounted(() => {
 .admin-dashboard {
   display: flex;
   min-height: 100vh;
-  background: #f5f7fa;
+  background: var(--admin-bg-primary);
 }
 
 .admin-sidebar {
@@ -201,6 +290,7 @@ onMounted(() => {
 .admin-main {
   flex: 1;
   padding: 24px;
+  background: var(--admin-bg-primary);
 }
 
 .floating-home-btn {
@@ -285,11 +375,11 @@ onMounted(() => {
 }
 
 .breadcrumb-sep {
-  color: #999;
+  color: var(--admin-text-muted);
 }
 
 .breadcrumb-current {
-  color: #666;
+  color: var(--admin-text-secondary);
 }
 
 .header-top {
@@ -301,18 +391,19 @@ onMounted(() => {
 .page-title {
   font-size: 24px;
   font-weight: bold;
-  color: #1a1a2e;
+  color: var(--admin-text-primary);
   margin: 0;
 }
 
 .loading {
   text-align: center;
   padding: 40px;
-  color: #666;
+  color: var(--admin-text-secondary);
 }
 
 .section {
-  background: white;
+  background: var(--admin-bg-card);
+  border: 1px solid var(--admin-border-color);
   border-radius: 12px;
   padding: 24px;
   margin-bottom: 24px;
@@ -322,7 +413,7 @@ onMounted(() => {
 .section-title {
   font-size: 16px;
   font-weight: bold;
-  color: #1a1a2e;
+  color: var(--admin-text-primary);
   margin: 0 0 20px 0;
 }
 
@@ -333,7 +424,8 @@ onMounted(() => {
 }
 
 .stat-card {
-  background: #f8f9fa;
+  background: var(--admin-bg-secondary);
+  border: 1px solid var(--admin-border-color);
   border-radius: 10px;
   padding: 20px;
   display: flex;
@@ -343,10 +435,12 @@ onMounted(() => {
 
 .stat-card.warning {
   background: #fff3e0;
+  color: #e65100;
 }
 
 .stat-card.danger {
   background: #ffebee;
+  color: #c62828;
 }
 
 .stat-icon {
@@ -356,13 +450,23 @@ onMounted(() => {
 .stat-value {
   font-size: 32px;
   font-weight: bold;
-  color: #1a1a2e;
+  color: var(--admin-text-primary);
 }
 
 .stat-label {
   font-size: 13px;
-  color: #666;
+  color: var(--admin-text-secondary);
   margin-top: 4px;
+}
+
+.stat-card.warning .stat-value,
+.stat-card.warning .stat-label {
+  color: #e65100;
+}
+
+.stat-card.danger .stat-value,
+.stat-card.danger .stat-label {
+  color: #c62828;
 }
 
 .info-cards {
@@ -372,7 +476,8 @@ onMounted(() => {
 }
 
 .info-card {
-  background: #f8f9fa;
+  background: var(--admin-bg-secondary);
+  border: 1px solid var(--admin-border-color);
   border-radius: 10px;
   padding: 20px;
 }
@@ -380,14 +485,105 @@ onMounted(() => {
 .info-card h3 {
   font-size: 14px;
   font-weight: 600;
-  color: #333;
+  color: var(--admin-text-primary);
   margin: 0 0 8px 0;
 }
 
 .info-card p {
   font-size: 13px;
-  color: #666;
+  color: var(--admin-text-secondary);
   margin: 0;
   line-height: 1.5;
+}
+
+.type-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.tab-btn {
+  padding: 8px 16px;
+  background: var(--admin-bg-secondary);
+  border: 1px solid var(--admin-border-color);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--admin-text-secondary);
+  transition: all 0.2s;
+}
+
+.tab-btn:hover {
+  background: var(--admin-bg-card);
+  color: var(--admin-text-primary);
+}
+
+.tab-btn.active {
+  background: var(--admin-accent-gradient);
+  color: white;
+  border-color: transparent;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 12px;
+}
+
+.data-table th {
+  background: var(--admin-bg-secondary);
+  padding: 12px 14px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--admin-text-primary);
+  border-bottom: 1px solid var(--admin-border-color);
+}
+
+.data-table td {
+  padding: 12px 14px;
+  font-size: 13px;
+  color: var(--admin-text-primary);
+  border-bottom: 1px solid var(--admin-border-color);
+}
+
+.data-table tr:last-child td {
+  border-bottom: none;
+}
+
+.severity-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.severity-badge.severity-high {
+  background: #ffebee;
+  color: #c62828;
+}
+
+.severity-badge.severity-medium {
+  background: #fff3e0;
+  color: #ef6c00;
+}
+
+.severity-badge.severity-low {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 40px;
+  color: var(--admin-text-muted);
+}
+
+.pagination-info {
+  margin-top: 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--admin-text-secondary);
 }
 </style>
