@@ -18,14 +18,6 @@ export async function getTaskHallOverview(router = null) {
 }
 
 /**
- * 获取首页模块编排（Feed / Trending）
- * GET /task-hall/home-modules
- */
-export async function getTaskHallHomeModules(router = null) {
-  return await get('/task-hall/home-modules', router)
-}
-
-/**
  * 获取任务列表
  * GET /task-hall/tasks
  */

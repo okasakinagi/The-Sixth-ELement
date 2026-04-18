@@ -4,7 +4,6 @@ from task_hall.controller import task_hall_controller, level_controller
 
 
 urlpatterns = [
-    path("task-hall/home-modules", task_hall_controller.task_hall_home_modules),
     path("task-hall/overview", task_hall_controller.task_hall_overview),
     path("task-hall/tasks", task_hall_controller.task_hall_tasks),
     path("task-hall/batch/refresh", task_hall_controller.task_hall_refresh_batch),
