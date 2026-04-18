@@ -61,6 +61,42 @@
     <!-- 日周任务面板 -->
     <DailyWeeklyTaskPanel v-if="!isGuest" />
 
+    <!-- 首页模块（热门趋势等） -->
+    <section
+      v-for="mod in homeModules.filter(m => m.key === 'trending' && m.items && m.items.length > 0)"
+      :key="mod.key"
+      class="home-module-section"
+    >
+      <div class="home-module-header">
+        <div class="home-module-title-row">
+          <span class="home-module-badge">🔥</span>
+          <span class="home-module-title">{{ mod.title }}</span>
+          <span class="home-module-subtitle">{{ mod.subtitle }}</span>
+        </div>
+      </div>
+      <div class="home-module-scroll">
+        <article
+          v-for="item in mod.items"
+          :key="item.id"
+          class="trending-card"
+          @click="openTaskFill(item)"
+        >
+          <div class="trending-card-top">
+            <p class="trending-card-title">{{ item.title }}</p>
+            <div class="trending-pills">
+              <span class="pill time">{{ item.estimated }}min</span>
+              <span class="pill">+{{ item.reward }}</span>
+            </div>
+          </div>
+          <p class="trending-reason">{{ item.hot_reason }}</p>
+          <div class="trending-card-bottom">
+            <span class="trending-hot">🔥 {{ item.hot_count_7d || 0 }} 人参与</span>
+            <span class="trending-sender">{{ item.sender }}</span>
+          </div>
+        </article>
+      </div>
+    </section>
+
     <section class="task-grid">
       <article v-for="task in filteredTasks" :key="task.id" class="task-card" @click="openTaskFill(task)">
         <div class="card-top">
@@ -132,7 +168,7 @@
 <script setup>
 import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { refreshTaskHallBatch, dismissSurvey, getGuestTasks, getDailyRecommendations, claimDailyBonus } from '@/utils/taskHallApi'
+import { refreshTaskHallBatch, dismissSurvey, getGuestTasks, getDailyRecommendations, claimDailyBonus, getTaskHallHomeModules } from '@/utils/taskHallApi'
 import DailyWeeklyTaskPanel from '@/components/DailyWeeklyTaskPanel.vue'
 
 const keyword = ref('')
@@ -228,6 +264,9 @@ const dailyRecs = ref([])
 const dailyRecsClaiming = ref(null)
 const dailyRecsCollapsed = ref(false)
 
+// 首页模块（Trending 等）
+const homeModules = ref([])
+
 async function loadDailyRecs() {
   if (isGuest.value) return
   try {
@@ -235,6 +274,15 @@ async function loadDailyRecs() {
     dailyRecs.value = Array.isArray(data.items) ? data.items : []
   } catch (e) {
     console.error('加载每日推荐失败:', e)
+  }
+}
+
+async function loadHomeModules() {
+  try {
+    const data = await getTaskHallHomeModules(router)
+    homeModules.value = Array.isArray(data.modules) ? data.modules : []
+  } catch (e) {
+    console.error('加载首页模块失败:', e)
   }
 }
 
@@ -262,6 +310,7 @@ async function handleDailyClaim(item) {
 onMounted(() => {
   loadInitialTasks()
   loadDailyRecs()
+  loadHomeModules()
 })
 
 onUnmounted(() => {
@@ -1250,5 +1299,133 @@ function handleFabClick(e) {
   font-size: 12px;
   font-weight: 600;
   color: #4caf50;
+}
+
+/* ---- 首页模块（热门趋势等） ---- */
+.home-module-section {
+  background: #ffffff;
+  border: 1px solid #e3e9f5;
+  border-radius: 14px;
+  padding: 14px 16px;
+  box-shadow: 0 6px 20px rgba(0, 82, 217, 0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.home-module-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.home-module-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.home-module-badge {
+  font-size: 18px;
+}
+
+.home-module-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0b2b66;
+}
+
+.home-module-subtitle {
+  font-size: 12px;
+  color: #5c7599;
+}
+
+.home-module-scroll {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.home-module-scroll::-webkit-scrollbar {
+  height: 4px;
+}
+
+.home-module-scroll::-webkit-scrollbar-thumb {
+  background: #d7e3ff;
+  border-radius: 4px;
+}
+
+.trending-card {
+  background: linear-gradient(135deg, #fff8f0, #fff3e0);
+  border: 1px solid #ffe0b2;
+  border-radius: 12px;
+  padding: 12px 14px;
+  min-width: 240px;
+  max-width: 280px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  cursor: pointer;
+  transition: box-shadow 0.2s, transform 0.2s;
+}
+
+.trending-card:hover {
+  box-shadow: 0 6px 18px rgba(255, 152, 0, 0.12);
+  transform: translateY(-2px);
+}
+
+.trending-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.trending-card-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #0b2b66;
+  flex: 1;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.trending-pills {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+
+.trending-reason {
+  margin: 0;
+  font-size: 12px;
+  color: #e65100;
+  font-weight: 500;
+}
+
+.trending-card-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.trending-hot {
+  font-size: 12px;
+  font-weight: 700;
+  color: #ff6d00;
+}
+
+.trending-sender {
+  font-size: 11px;
+  color: #5c7599;
 }
 </style>

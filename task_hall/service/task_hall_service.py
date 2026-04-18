@@ -3,9 +3,17 @@ import random
 
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Count
 from django.utils import timezone
 
-from core.models import DailyRecommendation, PointsLog, Response, SurveyTag, UserTag
+from core.models import (
+    DailyRecommendation,
+    HomeModuleConfig,
+    PointsLog,
+    Response,
+    SurveyTag,
+    UserTag,
+)
 from core.services.similarity_service import SimilarityService
 from task_hall.mapper.task_hall_mapper import TaskHallMapper
 
@@ -30,6 +38,11 @@ class TaskHallService:
         "full": ["published", "active", "live", "paused", "closed", "ended", "expired"],
     }
 
+    HOME_MODULE_FALLBACKS = [
+        {"module_key": "feed", "title": "为你推荐", "enabled": True, "weight": 100, "item_limit": 12},
+        {"module_key": "trending", "title": "热门趋势", "enabled": True, "weight": 80, "item_limit": 8},
+    ]
+
     def __init__(self):
         self.mapper = TaskHallMapper()
 
@@ -47,6 +60,114 @@ class TaskHallService:
             "filters": filters,
             "notices": notices,
         }
+
+    # ─── 首页模块编排 ─────────────────────────────────────────────────────
+
+    def get_home_modules(self, user=None):
+        modules = []
+        for cfg in self._load_home_module_configs():
+            key = cfg["module_key"]
+            limit = max(1, min(int(cfg.get("item_limit") or 0), 30))
+
+            if key == "feed":
+                items = self._get_feed_items(user, limit)
+                subtitle = "基于你的兴趣偏好" if user else "热门可填问卷"
+            elif key == "trending":
+                items = self._get_trending_items(user, limit)
+                subtitle = "近7天参与热度"
+            else:
+                continue
+
+            modules.append(
+                {
+                    "key": key,
+                    "title": cfg.get("title") or key,
+                    "subtitle": subtitle,
+                    "weight": cfg.get("weight", 0),
+                    "item_limit": limit,
+                    "items": items,
+                }
+            )
+
+        return {
+            "modules": modules,
+            "generated_at": self._iso_str(timezone.now()),
+        }
+
+    def _load_home_module_configs(self):
+        rows = list(
+            HomeModuleConfig.objects.filter(enabled=True)
+            .order_by("-weight", "id")
+            .values("module_key", "title", "enabled", "weight", "item_limit")
+        )
+        if rows:
+            return rows
+        return [item.copy() for item in self.HOME_MODULE_FALLBACKS]
+
+    def _get_feed_items(self, user, limit):
+        if user:
+            payload = self.refresh_batch(user, exclude_task_ids=[], batch_size=limit)
+            return payload.get("items", [])[:limit]
+        return self.get_guest_tasks(limit).get("items", [])[:limit]
+
+    def _get_trending_items(self, user, limit):
+        queryset = self.mapper.base_queryset().filter(
+            status__in=self.STATUS_LIVE_INTERNAL,
+            active_questionnaire__status="published",
+        )
+        if user:
+            queryset = queryset.exclude(owner=user).exclude(response__user=user)
+        queryset = queryset.distinct()
+
+        surveys = list(queryset.select_related("owner"))
+        if not surveys:
+            return []
+
+        survey_map = {survey.id: survey for survey in surveys}
+        survey_ids = list(survey_map.keys())
+        since = timezone.now() - timezone.timedelta(days=7)
+
+        hot_rows = (
+            Response.objects.filter(
+                survey_id__in=survey_ids,
+                status="submitted",
+                submitted_at__gte=since,
+            )
+            .values("survey_id")
+            .annotate(cnt=Count("id"))
+        )
+        hot_map = {row["survey_id"]: row["cnt"] for row in hot_rows}
+
+        hot_ids = [sid for sid in survey_ids if hot_map.get(sid, 0) > 0]
+        cold_ids = [sid for sid in survey_ids if sid not in hot_ids]
+
+        hot_ids.sort(
+            key=lambda sid: (
+                -hot_map.get(sid, 0),
+                -survey_map[sid].created_at.timestamp(),
+                -sid,
+            )
+        )
+        cold_ids.sort(key=lambda sid: (-survey_map[sid].created_at.timestamp(), -sid))
+
+        ranked_ids = (hot_ids + cold_ids)[:limit]
+        filled_counts = self.mapper.get_filled_counts(ranked_ids)
+
+        items = []
+        for sid in ranked_ids:
+            survey = survey_map.get(sid)
+            if not survey:
+                continue
+            card = self._to_task_card(survey, filled_counts.get(sid, 0))
+            hot_count = int(hot_map.get(sid, 0) or 0)
+            card["hot_count_7d"] = hot_count
+            card["hot_reason"] = (
+                f"近7天已有 {hot_count} 人参与"
+                if hot_count > 0
+                else "新发布问卷，欢迎抢先参与"
+            )
+            items.append(card)
+        return items
 
     def list_tasks(self, user, filters):
         normalized = self._normalize_filters(filters)
