@@ -94,3 +94,12 @@ export async function getDailyRecommendations(router = null) {
 export async function claimDailyBonus(surveyId, router = null) {
   return await post(`/task-hall/daily-recommendations/${surveyId}/claim-bonus`, {}, router)
 }
+
+/**
+ * 获取首页模块编排数据（Feed + Trending 等）
+ * GET /task-hall/home-modules
+ * 支持未登录访客（返回随机内容）
+ */
+export async function getTaskHallHomeModules(router = null) {
+  return await get('/task-hall/home-modules', router)
+}

@@ -657,6 +657,23 @@ class TaskCompletion(models.Model):
         ]
 
 
+class HomeModuleConfig(models.Model):
+    """首页模块配置。用于编排 Feed / Trending 等模块顺序与容量。"""
+
+    module_key = models.CharField(max_length=32, unique=True)
+    title = models.CharField(max_length=64)
+    enabled = models.BooleanField(default=True)
+    weight = models.IntegerField(default=100)
+    item_limit = models.IntegerField(default=10)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["enabled", "weight"], name="home_module_enabled_weight_idx"),
+        ]
+
+
 class RiskEvent(models.Model):
     """风控事件记录。
 
