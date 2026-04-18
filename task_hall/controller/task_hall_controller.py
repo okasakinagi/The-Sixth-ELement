@@ -8,7 +8,7 @@ import re
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
-from core.views import error, get_current_user, require_auth
+from core.views import error, require_auth
 from task_hall.service.task_hall_service import TaskHallError, TaskHallService
 
 
@@ -46,21 +46,6 @@ def _parse_id_list(values):
             except (TypeError, ValueError):
                 continue
     return ids
-
-
-@csrf_exempt
-def task_hall_home_modules(request):
-    """首页模块编排接口：返回 Feed / Trending 等模块，不强制登录。"""
-    if request.method != "GET":
-        return error(405, "Method not allowed")
-    user = get_current_user(request)
-    try:
-        payload = service.get_home_modules(user)
-        return JsonResponse(payload, status=200)
-    except TaskHallError as exc:
-        return error(exc.status, exc.message)
-    except Exception as exc:
-        return error(500, f"Internal server error: {str(exc)}")
 
 
 @csrf_exempt

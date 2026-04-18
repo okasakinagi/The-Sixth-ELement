@@ -657,18 +657,43 @@ class TaskCompletion(models.Model):
         ]
 
 
-class HomeModuleConfig(models.Model):
-    """首页模块配置。用于编排 Feed / Trending 等模块顺序与容量。"""
+class RiskEvent(models.Model):
+    """风控事件记录。
 
-    module_key = models.CharField(max_length=32, unique=True)
-    title = models.CharField(max_length=64)
-    enabled = models.BooleanField(default=True)
-    weight = models.IntegerField(default=100)
-    item_limit = models.IntegerField(default=10)
+    - user: 关联用户（可为空）
+    - survey: 关联问卷（可为空）
+    - event_type: 事件类型 - 短时长/可疑行为/异常问卷等
+    - severity: 严重程度 - low/medium/high
+    - detail: 事件详情（JSON格式）
+    - created_at: 创建时间
+    """
+
+    EVENT_TYPE_CHOICES = [
+        ("short_duration", "短时长回答"),
+        ("suspicious_behavior", "可疑行为"),
+        ("abnormal_survey", "异常问卷"),
+        ("multiple_submissions", "多次提交"),
+        ("ip_anomaly", "IP异常"),
+    ]
+
+    SEVERITY_CHOICES = [
+        ("low", "低"),
+        ("medium", "中"),
+        ("high", "高"),
+    ]
+
+    user = models.ForeignKey(AppUser, on_delete=models.CASCADE, blank=True, null=True)
+    survey = models.ForeignKey(Survey, on_delete=models.CASCADE, blank=True, null=True)
+    event_type = models.CharField(max_length=32, choices=EVENT_TYPE_CHOICES)
+    severity = models.CharField(max_length=32, choices=SEVERITY_CHOICES, default="medium")
+    detail = models.JSONField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         indexes = [
-            models.Index(fields=["enabled", "weight"], name="home_module_enabled_weight_idx"),
+            models.Index(fields=["user"], name="risk_event_user_idx"),
+            models.Index(fields=["survey"], name="risk_event_survey_idx"),
+            models.Index(fields=["event_type"], name="risk_event_type_idx"),
+            models.Index(fields=["severity"], name="risk_event_severity_idx"),
+            models.Index(fields=["created_at"], name="risk_event_created_idx"),
         ]
