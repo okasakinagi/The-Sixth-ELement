@@ -5,7 +5,7 @@ import { getSurveyList, getSurveyDetail, exportSurveysData, createSurvey, update
 import { useAdminTheme } from '@/composables/useAdminTheme'
 
 const router = useRouter()
-const { initTheme } = useAdminTheme()
+const { initTheme, themeVars } = useAdminTheme()
 const surveys = ref([])
 const total = ref(0)
 const page = ref(1)
@@ -33,11 +33,16 @@ const statusOptions = [
   { label: '已结束', value: 'completed' },
 ]
 
+const startDate = ref('')
+const endDate = ref('')
+
 function saveFilters() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({
     status: status.value,
     search: search.value,
     page: page.value,
+    startDate: startDate.value,
+    endDate: endDate.value,
   }))
 }
 
@@ -49,6 +54,8 @@ function loadFilters() {
       status.value = filters.status || ''
       search.value = filters.search || ''
       page.value = filters.page || 1
+      startDate.value = filters.startDate || ''
+      endDate.value = filters.endDate || ''
     }
   } catch (e) {
     console.error('Failed to load filters:', e)
@@ -58,7 +65,7 @@ function loadFilters() {
 async function fetchSurveys() {
   loading.value = true
   try {
-    const data = await getSurveyList(page.value, pageSize.value, status.value, search.value)
+    const data = await getSurveyList(page.value, pageSize.value, status.value, search.value, startDate.value, endDate.value)
     surveys.value = data.surveys || []
     total.value = data.total || 0
     saveFilters()
@@ -83,6 +90,18 @@ function handleSearchInput() {
 
 async function changeStatusFilter(newStatus) {
   status.value = newStatus
+  page.value = 1
+  await fetchSurveys()
+}
+
+async function resetDateFilter() {
+  startDate.value = ''
+  endDate.value = ''
+  page.value = 1
+  await fetchSurveys()
+}
+
+async function applyDateFilter() {
   page.value = 1
   await fetchSurveys()
 }
@@ -237,11 +256,17 @@ function highlightText(text, keyword) {
 </script>
 
 <template>
-  <div class="admin-dashboard">
+  <div class="admin-dashboard" :style="{
+    '--admin-bg-primary': themeVars.bgPrimary,
+    '--admin-bg-secondary': themeVars.bgSecondary,
+    '--admin-bg-card': themeVars.bgCard,
+    '--admin-text-primary': themeVars.textPrimary,
+    '--admin-text-secondary': themeVars.textSecondary,
+    '--admin-text-muted': themeVars.textMuted,
+    '--admin-border-color': themeVars.borderColor,
+    '--admin-accent-gradient': themeVars.accentGradient,
+  }">
     <main class="admin-main">
-      <button class="floating-home-btn" @click="router.push('/admin')" title="返回主界面">
-        🏠
-      </button>
       
       <header class="page-header">
         <div class="breadcrumb">
@@ -253,7 +278,7 @@ function highlightText(text, keyword) {
           <h1 class="page-title">问卷管理</h1>
           <div class="header-right">
             <span class="total-count">共 {{ total }} 份问卷</span>
-            <button class="export-btn" @click="handleExport">📥 导出</button>
+            <button class="export-btn" @click="handleExport">📄 导出</button>
             <button class="create-btn" @click="openCreateModal">+ 新建问卷</button>
           </div>
         </div>
@@ -279,6 +304,14 @@ function highlightText(text, keyword) {
           >
             {{ opt.label }}
           </button>
+        </div>
+        <div class="date-filters">
+          <span class="date-label">创建时间：</span>
+          <input v-model="startDate" type="date" class="date-input" placeholder="开始日期" />
+          <span class="date-sep">至</span>
+          <input v-model="endDate" type="date" class="date-input" placeholder="结束日期" />
+          <button class="date-btn" @click="applyDateFilter">应用</button>
+          <button v-if="startDate || endDate" class="date-btn reset" @click="resetDateFilter">重置</button>
         </div>
       </div>
 
@@ -530,7 +563,7 @@ function highlightText(text, keyword) {
 .admin-dashboard {
   display: flex;
   min-height: 100vh;
-  background: #f5f7fa;
+  background: var(--admin-bg-primary);
 }
 
 .admin-sidebar {
@@ -631,6 +664,7 @@ function highlightText(text, keyword) {
 .admin-main {
   flex: 1;
   padding: 24px;
+  background: var(--admin-bg-primary);
 }
 
 .floating-home-btn {
@@ -715,11 +749,11 @@ function highlightText(text, keyword) {
 }
 
 .breadcrumb-sep {
-  color: #999;
+  color: var(--admin-text-muted);
 }
 
 .breadcrumb-current {
-  color: #666;
+  color: var(--admin-text-secondary);
 }
 
 .header-top {
@@ -731,13 +765,19 @@ function highlightText(text, keyword) {
 .page-title {
   font-size: 24px;
   font-weight: bold;
-  color: #1a1a2e;
+  color: var(--admin-text-primary);
   margin: 0;
 }
 
 .total-count {
-  color: #666;
+  color: var(--admin-text-secondary);
   font-size: 14px;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .filters-bar {
@@ -745,42 +785,51 @@ function highlightText(text, keyword) {
   gap: 12px;
   margin-bottom: 20px;
   flex-wrap: wrap;
+  align-items: center;
 }
 
 .search-input {
   flex: 1;
   min-width: 200px;
-  padding: 10px 16px;
-  border: 1px solid #ddd;
+  padding: 6px 12px;
+  border: 1px solid var(--admin-border-color);
   border-radius: 8px;
-  font-size: 14px;
+  font-size: 13px;
+  height: 32px;
+  box-sizing: border-box;
+  background: var(--admin-bg-card);
+  color: var(--admin-text-primary);
 }
 
 .export-btn {
-  padding: 10px 20px;
+  padding: 6px 12px;
   background: linear-gradient(135deg, #48c774 0%, #3c9d5b 100%);
   color: white;
   border: none;
-  border-radius: 8px;
+  border-radius: 6px;
   cursor: pointer;
-  font-size: 14px;
-  margin-left: 12px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .create-btn {
-  padding: 10px 20px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 6px 12px;
+  background: var(--admin-accent-gradient);
   color: white;
   border: none;
-  border-radius: 8px;
+  border-radius: 6px;
   cursor: pointer;
-  font-size: 14px;
-  margin-left: 12px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .delete-confirm-text {
   font-size: 14px;
-  color: #333;
+  color: var(--admin-text-primary);
   line-height: 1.6;
   margin-bottom: 20px;
 }
@@ -794,9 +843,9 @@ function highlightText(text, keyword) {
 
 .cancel-btn {
   padding: 10px 20px;
-  background: #f0f0f0;
-  color: #333;
-  border: none;
+  background: var(--admin-bg-secondary);
+  color: var(--admin-text-primary);
+  border: 1px solid var(--admin-border-color);
   border-radius: 6px;
   cursor: pointer;
   font-size: 14px;
@@ -804,7 +853,7 @@ function highlightText(text, keyword) {
 
 .confirm-btn {
   padding: 10px 20px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: var(--admin-accent-gradient);
   color: white;
   border: none;
   border-radius: 6px;
@@ -824,17 +873,19 @@ function highlightText(text, keyword) {
   display: block;
   margin-bottom: 6px;
   font-weight: 500;
-  color: #333;
+  color: var(--admin-text-primary);
 }
 
 .form-group input,
 .form-group textarea {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #ddd;
+  border: 1px solid var(--admin-border-color);
   border-radius: 6px;
   font-size: 14px;
   box-sizing: border-box;
+  background: var(--admin-bg-secondary);
+  color: var(--admin-text-primary);
 }
 
 .form-group input:focus,
@@ -852,15 +903,73 @@ function highlightText(text, keyword) {
   flex: 1;
 }
 
-.search-btn {
-  padding: 10px 24px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+.date-filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 12px 16px;
+  background: var(--admin-bg-secondary);
+  border: 1px solid var(--admin-border-color);
+  border-radius: 8px;
+}
+
+.date-label {
+  font-size: 13px;
+  color: var(--admin-text-secondary);
+  font-weight: 500;
+}
+
+.date-input {
+  padding: 4px 8px;
+  border: 1px solid var(--admin-border-color);
+  border-radius: 6px;
+  font-size: 13px;
+  width: 140px;
+  height: 32px;
+  box-sizing: border-box;
+  background: var(--admin-bg-card);
+  color: var(--admin-text-primary);
+}
+
+.date-sep {
+  color: var(--admin-text-muted);
+  font-size: 13px;
+}
+
+.date-btn {
+  padding: 4px 12px;
+  background: var(--admin-accent-gradient);
   color: white;
   border: none;
-  border-radius: 8px;
+  border-radius: 6px;
   cursor: pointer;
-  font-size: 14px;
-  transition: opacity 0.2s;
+  font-size: 13px;
+  height: 32px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.date-btn.reset {
+  background: var(--admin-text-muted);
+}
+
+.search-btn {
+  padding: 6px 14px;
+  background: var(--admin-accent-gradient);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  height: 32px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
 }
 
 .search-highlight {
@@ -875,13 +984,18 @@ function highlightText(text, keyword) {
 }
 
 .filter-btn {
-  padding: 10px 16px;
+  padding: 6px 12px;
   border: 1px solid #ddd;
   background: white;
   border-radius: 8px;
   cursor: pointer;
   font-size: 13px;
   transition: all 0.2s;
+  height: 32px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .filter-btn.active {

@@ -74,6 +74,19 @@ class SurveyFillService:
         except (TypeError, ValueError):
             raise SurveyFillError(422, "填写时长必须为数字")
         if duration_seconds < 10:
+            # 记录短时长回答风控事件
+            from core.models import RiskEvent
+            RiskEvent.objects.create(
+                user=user,
+                survey=survey,
+                event_type="short_duration",
+                severity="medium",
+                detail={
+                    "duration_seconds": duration_seconds,
+                    "survey_id": survey.id,
+                    "user_id": user.id
+                }
+            )
             raise SurveyFillError(422, "填写时长过短，请完整填写后提交")
 
         answers = data.get("answers")
@@ -156,9 +169,10 @@ class SurveyFillService:
             with transaction.atomic():
                 user_obj = user.__class__.objects.select_for_update().get(pk=user.pk)
                 user_obj.activity_points += reward
+                user_obj.last_active_at = timezone.now()
                 if points_receiver_id == user_obj.id:
                     user_obj.points += reward
-                    user_obj.save(update_fields=["points", "activity_points"])
+                    user_obj.save(update_fields=["points", "activity_points", "last_active_at"])
                     PointsLog.objects.create(
                         user=user_obj,
                         points_type="fill_reward",
@@ -168,12 +182,13 @@ class SurveyFillService:
                         ref_id=survey.id,
                     )
                 else:
-                    user_obj.save(update_fields=["activity_points"])
+                    user_obj.save(update_fields=["activity_points", "last_active_at"])
                     receiver_obj = user.__class__.objects.select_for_update().get(
                         pk=points_receiver_id
                     )
                     receiver_obj.points += reward
-                    receiver_obj.save(update_fields=["points"])
+                    receiver_obj.last_active_at = timezone.now()
+                    receiver_obj.save(update_fields=["points", "last_active_at"])
                     PointsLog.objects.create(
                         user=receiver_obj,
                         points_type="fill_reward",
@@ -197,6 +212,9 @@ class SurveyFillService:
             points_awarded = reward
         else:
             points_awarded = 0
+            # 更新用户活跃时间
+            user.last_active_at = timezone.now()
+            user.save(update_fields=["last_active_at"])
 
         # 推荐闭环（阶段5）：提交成功后，对当前问卷标签做正反馈增权。
         try:

@@ -24,6 +24,8 @@ venv/
 docker/config.json
 secrets/
 .DS_Store
+Info.md
+TODO.md
 /.history# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

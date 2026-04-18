@@ -5,7 +5,7 @@ import { getRecommendAnalytics, getAiAnalytics } from '@/utils/adminApi'
 import { useAdminTheme } from '@/composables/useAdminTheme'
 
 const router = useRouter()
-const { initTheme } = useAdminTheme()
+const { initTheme, themeVars } = useAdminTheme()
 const recommendData = ref(null)
 const aiData = ref(null)
 const loading = ref(true)
@@ -45,11 +45,17 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="admin-dashboard">
+  <div class="admin-dashboard" :style="{
+    '--admin-bg-primary': themeVars.bgPrimary,
+    '--admin-bg-secondary': themeVars.bgSecondary,
+    '--admin-bg-card': themeVars.bgCard,
+    '--admin-text-primary': themeVars.textPrimary,
+    '--admin-text-secondary': themeVars.textSecondary,
+    '--admin-text-muted': themeVars.textMuted,
+    '--admin-border-color': themeVars.borderColor,
+    '--admin-accent-gradient': themeVars.accentGradient,
+  }">
     <main class="admin-main">
-      <button class="floating-home-btn" @click="router.push('/admin')" title="返回主界面">
-        🏠
-      </button>
       
       <header class="page-header">
         <div class="breadcrumb">
@@ -173,7 +179,7 @@ onMounted(() => {
 .admin-dashboard {
   display: flex;
   min-height: 100vh;
-  background: #f5f7fa;
+  background: var(--admin-bg-primary);
 }
 
 .admin-sidebar {
@@ -274,6 +280,7 @@ onMounted(() => {
 .admin-main {
   flex: 1;
   padding: 24px;
+  background: var(--admin-bg-primary);
 }
 
 .floating-home-btn {
@@ -358,11 +365,11 @@ onMounted(() => {
 }
 
 .breadcrumb-sep {
-  color: #999;
+  color: var(--admin-text-muted);
 }
 
 .breadcrumb-current {
-  color: #666;
+  color: var(--admin-text-secondary);
 }
 
 .header-top {
@@ -374,7 +381,7 @@ onMounted(() => {
 .page-title {
   font-size: 24px;
   font-weight: bold;
-  color: #1a1a2e;
+  color: var(--admin-text-primary);
   margin: 0;
 }
 
@@ -385,8 +392,9 @@ onMounted(() => {
 
 .day-btn {
   padding: 6px 12px;
-  border: 1px solid #ddd;
-  background: white;
+  border: 1px solid var(--admin-border-color);
+  background: var(--admin-bg-secondary);
+  color: var(--admin-text-secondary);
   border-radius: 6px;
   cursor: pointer;
   font-size: 12px;
@@ -394,7 +402,7 @@ onMounted(() => {
 }
 
 .day-btn.active {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: var(--admin-accent-gradient);
   color: white;
   border-color: transparent;
 }
@@ -402,11 +410,12 @@ onMounted(() => {
 .loading {
   text-align: center;
   padding: 40px;
-  color: #666;
+  color: var(--admin-text-secondary);
 }
 
 .section {
-  background: white;
+  background: var(--admin-bg-card);
+  border: 1px solid var(--admin-border-color);
   border-radius: 12px;
   padding: 24px;
   margin-bottom: 24px;
@@ -416,7 +425,7 @@ onMounted(() => {
 .section-title {
   font-size: 16px;
   font-weight: bold;
-  color: #1a1a2e;
+  color: var(--admin-text-primary);
   margin: 0 0 20px 0;
 }
 
@@ -427,7 +436,8 @@ onMounted(() => {
 }
 
 .stat-card {
-  background: #f8f9fa;
+  background: var(--admin-bg-secondary);
+  border: 1px solid var(--admin-border-color);
   border-radius: 10px;
   padding: 16px;
   display: flex;
@@ -442,12 +452,12 @@ onMounted(() => {
 .stat-value {
   font-size: 24px;
   font-weight: bold;
-  color: #1a1a2e;
+  color: var(--admin-text-primary);
 }
 
 .stat-label {
   font-size: 12px;
-  color: #666;
+  color: var(--admin-text-secondary);
   margin-top: 4px;
 }
 
@@ -470,24 +480,25 @@ onMounted(() => {
 }
 
 .difficulty-level {
-  color: #666;
+  color: var(--admin-text-secondary);
 }
 
 .difficulty-count {
   font-weight: 600;
-  color: #333;
+  color: var(--admin-text-primary);
 }
 
 .difficulty-track {
   height: 8px;
-  background: #f0f0f0;
+  background: var(--admin-bg-secondary);
+  border: 1px solid var(--admin-border-color);
   border-radius: 4px;
   overflow: hidden;
 }
 
 .difficulty-fill {
   height: 100%;
-  background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+  background: var(--admin-accent-gradient);
   border-radius: 4px;
   transition: width 0.5s ease;
 }

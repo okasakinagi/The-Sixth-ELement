@@ -12,6 +12,7 @@ class AppUser(models.Model):
     status = models.CharField(max_length=32, default="normal")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    last_active_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return self.nickname
@@ -93,6 +94,7 @@ class Survey(models.Model):
     target = models.IntegerField(default=1)
     completed = models.IntegerField(default=0)
     status = models.CharField(max_length=32, default="draft")
+    ai_generated = models.BooleanField(default=False)
     active_questionnaire = models.ForeignKey(
         "Questionnaire",
         on_delete=models.SET_NULL,
@@ -249,7 +251,7 @@ class AuditLog(models.Model):
     target_type = models.CharField(max_length=32)
     target_id = models.BigIntegerField()
     action = models.CharField(max_length=64)
-    operator = models.ForeignKey(AppUser, on_delete=models.CASCADE)
+    operator = models.ForeignKey(AppUser, on_delete=models.CASCADE, blank=True, null=True)
     note = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
