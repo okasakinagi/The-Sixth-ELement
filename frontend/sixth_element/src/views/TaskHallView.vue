@@ -61,6 +61,39 @@
     <!-- 日周任务面板 -->
     <DailyWeeklyTaskPanel v-if="!isGuest" />
 
+    <section v-if="trendingTasks.length > 0" class="trending-section">
+      <div class="module-head">
+        <div>
+          <p class="module-kicker">{{ trendingModuleTitle }}</p>
+          <h2>{{ trendingModuleSubtitle }}</h2>
+        </div>
+      </div>
+      <div class="daily-rec-scroll">
+        <article
+          v-for="task in trendingTasks"
+          :key="`trend-${task.id}`"
+          class="daily-rec-card trending-card"
+          @click="openTaskFill(task)"
+        >
+          <div class="daily-rec-card-top">
+            <p class="daily-rec-card-title">{{ task.title }}</p>
+            <div class="daily-rec-pills">
+              <span class="pill time">{{ task.estimated }}min</span>
+              <span class="pill">+{{ task.reward }}</span>
+            </div>
+          </div>
+          <p class="daily-rec-reason">{{ task.hot_reason || '热门问卷' }}</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="module-head">
+      <div>
+        <p class="module-kicker">{{ feedModuleTitle }}</p>
+        <h2>{{ feedModuleSubtitle }}</h2>
+      </div>
+    </section>
+
     <section class="task-grid">
       <article v-for="task in filteredTasks" :key="task.id" class="task-card" @click="openTaskFill(task)">
         <div class="card-top">
@@ -132,13 +165,23 @@
 <script setup>
 import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { refreshTaskHallBatch, dismissSurvey, getGuestTasks, getDailyRecommendations, claimDailyBonus } from '@/utils/taskHallApi'
+import {
+  refreshTaskHallBatch,
+  dismissSurvey,
+  getGuestTasks,
+  getDailyRecommendations,
+  claimDailyBonus,
+  getTaskHallHomeModules,
+} from '@/utils/taskHallApi'
 import DailyWeeklyTaskPanel from '@/components/DailyWeeklyTaskPanel.vue'
 
 const keyword = ref('')
 const router = useRouter()
 const loading = ref(false)
 const fixedBatchSize = computed(() => window.innerWidth < 768 ? 5 : 15)
+const homeModules = ref([])
+const feedTasks = ref([])
+const trendingTasks = ref([])
 
 // Guest 模式：未登录用户
 const isGuest = computed(() => !localStorage.getItem('access_token'))
@@ -277,6 +320,13 @@ onUnmounted(() => {
 const visibleTasks = ref([])
 const seenTaskIds = ref([])
 
+const feedModuleMeta = computed(() => homeModules.value.find((m) => m.key === 'feed') || null)
+const trendingModuleMeta = computed(() => homeModules.value.find((m) => m.key === 'trending') || null)
+const feedModuleTitle = computed(() => feedModuleMeta.value?.title || '为你推荐')
+const feedModuleSubtitle = computed(() => feedModuleMeta.value?.subtitle || '可立即参与的问卷')
+const trendingModuleTitle = computed(() => trendingModuleMeta.value?.title || '热门趋势')
+const trendingModuleSubtitle = computed(() => trendingModuleMeta.value?.subtitle || '近7天参与热度')
+
 function addSeenTaskIds(ids = []) {
   const idSet = new Set(seenTaskIds.value.map((id) => String(id)))
   for (const rawId of ids) {
@@ -289,23 +339,46 @@ function addSeenTaskIds(ids = []) {
 async function loadInitialTasks() {
   try {
     loading.value = true
+    const homePayload = await getTaskHallHomeModules(router)
+    const modules = Array.isArray(homePayload?.modules) ? homePayload.modules : []
+    homeModules.value = modules
+
+    const feed = modules.find((m) => m.key === 'feed')
+    const trending = modules.find((m) => m.key === 'trending')
+    feedTasks.value = Array.isArray(feed?.items) ? feed.items : []
+    trendingTasks.value = Array.isArray(trending?.items) ? trending.items : []
+
+    if (feedTasks.value.length > 0) {
+      visibleTasks.value = feedTasks.value
+      if (!isGuest.value) {
+        seenTaskIds.value = []
+        addSeenTaskIds(feedTasks.value.map((task) => task.id))
+      }
+      return
+    }
+
     if (isGuest.value) {
       // 未登录用户：使用公开 guest 接口，随机展示问卷，不调用 AI
       const response = await getGuestTasks(fixedBatchSize.value)
       const items = Array.isArray(response.items) ? response.items : []
       visibleTasks.value = items
+      feedTasks.value = items
       seenTaskIds.value = []
     } else {
       // 已登录用户：个性化推荐
       const response = await refreshTaskHallBatch([], fixedBatchSize.value, router)
       const items = Array.isArray(response.items) ? response.items : []
       visibleTasks.value = items
+      feedTasks.value = items
       seenTaskIds.value = []
       addSeenTaskIds(items.map((task) => task.id))
     }
   } catch (error) {
     console.error('加载任务大厅失败:', error)
     visibleTasks.value = []
+    feedTasks.value = []
+    trendingTasks.value = []
+    homeModules.value = []
     seenTaskIds.value = []
   } finally {
     loading.value = false
@@ -328,6 +401,7 @@ async function refreshBatch() {
     )
     const items = Array.isArray(response.items) ? response.items : []
     visibleTasks.value = items
+    feedTasks.value = items
     addSeenTaskIds(items.map((task) => task.id))
   } catch (error) {
     console.error('换一批失败:', error)
@@ -352,6 +426,7 @@ async function handleDelete(taskId) {
     ...visibleTasks.value.slice(index + 1)
   ]
   visibleTasks.value = nextVisibleTasks
+  feedTasks.value = nextVisibleTasks
   addSeenTaskIds([taskId])
 
   try {
@@ -375,6 +450,7 @@ async function handleDelete(taskId) {
         replacement,
         ...nextVisibleTasks.slice(index)
       ]
+      feedTasks.value = visibleTasks.value
     }
   } catch (error) {
     console.error('删除补位失败:', error)
@@ -384,8 +460,9 @@ async function handleDelete(taskId) {
 }
 
 const filteredTasks = computed(() => {
+  const sourceTasks = feedTasks.value.length > 0 ? feedTasks.value : visibleTasks.value
   // 过滤掉已达到目标收集量（100% 完成）的问卷
-  const notFull = visibleTasks.value.filter(
+  const notFull = sourceTasks.filter(
     (task) => !(task.total > 0 && task.filled >= task.total)
   )
   if (!keyword.value.trim()) return notFull
@@ -546,6 +623,41 @@ function handleFabClick(e) {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.module-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #ffffff;
+  border: 1px solid #e3e9f5;
+  border-radius: 14px;
+  padding: 12px 16px;
+  box-shadow: 0 6px 20px rgba(0, 82, 217, 0.05);
+}
+
+.module-kicker {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 11px;
+  color: #5c7599;
+}
+
+.module-head h2 {
+  margin: 4px 0 0;
+  font-size: 18px;
+  color: #0b2b66;
+}
+
+.trending-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.trending-card {
+  cursor: pointer;
 }
 
 /* 可拖动菜单 */
