@@ -8,12 +8,13 @@ import {
   updateUserInfo,
   deleteUser,
   batchUpdateUserStatus,
+  batchAdjustPoints,
   exportUsersData,
 } from '@/utils/adminApi'
 import { useAdminTheme } from '@/composables/useAdminTheme'
 
 const router = useRouter()
-const { initTheme } = useAdminTheme()
+const { initTheme, themeVars } = useAdminTheme()
 const users = ref([])
 const total = ref(0)
 const page = ref(1)
@@ -25,6 +26,8 @@ const showDetailModal = ref(false)
 const selectedUsers = ref([])
 const showBatchModal = ref(false)
 const batchAction = ref('')
+const showBatchPointsModal = ref(false)
+const batchPointsForm = ref({ delta: 0, reason: '' })
 const showEditModal = ref(false)
 const editingUser = ref(null)
 const editForm = ref({ nickname: '', email: '', points: 0 })
@@ -144,6 +147,35 @@ async function handleBatchStatusChange() {
   }
 }
 
+async function handleBatchPointsAdjust() {
+  if (selectedUsers.value.length === 0) return
+  if (batchPointsForm.value.delta === 0) {
+    alert('积分调整值不能为0')
+    return
+  }
+  try {
+    await batchAdjustPoints(
+      selectedUsers.value,
+      batchPointsForm.value.delta,
+      batchPointsForm.value.reason || '管理员批量调整'
+    )
+    await fetchUsers()
+    showBatchPointsModal.value = false
+    batchPointsForm.value = { delta: 0, reason: '' }
+    selectedUsers.value = []
+    alert('批量调整积分成功')
+  } catch (e) {
+    console.error(e)
+    alert('批量调整积分失败')
+  }
+}
+
+function openBatchPointsModal() {
+  if (selectedUsers.value.length === 0) return
+  batchPointsForm.value = { delta: 0, reason: '' }
+  showBatchPointsModal.value = true
+}
+
 function closeModal() {
   showDetailModal.value = false
   selectedUser.value = null
@@ -238,11 +270,17 @@ function openBatchModal(action) {
 </script>
 
 <template>
-  <div class="admin-dashboard">
+  <div class="admin-dashboard" :style="{
+    '--admin-bg-primary': themeVars.bgPrimary,
+    '--admin-bg-secondary': themeVars.bgSecondary,
+    '--admin-bg-card': themeVars.bgCard,
+    '--admin-text-primary': themeVars.textPrimary,
+    '--admin-text-secondary': themeVars.textSecondary,
+    '--admin-text-muted': themeVars.textMuted,
+    '--admin-border-color': themeVars.borderColor,
+    '--admin-accent-gradient': themeVars.accentGradient,
+  }">
     <main class="admin-main">
-      <button class="floating-home-btn" @click="router.push('/admin')" title="返回主界面">
-        🏠
-      </button>
       
       <header class="page-header">
         <div class="breadcrumb">
@@ -276,6 +314,7 @@ function openBatchModal(action) {
         <button class="batch-btn batch-normal" @click="openBatchModal('normal')">设为正常</button>
         <button class="batch-btn batch-suspicious" @click="openBatchModal('suspicious')">设为异常</button>
         <button class="batch-btn batch-restricted" @click="openBatchModal('restricted')">设为受限</button>
+        <button class="batch-btn batch-points" @click="openBatchPointsModal">批量调整积分</button>
         <button class="batch-btn batch-clear" @click="selectedUsers = []">清除选择</button>
       </div>
 
@@ -300,6 +339,7 @@ function openBatchModal(action) {
                 <th>发布/填写</th>
                 <th>状态</th>
                 <th>注册时间</th>
+                <th>最近活跃</th>
                 <th>操作</th>
               </tr>
             </thead>
@@ -334,6 +374,7 @@ function openBatchModal(action) {
                   </span>
                 </td>
                 <td>{{ user.created_at?.slice(0, 10) }}</td>
+                <td>{{ user.last_active_at?.slice(0, 10) || '从未' }}</td>
                 <td>
                   <button class="action-btn" @click="viewUser(user.id)">详情</button>
                   <button class="action-btn edit-btn" @click="openEditModal(user)">编辑</button>
@@ -417,6 +458,10 @@ function openBatchModal(action) {
               <span>{{ selectedUser.created_at?.slice(0, 19) }}</span>
             </div>
             <div class="detail-item">
+              <label>最近活跃</label>
+              <span>{{ selectedUser.last_active_at?.slice(0, 19) || '从未活跃' }}</span>
+            </div>
+            <div class="detail-item">
               <label>状态</label>
               <span class="status-badge" :class="getStatusClass(selectedUser.status)">
                 {{ getStatusText(selectedUser.status) }}
@@ -463,6 +508,25 @@ function openBatchModal(action) {
       </div>
     </div>
 
+    <div v-if="showBatchPointsModal" class="modal-overlay" @click.self="showBatchPointsModal = false">
+      <div class="modal-content batch-modal">
+        <h3>批量调整积分</h3>
+        <p>将为选中的 {{ selectedUsers.length }} 位用户调整积分</p>
+        <div class="form-group">
+          <label>积分调整值（正数增加，负数减少）</label>
+          <input v-model.number="batchPointsForm.delta" type="number" placeholder="例如：100 或 -50" />
+        </div>
+        <div class="form-group">
+          <label>调整原因（可选）</label>
+          <input v-model="batchPointsForm.reason" type="text" placeholder="例如：活动奖励" />
+        </div>
+        <div class="modal-actions">
+          <button class="cancel-btn" @click="showBatchPointsModal = false">取消</button>
+          <button class="confirm-btn" @click="handleBatchPointsAdjust">确定</button>
+        </div>
+      </div>
+    </div>
+
     <div v-if="showEditModal" class="modal-overlay" @click.self="showEditModal = false">
       <div class="modal-content">
         <h3>编辑用户</h3>
@@ -502,7 +566,7 @@ function openBatchModal(action) {
 .admin-dashboard {
   display: flex;
   min-height: 100vh;
-  background: #f5f7fa;
+  background: var(--admin-bg-primary);
 }
 
 .admin-sidebar {
@@ -606,6 +670,7 @@ function openBatchModal(action) {
 .admin-main {
   flex: 1;
   padding: 24px;
+  background: var(--admin-bg-primary);
 }
 
 .floating-home-btn {
@@ -653,11 +718,11 @@ function openBatchModal(action) {
 }
 
 .breadcrumb-sep {
-  color: #999;
+  color: var(--admin-text-muted);
 }
 
 .breadcrumb-current {
-  color: #666;
+  color: var(--admin-text-secondary);
 }
 
 .header-top {
@@ -669,12 +734,12 @@ function openBatchModal(action) {
 .page-title {
   font-size: 24px;
   font-weight: bold;
-  color: #1a1a2e;
+  color: var(--admin-text-primary);
   margin: 0;
 }
 
 .total-count {
-  color: #666;
+  color: var(--admin-text-secondary);
   font-size: 14px;
 }
 
@@ -687,9 +752,11 @@ function openBatchModal(action) {
 .search-input {
   flex: 1;
   padding: 10px 16px;
-  border: 1px solid #ddd;
+  border: 1px solid var(--admin-border-color);
   border-radius: 8px;
   font-size: 14px;
+  background: var(--admin-bg-card);
+  color: var(--admin-text-primary);
 }
 
 .export-btn {
@@ -705,7 +772,7 @@ function openBatchModal(action) {
 
 .search-btn {
   padding: 10px 24px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: var(--admin-accent-gradient);
   color: white;
   border: none;
   border-radius: 8px;
@@ -716,11 +783,12 @@ function openBatchModal(action) {
 .loading {
   text-align: center;
   padding: 40px;
-  color: #666;
+  color: var(--admin-text-secondary);
 }
 
 .table-container {
-  background: white;
+  background: var(--admin-bg-card);
+  border: 1px solid var(--admin-border-color);
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
@@ -732,20 +800,20 @@ function openBatchModal(action) {
 }
 
 .data-table th {
-  background: #f8f9fa;
+  background: var(--admin-bg-secondary);
   padding: 14px 16px;
   text-align: left;
   font-weight: 600;
   font-size: 13px;
-  color: #333;
-  border-bottom: 1px solid #eee;
+  color: var(--admin-text-primary);
+  border-bottom: 1px solid var(--admin-border-color);
 }
 
 .data-table td {
   padding: 14px 16px;
   font-size: 13px;
-  color: #333;
-  border-bottom: 1px solid #f5f5f5;
+  color: var(--admin-text-primary);
+  border-bottom: 1px solid var(--admin-border-color);
 }
 
 .data-table tr:last-child td {
@@ -764,7 +832,7 @@ function openBatchModal(action) {
 
 .email {
   font-size: 12px;
-  color: #888;
+  color: var(--admin-text-muted);
 }
 
 .level-badge {
@@ -780,7 +848,7 @@ function openBatchModal(action) {
 .title-text {
   margin-left: 8px;
   font-size: 12px;
-  color: #666;
+  color: var(--admin-text-secondary);
 }
 
 .count-text {
@@ -855,8 +923,9 @@ function openBatchModal(action) {
 
 .page-btn {
   padding: 8px 16px;
-  border: 1px solid #ddd;
-  background: white;
+  border: 1px solid var(--admin-border-color);
+  background: var(--admin-bg-secondary);
+  color: var(--admin-text-secondary);
   border-radius: 6px;
   cursor: pointer;
   font-size: 13px;
@@ -864,7 +933,8 @@ function openBatchModal(action) {
 }
 
 .page-btn:hover:not(:disabled) {
-  background: #f5f5f5;
+  background: var(--admin-bg-card);
+  color: var(--admin-text-primary);
 }
 
 .page-btn:disabled {
@@ -874,7 +944,7 @@ function openBatchModal(action) {
 
 .page-info {
   font-size: 13px;
-  color: #666;
+  color: var(--admin-text-secondary);
 }
 
 .modal-overlay {
@@ -891,7 +961,8 @@ function openBatchModal(action) {
 }
 
 .modal-content {
-  background: white;
+  background: var(--admin-bg-card);
+  border: 1px solid var(--admin-border-color);
   border-radius: 12px;
   width: 90%;
   max-width: 600px;
@@ -904,12 +975,14 @@ function openBatchModal(action) {
   justify-content: space-between;
   align-items: center;
   padding: 20px 24px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--admin-border-color);
+  background: var(--admin-bg-secondary);
 }
 
 .modal-header h3 {
   margin: 0;
   font-size: 18px;
+  color: var(--admin-text-primary);
 }
 
 .close-btn {
@@ -917,7 +990,7 @@ function openBatchModal(action) {
   border: none;
   font-size: 24px;
   cursor: pointer;
-  color: #999;
+  color: var(--admin-text-muted);
 }
 
 .modal-body {
@@ -934,16 +1007,18 @@ function openBatchModal(action) {
   display: block;
   margin-bottom: 6px;
   font-weight: 500;
-  color: #333;
+  color: var(--admin-text-primary);
 }
 
 .form-group input {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #ddd;
+  border: 1px solid var(--admin-border-color);
   border-radius: 6px;
   font-size: 14px;
   box-sizing: border-box;
+  background: var(--admin-bg-secondary);
+  color: var(--admin-text-primary);
 }
 
 .form-group input:focus {
@@ -966,12 +1041,12 @@ function openBatchModal(action) {
 
 .detail-item label {
   font-size: 12px;
-  color: #888;
+  color: var(--admin-text-muted);
 }
 
 .detail-item span {
   font-size: 14px;
-  color: #333;
+  color: var(--admin-text-primary);
   font-weight: 500;
 }
 
@@ -980,12 +1055,12 @@ function openBatchModal(action) {
   align-items: center;
   gap: 12px;
   padding-top: 16px;
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid var(--admin-border-color);
 }
 
 .action-label {
   font-size: 13px;
-  color: #666;
+  color: var(--admin-text-secondary);
 }
 
 .status-btn {
@@ -1021,7 +1096,8 @@ function openBatchModal(action) {
   align-items: center;
   gap: 12px;
   padding: 12px 16px;
-  background: #f0f7ff;
+  background: var(--admin-bg-secondary);
+  border: 1px solid var(--admin-border-color);
   border-radius: 8px;
   margin-bottom: 16px;
 }
@@ -1060,6 +1136,11 @@ function openBatchModal(action) {
 .batch-restricted {
   background: #ffebee;
   color: #c62828;
+}
+
+.batch-points {
+  background: linear-gradient(135deg, #ffd700 0%, #ffb400 100%);
+  color: #1a1a2e;
 }
 
 .batch-clear {

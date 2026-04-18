@@ -12,6 +12,7 @@ class AppUser(models.Model):
     status = models.CharField(max_length=32, default="normal")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    last_active_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return self.nickname
@@ -93,6 +94,7 @@ class Survey(models.Model):
     target = models.IntegerField(default=1)
     completed = models.IntegerField(default=0)
     status = models.CharField(max_length=32, default="draft")
+    ai_generated = models.BooleanField(default=False)
     active_questionnaire = models.ForeignKey(
         "Questionnaire",
         on_delete=models.SET_NULL,
@@ -249,7 +251,7 @@ class AuditLog(models.Model):
     target_type = models.CharField(max_length=32)
     target_id = models.BigIntegerField()
     action = models.CharField(max_length=64)
-    operator = models.ForeignKey(AppUser, on_delete=models.CASCADE)
+    operator = models.ForeignKey(AppUser, on_delete=models.CASCADE, blank=True, null=True)
     note = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -652,4 +654,46 @@ class TaskCompletion(models.Model):
             models.Index(
                 fields=["user", "period_key"], name="taskcompletion_user_period_idx"
             ),
+        ]
+
+
+class RiskEvent(models.Model):
+    """风控事件记录。
+
+    - user: 关联用户（可为空）
+    - survey: 关联问卷（可为空）
+    - event_type: 事件类型 - 短时长/可疑行为/异常问卷等
+    - severity: 严重程度 - low/medium/high
+    - detail: 事件详情（JSON格式）
+    - created_at: 创建时间
+    """
+
+    EVENT_TYPE_CHOICES = [
+        ("short_duration", "短时长回答"),
+        ("suspicious_behavior", "可疑行为"),
+        ("abnormal_survey", "异常问卷"),
+        ("multiple_submissions", "多次提交"),
+        ("ip_anomaly", "IP异常"),
+    ]
+
+    SEVERITY_CHOICES = [
+        ("low", "低"),
+        ("medium", "中"),
+        ("high", "高"),
+    ]
+
+    user = models.ForeignKey(AppUser, on_delete=models.CASCADE, blank=True, null=True)
+    survey = models.ForeignKey(Survey, on_delete=models.CASCADE, blank=True, null=True)
+    event_type = models.CharField(max_length=32, choices=EVENT_TYPE_CHOICES)
+    severity = models.CharField(max_length=32, choices=SEVERITY_CHOICES, default="medium")
+    detail = models.JSONField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["user"], name="risk_event_user_idx"),
+            models.Index(fields=["survey"], name="risk_event_survey_idx"),
+            models.Index(fields=["event_type"], name="risk_event_type_idx"),
+            models.Index(fields=["severity"], name="risk_event_severity_idx"),
+            models.Index(fields=["created_at"], name="risk_event_created_idx"),
         ]

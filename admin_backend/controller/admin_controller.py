@@ -1,4 +1,4 @@
-import hashlib
+from django.contrib.auth.hashers import check_password
 import json
 import secrets
 from datetime import datetime, timedelta
@@ -72,7 +72,7 @@ def admin_login(request):
     except AuthCredential.DoesNotExist:
         return error(401, "邮箱或密码错误")
 
-    if cred.password_hash != hashlib.sha256(password.encode()).hexdigest():
+    if not check_password(password, cred.password_hash):
         return error(401, "邮箱或密码错误")
 
     AuthToken.objects.filter(user=user).delete()
@@ -176,6 +176,45 @@ def dashboard_trend(request):
 
 
 @csrf_exempt
+def export_dashboard(request):
+    user, err = require_admin(request)
+    if err:
+        return err
+
+    days = parse_int(request.GET.get("days", 7))
+    days = min(days, 90)
+
+    today = timezone.now().date()
+    trend_data = []
+
+    for i in range(days - 1, -1, -1):
+        day = today - timedelta(days=i)
+        day_start = timezone.make_aware(datetime.combine(day, datetime.min.time()))
+        day_end = timezone.make_aware(datetime.combine(day, datetime.max.time()))
+
+        new_users = AppUser.objects.filter(
+            created_at__gte=day_start, created_at__lte=day_end
+        ).count()
+
+        new_surveys = Survey.objects.filter(
+            created_at__gte=day_start, created_at__lte=day_end
+        ).count()
+
+        new_fills = Response.objects.filter(
+            created_at__gte=day_start, created_at__lte=day_end
+        ).count()
+
+        trend_data.append({
+            "date": day.isoformat(),
+            "new_users": new_users,
+            "new_surveys": new_surveys,
+            "new_fills": new_fills,
+        })
+
+    return JsonResponse({"trend": trend_data, "days": days})
+
+
+@csrf_exempt
 def user_list(request):
     user, err = require_admin(request)
     if err:
@@ -222,6 +261,7 @@ def user_list(request):
             "total_consumed": abs(total_consumed),
             "surveys_published": surveys_published,
             "fills_count": fills_count,
+            "last_active_at": u.last_active_at.isoformat() if u.last_active_at else None,
         })
 
     return JsonResponse({
@@ -268,6 +308,8 @@ def survey_list(request):
     page_size = parse_int(request.GET.get("page_size", 20))
     status = request.GET.get("status", "")
     search = request.GET.get("search", "")
+    start_date = request.GET.get("start_date", "")
+    end_date = request.GET.get("end_date", "")
 
     queryset = Survey.objects.all().order_by("-created_at")
 
@@ -275,6 +317,10 @@ def survey_list(request):
         queryset = queryset.filter(status=status)
     if search:
         queryset = queryset.filter(title__icontains=search)
+    if start_date:
+        queryset = queryset.filter(created_at__gte=start_date)
+    if end_date:
+        queryset = queryset.filter(created_at__lte=end_date + " 23:59:59")
 
     total = queryset.count()
     offset = (page - 1) * page_size
@@ -380,6 +426,13 @@ def analytics_ai(request):
         created_at__gte=start_dt
     ).count()
 
+    ai_surveys = Survey.objects.filter(
+        created_at__gte=start_dt,
+        ai_generated=True
+    ).count()
+
+    ai_rate = (ai_surveys / total_surveys * 100) if total_surveys > 0 else 0
+
     difficulty_dist = {}
     for diff in range(1, 6):
         count = Survey.objects.filter(
@@ -389,9 +442,9 @@ def analytics_ai(request):
         difficulty_dist[diff] = count
 
     return JsonResponse({
-        "ai_surveys": 0,
+        "ai_surveys": ai_surveys,
         "total_surveys": total_surveys,
-        "ai_rate": 0,
+        "ai_rate": round(ai_rate, 2),
         "difficulty_distribution": difficulty_dist,
     })
 
@@ -402,18 +455,71 @@ def risk_control(request):
     if err:
         return err
 
-    short_duration_count = Response.objects.filter(
-        duration_seconds__lt=10
-    ).count()
+    from core.models import RiskEvent
 
-    suspicious_users = AppUser.objects.filter(status="suspicious").count()
+    # 使用RiskEvent模型统计风控事件
+    short_duration_count = RiskEvent.objects.filter(event_type="short_duration").count()
+    suspicious_users = RiskEvent.objects.filter(event_type="suspicious_behavior").values("user").distinct().count()
+    abnormal_surveys = RiskEvent.objects.filter(event_type="abnormal_survey").values("survey").distinct().count()
 
-    abnormal_surveys = Survey.objects.filter(status="abnormal").count()
+    page = parse_int(request.GET.get("page", 1))
+    page_size = parse_int(request.GET.get("page_size", 20))
+    risk_type = request.GET.get("type", "short_duration")
+
+    items = []
+    total = 0
+
+    if risk_type == "short_duration":
+        queryset = RiskEvent.objects.filter(event_type="short_duration").select_related("user", "survey").order_by("-created_at")
+        total = queryset.count()
+        for event in queryset[(page-1)*page_size:page*page_size]:
+            items.append({
+                "id": event.id,
+                "user_id": event.user_id,
+                "user_nickname": event.user.nickname if event.user else None,
+                "survey_id": event.survey_id,
+                "survey_title": event.survey.title if event.survey else None,
+                "duration_seconds": event.detail.get("duration_seconds") if event.detail else None,
+                "severity": event.severity,
+                "created_at": event.created_at.isoformat(),
+            })
+    elif risk_type == "suspicious_users":
+        queryset = RiskEvent.objects.filter(event_type="suspicious_behavior").select_related("user").order_by("-created_at")
+        total = queryset.count()
+        for event in queryset[(page-1)*page_size:page*page_size]:
+            items.append({
+                "id": event.id,
+                "user_id": event.user_id,
+                "user_nickname": event.user.nickname if event.user else None,
+                "event_type": event.event_type,
+                "severity": event.severity,
+                "detail": event.detail,
+                "created_at": event.created_at.isoformat(),
+            })
+    elif risk_type == "abnormal_surveys":
+        queryset = RiskEvent.objects.filter(event_type="abnormal_survey").select_related("survey", "survey__owner").order_by("-created_at")
+        total = queryset.count()
+        for event in queryset[(page-1)*page_size:page*page_size]:
+            items.append({
+                "id": event.id,
+                "survey_id": event.survey_id,
+                "survey_title": event.survey.title if event.survey else None,
+                "owner_id": event.survey.owner_id if event.survey else None,
+                "owner_nickname": event.survey.owner.nickname if event.survey and event.survey.owner else None,
+                "severity": event.severity,
+                "detail": event.detail,
+                "created_at": event.created_at.isoformat(),
+            })
 
     return JsonResponse({
         "short_duration_count": short_duration_count,
         "suspicious_users": suspicious_users,
         "abnormal_surveys": abnormal_surveys,
+        "type": risk_type,
+        "items": items,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
     })
 
 
@@ -492,9 +598,9 @@ def update_user_info(request, user_id):
         if old_points != new_points:
             PointsLog.objects.create(
                 user=target,
+                points_type="admin_adjust",
                 delta=new_points - old_points,
                 reason=f"管理员调整积分: {old_points} -> {new_points}",
-                operator=user.nickname
             )
     if "status" in data:
         target.status = data["status"]
@@ -586,6 +692,58 @@ def batch_update_user_status(request):
     )
 
     return JsonResponse({"success": True, "updated_count": updated_count})
+
+
+@csrf_exempt
+def batch_adjust_points(request):
+    user, err = require_admin(request)
+    if err:
+        return err
+
+    if request.method != "POST":
+        return error(405, "请求方法不允许")
+
+    data = parse_json(request)
+    user_ids = data.get("user_ids", [])
+    delta = data.get("delta", 0)
+    reason = data.get("reason", "管理员批量调整")
+
+    if not user_ids:
+        return error(400, "用户ID列表不能为空")
+
+    if delta == 0:
+        return error(400, "积分调整值不能为0")
+
+    updated_users = []
+    for uid in user_ids:
+        try:
+            target_user = AppUser.objects.get(id=uid)
+            target_user.points += delta
+            if target_user.points < 0:
+                target_user.points = 0
+            target_user.save(update_fields=["points", "updated_at"])
+
+            PointsLog.objects.create(
+                user=target_user,
+                points_type="admin_adjust",
+                delta=delta,
+                reason=reason,
+                ref_type="batch_adjust",
+                ref_id=user.id,
+            )
+            updated_users.append({
+                "id": target_user.id,
+                "nickname": target_user.nickname,
+                "new_points": target_user.points,
+            })
+        except AppUser.DoesNotExist:
+            continue
+
+    return JsonResponse({
+        "success": True,
+        "updated_count": len(updated_users),
+        "updated_users": updated_users,
+    })
 
 
 @csrf_exempt

@@ -7,14 +7,14 @@ const isDark = ref(false)
 const themeVars = computed(() => {
   if (isDark.value) {
     return {
-      bgPrimary: '#1a1a2e',
-      bgSecondary: '#16213e',
-      bgCard: '#0f3460',
+      bgPrimary: '#121212',
+      bgSecondary: '#1e1e1e',
+      bgCard: '#252525',
       textPrimary: '#ffffff',
-      textSecondary: '#b8c5d6',
-      textMuted: '#6c7a92',
-      borderColor: '#2d4a6f',
-      accentGradient: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      textSecondary: '#e0e0e0',
+      textMuted: '#9e9e9e',
+      borderColor: '#333333',
+      accentGradient: 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)',
     }
   }
   return {
@@ -25,7 +25,7 @@ const themeVars = computed(() => {
     textSecondary: '#666666',
     textMuted: '#999999',
     borderColor: '#e8ecf0',
-    accentGradient: 'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)',
+    accentGradient: 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)',
   }
 })
 
