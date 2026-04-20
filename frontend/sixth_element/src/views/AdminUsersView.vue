@@ -3,6 +3,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   getUserList,
+  promoteUserToAdmin,
   getUserDetail,
   updateUserStatus,
   updateUserInfo,
@@ -132,6 +133,19 @@ async function changeStatus(userId, newStatus) {
     showDetailModal.value = false
   } catch (e) {
     console.error(e)
+  }
+}
+
+async function promoteAdmin(userId) {
+  if (!confirm('确认将该用户提升为管理员吗？')) return
+  try {
+    const resp = await promoteUserToAdmin(userId)
+    alert(resp?.message || '提权成功')
+    await viewUser(userId)
+    await fetchUsers()
+  } catch (e) {
+    console.error(e)
+    alert('提权失败')
   }
 }
 
@@ -492,6 +506,14 @@ function openBatchModal(action) {
             >
               限制使用
             </button>
+            <button
+              v-if="!selectedUser.is_admin"
+              class="status-btn admin"
+              @click="promoteAdmin(selectedUser.id)"
+            >
+              提权为管理员
+            </button>
+            <span v-else class="admin-tag">该用户已是管理员</span>
           </div>
         </div>
       </div>
@@ -1089,6 +1111,19 @@ function openBatchModal(action) {
 .status-btn.restricted {
   background: #ffebee;
   color: #c62828;
+}
+
+.status-btn.admin {
+  background: #ede7f6;
+  color: #5e35b1;
+}
+
+.admin-tag {
+  font-size: 12px;
+  color: #5e35b1;
+  background: #f3e5f5;
+  padding: 6px 10px;
+  border-radius: 6px;
 }
 
 .batch-actions {

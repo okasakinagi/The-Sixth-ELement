@@ -9,6 +9,7 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
 from core.views import error, get_current_user, require_auth
+from core.services.user_behavior_log_service import UserBehaviorLogService
 from task_hall.service.task_hall_service import TaskHallError, TaskHallService
 
 
@@ -119,6 +120,12 @@ def task_hall_refresh_batch(request):
     batch_size = _parse_int(data.get("batch_size"), default=15)
     try:
         payload = service.refresh_batch(user, exclude_ids, batch_size)
+        UserBehaviorLogService.log_event(
+            user_id=user.id,
+            event_type="refresh",
+            scene="task_refresh",
+            meta={"exclude_count": len(exclude_ids), "batch_size": batch_size},
+        )
         return JsonResponse(payload, status=200)
     except TaskHallError as exc:
         return error(exc.status, exc.message)

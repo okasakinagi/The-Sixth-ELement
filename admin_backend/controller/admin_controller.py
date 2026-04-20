@@ -13,13 +13,14 @@ from core.models import (
     AuditLog,
     AuthCredential,
     AuthToken,
-    DailyRecommendation,
     Message,
     PointsLog,
     Questionnaire,
     Response,
+    Role,
     Survey,
     TaskCompletion,
+    UserBehaviorLog,
     UserRole,
 )
 from core.views import error, get_current_user, parse_json
@@ -39,9 +40,7 @@ def require_admin(request):
     user = get_current_user(request)
     if not user:
         return None, error(401, "请先登录")
-    is_admin = UserRole.objects.filter(
-        user=user, role__name="admin"
-    ).exists()
+    is_admin = UserRole.objects.filter(user=user, role__name="admin").exists()
     if not is_admin:
         return None, error(403, "需要管理员权限")
     return user, None
@@ -80,14 +79,16 @@ def admin_login(request):
     expires_at = timezone.now() + timedelta(days=7)
     AuthToken.objects.create(user=user, token=token, expires_at=expires_at)
 
-    return JsonResponse({
-        "token": token,
-        "user": {
-            "id": user.id,
-            "nickname": user.nickname,
-            "email": user.email,
+    return JsonResponse(
+        {
+            "token": token,
+            "user": {
+                "id": user.id,
+                "nickname": user.nickname,
+                "email": user.email,
+            },
         }
-    })
+    )
 
 
 @csrf_exempt
@@ -101,19 +102,32 @@ def dashboard_stats(request):
 
     total_users = AppUser.objects.count()
     today_new_users = AppUser.objects.filter(created_at__gte=today_start).count()
+    active_users_7d = (
+        AuthToken.objects.filter(created_at__gte=timezone.now() - timedelta(days=7))
+        .values("user_id")
+        .distinct()
+        .count()
+    )
 
     total_surveys = Survey.objects.count()
     today_new_surveys = Survey.objects.filter(created_at__gte=today_start).count()
+    published_surveys = Survey.objects.filter(status="published").count()
 
     total_fills = Response.objects.count()
     today_fills = Response.objects.filter(created_at__gte=today_start).count()
 
-    total_points_issued = PointsLog.objects.filter(
-        delta__gt=0
-    ).aggregate(total=models.Sum("delta"))["total"] or 0
-    total_points_consumed = PointsLog.objects.filter(
-        delta__lt=0
-    ).aggregate(total=models.Sum("delta"))["total"] or 0
+    total_points_issued = (
+        PointsLog.objects.filter(delta__gt=0).aggregate(total=models.Sum("delta"))[
+            "total"
+        ]
+        or 0
+    )
+    total_points_consumed = (
+        PointsLog.objects.filter(delta__lt=0).aggregate(total=models.Sum("delta"))[
+            "total"
+        ]
+        or 0
+    )
 
     avg_surveys_per_user = total_surveys / total_users if total_users > 0 else 0
 
@@ -122,18 +136,23 @@ def dashboard_stats(request):
         completed_surveys / total_surveys * 100 if total_surveys > 0 else 0
     )
 
-    return JsonResponse({
-        "total_users": total_users,
-        "today_new_users": today_new_users,
-        "total_surveys": total_surveys,
-        "today_new_surveys": today_new_surveys,
-        "total_fills": total_fills,
-        "today_fills": today_fills,
-        "avg_surveys_per_user": round(avg_surveys_per_user, 2),
-        "survey_completion_rate": round(survey_completion_rate, 2),
-        "total_points_issued": total_points_issued,
-        "total_points_consumed": abs(total_points_consumed),
-    })
+    return JsonResponse(
+        {
+            "total_users": total_users,
+            "today_new_users": today_new_users,
+            "active_users_7d": active_users_7d,
+            "total_surveys": total_surveys,
+            "published_surveys": published_surveys,
+            "today_new_surveys": today_new_surveys,
+            "total_fills": total_fills,
+            "today_fills": today_fills,
+            "avg_surveys_per_user": round(avg_surveys_per_user, 2),
+            "completed_surveys": completed_surveys,
+            "survey_completion_rate": round(survey_completion_rate, 2),
+            "total_points_issued": total_points_issued,
+            "total_points_consumed": abs(total_points_consumed),
+        }
+    )
 
 
 @csrf_exempt
@@ -165,12 +184,14 @@ def dashboard_trend(request):
             created_at__gte=day_start, created_at__lte=day_end
         ).count()
 
-        result.append({
-            "date": day.isoformat(),
-            "new_users": new_users,
-            "new_surveys": new_surveys,
-            "new_fills": new_fills,
-        })
+        result.append(
+            {
+                "date": day.isoformat(),
+                "new_users": new_users,
+                "new_surveys": new_surveys,
+                "new_fills": new_fills,
+            }
+        )
 
     return JsonResponse({"trend": result})
 
@@ -204,12 +225,14 @@ def export_dashboard(request):
             created_at__gte=day_start, created_at__lte=day_end
         ).count()
 
-        trend_data.append({
-            "date": day.isoformat(),
-            "new_users": new_users,
-            "new_surveys": new_surveys,
-            "new_fills": new_fills,
-        })
+        trend_data.append(
+            {
+                "date": day.isoformat(),
+                "new_users": new_users,
+                "new_surveys": new_surveys,
+                "new_fills": new_fills,
+            }
+        )
 
     return JsonResponse({"trend": trend_data, "days": days})
 
@@ -233,43 +256,57 @@ def user_list(request):
 
     total = queryset.count()
     offset = (page - 1) * page_size
-    users = queryset[offset:offset + page_size]
+    users = queryset[offset : offset + page_size]
 
     result = []
     for u in users:
+        is_admin = UserRole.objects.filter(user=u, role__name="admin").exists()
         level_info = LevelService.get_level_info(u)
-        total_earned = PointsLog.objects.filter(user=u, delta__gt=0).aggregate(
-            total=models.Sum("delta")
-        )["total"] or 0
-        total_consumed = PointsLog.objects.filter(user=u, delta__lt=0).aggregate(
-            total=models.Sum("delta")
-        )["total"] or 0
+        total_earned = (
+            PointsLog.objects.filter(user=u, delta__gt=0).aggregate(
+                total=models.Sum("delta")
+            )["total"]
+            or 0
+        )
+        total_consumed = (
+            PointsLog.objects.filter(user=u, delta__lt=0).aggregate(
+                total=models.Sum("delta")
+            )["total"]
+            or 0
+        )
         surveys_published = Survey.objects.filter(owner=u).count()
         fills_count = Response.objects.filter(user=u).count()
 
-        result.append({
-            "id": u.id,
-            "nickname": u.nickname,
-            "email": u.email,
-            "created_at": u.created_at.isoformat(),
-            "points": u.points,
-            "activity_points": u.activity_points,
-            "level": level_info["level"],
-            "title": level_info["title"],
-            "status": u.status,
-            "total_earned": total_earned,
-            "total_consumed": abs(total_consumed),
-            "surveys_published": surveys_published,
-            "fills_count": fills_count,
-            "last_active_at": u.last_active_at.isoformat() if u.last_active_at else None,
-        })
+        result.append(
+            {
+                "id": u.id,
+                "nickname": u.nickname,
+                "email": u.email,
+                "created_at": u.created_at.isoformat(),
+                "points": u.points,
+                "activity_points": u.activity_points,
+                "level": level_info["level"],
+                "title": level_info["title"],
+                "status": u.status,
+                "is_admin": is_admin,
+                "total_earned": total_earned,
+                "total_consumed": abs(total_consumed),
+                "surveys_published": surveys_published,
+                "fills_count": fills_count,
+                "last_active_at": (
+                    u.last_active_at.isoformat() if u.last_active_at else None
+                ),
+            }
+        )
 
-    return JsonResponse({
-        "users": result,
-        "total": total,
-        "page": page,
-        "page_size": page_size,
-    })
+    return JsonResponse(
+        {
+            "users": result,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+        }
+    )
 
 
 @csrf_exempt
@@ -283,17 +320,19 @@ def export_users(request):
     data = []
     for u in users:
         level_info = LevelService.get_level_info(u)
-        data.append({
-            "ID": u.id,
-            "昵称": u.nickname,
-            "邮箱": u.email,
-            "等级": level_info["level"],
-            "称号": level_info["title"],
-            "积分": u.points,
-            "活跃度": u.activity_points,
-            "状态": u.status,
-            "注册时间": u.created_at.strftime("%Y-%m-%d %H:%M:%S"),
-        })
+        data.append(
+            {
+                "ID": u.id,
+                "昵称": u.nickname,
+                "邮箱": u.email,
+                "等级": level_info["level"],
+                "称号": level_info["title"],
+                "积分": u.points,
+                "活跃度": u.activity_points,
+                "状态": u.status,
+                "注册时间": u.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+            }
+        )
 
     return JsonResponse({"success": True, "data": data, "total": len(data)})
 
@@ -324,31 +363,35 @@ def survey_list(request):
 
     total = queryset.count()
     offset = (page - 1) * page_size
-    surveys = queryset[offset:offset + page_size]
+    surveys = queryset[offset : offset + page_size]
 
     result = []
     for s in surveys:
-        result.append({
-            "id": s.id,
-            "title": s.title,
-            "owner_nickname": s.owner.nickname,
-            "owner_id": s.owner.id,
-            "created_at": s.created_at.isoformat(),
-            "status": s.status,
-            "difficulty": s.difficulty,
-            "estimated_minutes": s.estimated_minutes,
-            "target": s.target,
-            "completed": s.completed,
-            "reward_points": s.reward_points,
-            "publish_cost_points": s.publish_cost_points,
-        })
+        result.append(
+            {
+                "id": s.id,
+                "title": s.title,
+                "owner_nickname": s.owner.nickname,
+                "owner_id": s.owner.id,
+                "created_at": s.created_at.isoformat(),
+                "status": s.status,
+                "difficulty": s.difficulty,
+                "estimated_minutes": s.estimated_minutes,
+                "target": s.target,
+                "completed": s.completed,
+                "reward_points": s.reward_points,
+                "publish_cost_points": s.publish_cost_points,
+            }
+        )
 
-    return JsonResponse({
-        "surveys": result,
-        "total": total,
-        "page": page,
-        "page_size": page_size,
-    })
+    return JsonResponse(
+        {
+            "surveys": result,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+        }
+    )
 
 
 @csrf_exempt
@@ -361,18 +404,20 @@ def export_surveys(request):
 
     data = []
     for s in surveys:
-        data.append({
-            "ID": s.id,
-            "标题": s.title,
-            "发布者": s.owner.nickname,
-            "状态": s.status,
-            "难度": s.difficulty or "-",
-            "预计时间": f"{s.estimated_minutes or 0}分钟",
-            "目标回收": s.target or "-",
-            "已完成": s.completed or 0,
-            "奖励积分": s.reward_points or 0,
-            "创建时间": s.created_at.strftime("%Y-%m-%d %H:%M:%S"),
-        })
+        data.append(
+            {
+                "ID": s.id,
+                "标题": s.title,
+                "发布者": s.owner.nickname,
+                "状态": s.status,
+                "难度": s.difficulty or "-",
+                "预计时间": f"{s.estimated_minutes or 0}分钟",
+                "目标回收": s.target or "-",
+                "已完成": s.completed or 0,
+                "奖励积分": s.reward_points or 0,
+                "创建时间": s.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+            }
+        )
 
     return JsonResponse({"success": True, "data": data, "total": len(data)})
 
@@ -383,30 +428,89 @@ def analytics_recommend(request):
     if err:
         return err
 
-    days = parse_int(request.GET.get("days", 7))
-    days = min(days, 90)
+    days = parse_int(request.GET.get("days", 7)) or 7
+    days = min(max(days, 1), 90)
+    start_dt = timezone.now() - timedelta(days=days)
 
-    today = timezone.now().date()
-    start_date = today - timedelta(days=days)
+    queryset = UserBehaviorLog.objects.filter(created_at__gte=start_dt)
+    impressions = queryset.filter(event_type="impression").count()
+    clicks = queryset.filter(event_type="click").count()
+    refresh_count = queryset.filter(event_type="refresh").count()
+    delete_count = queryset.filter(event_type="dismiss").count()
+    ctr = (clicks / impressions * 100) if impressions > 0 else 0
 
-    impressions = DailyRecommendation.objects.filter(
-        date__gte=start_date
-    ).count()
-
-    total_claims = sum(
-        len(rec.claimed_ids) for rec in
-        DailyRecommendation.objects.filter(date__gte=start_date)
+    return JsonResponse(
+        {
+            "impressions": impressions,
+            "clicks": clicks,
+            "ctr": round(ctr, 2),
+            "refresh_count": refresh_count,
+            "delete_count": delete_count,
+        }
     )
 
-    ctr = 0
 
-    return JsonResponse({
-        "impressions": impressions,
-        "clicks": total_claims,
-        "ctr": round(ctr, 2),
-        "refresh_count": 0,
-        "delete_count": 0,
-    })
+@csrf_exempt
+def analytics_recommend_events(request):
+    user, err = require_admin(request)
+    if err:
+        return err
+
+    days = parse_int(request.GET.get("days", 7)) or 7
+    days = min(max(days, 1), 90)
+    page = parse_int(request.GET.get("page", 1)) or 1
+    page_size = parse_int(request.GET.get("page_size", 20)) or 20
+    page = max(page, 1)
+    page_size = min(max(page_size, 1), 100)
+
+    event_type = (request.GET.get("event_type") or "").strip()
+    scene = (request.GET.get("scene") or "").strip()
+
+    start_dt = timezone.now() - timedelta(days=days)
+    period_queryset = UserBehaviorLog.objects.filter(created_at__gte=start_dt)
+    queryset = period_queryset.select_related("user", "survey").order_by("-created_at")
+
+    if event_type and event_type != "all":
+        queryset = queryset.filter(event_type=event_type)
+    if scene and scene != "all":
+        queryset = queryset.filter(scene=scene)
+
+    total = queryset.count()
+    offset = (page - 1) * page_size
+    events = queryset[offset : offset + page_size]
+
+    items = []
+    for event in events:
+        items.append(
+            {
+                "id": event.id,
+                "event_type": event.event_type,
+                "scene": event.scene,
+                "user_id": event.user_id,
+                "user_nickname": event.user.nickname if event.user else None,
+                "survey_id": event.survey_id,
+                "survey_title": event.survey.title if event.survey else None,
+                "meta": event.meta_json or {},
+                "created_at": event.created_at.isoformat(),
+            }
+        )
+
+    summary = {
+        "impression": period_queryset.filter(event_type="impression").count(),
+        "click": period_queryset.filter(event_type="click").count(),
+        "refresh": period_queryset.filter(event_type="refresh").count(),
+        "dismiss": period_queryset.filter(event_type="dismiss").count(),
+    }
+
+    return JsonResponse(
+        {
+            "items": items,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "summary": summary,
+        }
+    )
 
 
 @csrf_exempt
@@ -422,13 +526,10 @@ def analytics_ai(request):
     start_date = today - timedelta(days=days)
     start_dt = timezone.make_aware(datetime.combine(start_date, datetime.min.time()))
 
-    total_surveys = Survey.objects.filter(
-        created_at__gte=start_dt
-    ).count()
+    total_surveys = Survey.objects.filter(created_at__gte=start_dt).count()
 
     ai_surveys = Survey.objects.filter(
-        created_at__gte=start_dt,
-        ai_generated=True
+        created_at__gte=start_dt, ai_generated=True
     ).count()
 
     ai_rate = (ai_surveys / total_surveys * 100) if total_surveys > 0 else 0
@@ -441,12 +542,14 @@ def analytics_ai(request):
         ).count()
         difficulty_dist[diff] = count
 
-    return JsonResponse({
-        "ai_surveys": ai_surveys,
-        "total_surveys": total_surveys,
-        "ai_rate": round(ai_rate, 2),
-        "difficulty_distribution": difficulty_dist,
-    })
+    return JsonResponse(
+        {
+            "ai_surveys": ai_surveys,
+            "total_surveys": total_surveys,
+            "ai_rate": round(ai_rate, 2),
+            "difficulty_distribution": difficulty_dist,
+        }
+    )
 
 
 @csrf_exempt
@@ -459,8 +562,18 @@ def risk_control(request):
 
     # 使用RiskEvent模型统计风控事件
     short_duration_count = RiskEvent.objects.filter(event_type="short_duration").count()
-    suspicious_users = RiskEvent.objects.filter(event_type="suspicious_behavior").values("user").distinct().count()
-    abnormal_surveys = RiskEvent.objects.filter(event_type="abnormal_survey").values("survey").distinct().count()
+    suspicious_users = (
+        RiskEvent.objects.filter(event_type="suspicious_behavior")
+        .values("user")
+        .distinct()
+        .count()
+    )
+    abnormal_surveys = (
+        RiskEvent.objects.filter(event_type="abnormal_survey")
+        .values("survey")
+        .distinct()
+        .count()
+    )
 
     page = parse_int(request.GET.get("page", 1))
     page_size = parse_int(request.GET.get("page_size", 20))
@@ -470,57 +583,83 @@ def risk_control(request):
     total = 0
 
     if risk_type == "short_duration":
-        queryset = RiskEvent.objects.filter(event_type="short_duration").select_related("user", "survey").order_by("-created_at")
+        queryset = (
+            RiskEvent.objects.filter(event_type="short_duration")
+            .select_related("user", "survey")
+            .order_by("-created_at")
+        )
         total = queryset.count()
-        for event in queryset[(page-1)*page_size:page*page_size]:
-            items.append({
-                "id": event.id,
-                "user_id": event.user_id,
-                "user_nickname": event.user.nickname if event.user else None,
-                "survey_id": event.survey_id,
-                "survey_title": event.survey.title if event.survey else None,
-                "duration_seconds": event.detail.get("duration_seconds") if event.detail else None,
-                "severity": event.severity,
-                "created_at": event.created_at.isoformat(),
-            })
+        for event in queryset[(page - 1) * page_size : page * page_size]:
+            items.append(
+                {
+                    "id": event.id,
+                    "user_id": event.user_id,
+                    "user_nickname": event.user.nickname if event.user else None,
+                    "survey_id": event.survey_id,
+                    "survey_title": event.survey.title if event.survey else None,
+                    "duration_seconds": (
+                        event.detail.get("duration_seconds") if event.detail else None
+                    ),
+                    "severity": event.severity,
+                    "created_at": event.created_at.isoformat(),
+                }
+            )
     elif risk_type == "suspicious_users":
-        queryset = RiskEvent.objects.filter(event_type="suspicious_behavior").select_related("user").order_by("-created_at")
+        queryset = (
+            RiskEvent.objects.filter(event_type="suspicious_behavior")
+            .select_related("user")
+            .order_by("-created_at")
+        )
         total = queryset.count()
-        for event in queryset[(page-1)*page_size:page*page_size]:
-            items.append({
-                "id": event.id,
-                "user_id": event.user_id,
-                "user_nickname": event.user.nickname if event.user else None,
-                "event_type": event.event_type,
-                "severity": event.severity,
-                "detail": event.detail,
-                "created_at": event.created_at.isoformat(),
-            })
+        for event in queryset[(page - 1) * page_size : page * page_size]:
+            items.append(
+                {
+                    "id": event.id,
+                    "user_id": event.user_id,
+                    "user_nickname": event.user.nickname if event.user else None,
+                    "event_type": event.event_type,
+                    "severity": event.severity,
+                    "detail": event.detail,
+                    "created_at": event.created_at.isoformat(),
+                }
+            )
     elif risk_type == "abnormal_surveys":
-        queryset = RiskEvent.objects.filter(event_type="abnormal_survey").select_related("survey", "survey__owner").order_by("-created_at")
+        queryset = (
+            RiskEvent.objects.filter(event_type="abnormal_survey")
+            .select_related("survey", "survey__owner")
+            .order_by("-created_at")
+        )
         total = queryset.count()
-        for event in queryset[(page-1)*page_size:page*page_size]:
-            items.append({
-                "id": event.id,
-                "survey_id": event.survey_id,
-                "survey_title": event.survey.title if event.survey else None,
-                "owner_id": event.survey.owner_id if event.survey else None,
-                "owner_nickname": event.survey.owner.nickname if event.survey and event.survey.owner else None,
-                "severity": event.severity,
-                "detail": event.detail,
-                "created_at": event.created_at.isoformat(),
-            })
+        for event in queryset[(page - 1) * page_size : page * page_size]:
+            items.append(
+                {
+                    "id": event.id,
+                    "survey_id": event.survey_id,
+                    "survey_title": event.survey.title if event.survey else None,
+                    "owner_id": event.survey.owner_id if event.survey else None,
+                    "owner_nickname": (
+                        event.survey.owner.nickname
+                        if event.survey and event.survey.owner
+                        else None
+                    ),
+                    "severity": event.severity,
+                    "detail": event.detail,
+                    "created_at": event.created_at.isoformat(),
+                }
+            )
 
-    return JsonResponse({
-        "short_duration_count": short_duration_count,
-        "suspicious_users": suspicious_users,
-        "abnormal_surveys": abnormal_surveys,
-        "type": risk_type,
-        "items": items,
-        "total": total,
-        "page": page,
-        "page_size": page_size,
-    })
+    return JsonResponse(
+        {
+            "short_duration_count": short_duration_count,
+            "suspicious_users": suspicious_users,
+            "abnormal_surveys": abnormal_surveys,
+            "type": risk_type,
+            "items": items,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+        }
+    )
 
 
 @csrf_exempt
@@ -536,39 +675,54 @@ def user_detail(request, user_id):
 
     level_info = LevelService.get_level_info(target)
 
-    total_earned = PointsLog.objects.filter(user=target, delta__gt=0).aggregate(
-        total=models.Sum("delta")
-    )["total"] or 0
-    total_consumed = PointsLog.objects.filter(user=target, delta__lt=0).aggregate(
-        total=models.Sum("delta")
-    )["total"] or 0
+    total_earned = (
+        PointsLog.objects.filter(user=target, delta__gt=0).aggregate(
+            total=models.Sum("delta")
+        )["total"]
+        or 0
+    )
+    total_consumed = (
+        PointsLog.objects.filter(user=target, delta__lt=0).aggregate(
+            total=models.Sum("delta")
+        )["total"]
+        or 0
+    )
 
     surveys_published = Survey.objects.filter(owner=target)
     fills = Response.objects.filter(user=target)
+    is_admin = UserRole.objects.filter(user=target, role__name="admin").exists()
 
-    return JsonResponse({
-        "id": target.id,
-        "nickname": target.nickname,
-        "email": target.email,
-        "created_at": target.created_at.isoformat(),
-        "status": target.status,
-        "points": target.points,
-        "activity_points": target.activity_points,
-        "level": level_info["level"],
-        "title": level_info["title"],
-        "exp": level_info["exp"],
-        "exp_in_level": level_info["exp_in_level"],
-        "exp_to_next": level_info["exp_to_next"],
-        "progress_pct": level_info["progress_pct"],
-        "total_earned": total_earned,
-        "total_consumed": abs(total_consumed),
-        "surveys_published": surveys_published.count(),
-        "fills_count": fills.count(),
-        "recent_surveys": [
-            {"id": s.id, "title": s.title, "status": s.status, "created_at": s.created_at.isoformat()}
-            for s in surveys_published[:5]
-        ],
-    })
+    return JsonResponse(
+        {
+            "id": target.id,
+            "nickname": target.nickname,
+            "email": target.email,
+            "created_at": target.created_at.isoformat(),
+            "status": target.status,
+            "is_admin": is_admin,
+            "points": target.points,
+            "activity_points": target.activity_points,
+            "level": level_info["level"],
+            "title": level_info["title"],
+            "exp": level_info["exp"],
+            "exp_in_level": level_info["exp_in_level"],
+            "exp_to_next": level_info["exp_to_next"],
+            "progress_pct": level_info["progress_pct"],
+            "total_earned": total_earned,
+            "total_consumed": abs(total_consumed),
+            "surveys_published": surveys_published.count(),
+            "fills_count": fills.count(),
+            "recent_surveys": [
+                {
+                    "id": s.id,
+                    "title": s.title,
+                    "status": s.status,
+                    "created_at": s.created_at.isoformat(),
+                }
+                for s in surveys_published[:5]
+            ],
+        }
+    )
 
 
 @csrf_exempt
@@ -612,7 +766,7 @@ def update_user_info(request, user_id):
         target_id=target.id,
         action="update_user",
         operator=user,
-        note=f"更新用户信息"
+        note=f"更新用户信息",
     )
 
     return JsonResponse({"success": True, "message": "用户信息已更新"})
@@ -643,7 +797,7 @@ def delete_user(request, user_id):
         target_id=user_id,
         action="delete_user",
         operator=user,
-        note=f"删除用户: {target_nickname}"
+        note=f"删除用户: {target_nickname}",
     )
 
     return JsonResponse({"success": True, "message": "用户已删除"})
@@ -669,6 +823,40 @@ def update_user_status(request, user_id):
     target.save(update_fields=["status", "updated_at"])
 
     return JsonResponse({"success": True, "new_status": new_status})
+
+
+@csrf_exempt
+def promote_user_admin(request, user_id):
+    user, err = require_admin(request)
+    if err:
+        return err
+
+    if request.method != "POST":
+        return error(405, "请求方法不允许")
+
+    try:
+        target = AppUser.objects.get(id=user_id)
+    except AppUser.DoesNotExist:
+        return error(404, "用户不存在")
+
+    admin_role, _ = Role.objects.get_or_create(
+        name="admin", defaults={"description": "系统管理员"}
+    )
+
+    _, created = UserRole.objects.get_or_create(user=target, role=admin_role)
+
+    AuditLog.objects.create(
+        target_type="user",
+        target_id=target.id,
+        action="promote_admin",
+        operator=user,
+        note=f"提权为管理员: {target.nickname}({target.email})",
+    )
+
+    if created:
+        return JsonResponse({"success": True, "message": "用户已提升为管理员"})
+
+    return JsonResponse({"success": True, "message": "该用户已是管理员"})
 
 
 @csrf_exempt
@@ -731,19 +919,23 @@ def batch_adjust_points(request):
                 ref_type="batch_adjust",
                 ref_id=user.id,
             )
-            updated_users.append({
-                "id": target_user.id,
-                "nickname": target_user.nickname,
-                "new_points": target_user.points,
-            })
+            updated_users.append(
+                {
+                    "id": target_user.id,
+                    "nickname": target_user.nickname,
+                    "new_points": target_user.points,
+                }
+            )
         except AppUser.DoesNotExist:
             continue
 
-    return JsonResponse({
-        "success": True,
-        "updated_count": len(updated_users),
-        "updated_users": updated_users,
-    })
+    return JsonResponse(
+        {
+            "success": True,
+            "updated_count": len(updated_users),
+            "updated_users": updated_users,
+        }
+    )
 
 
 @csrf_exempt
@@ -767,24 +959,29 @@ def notification_list(request):
 
     total = queryset.count()
     offset = (page - 1) * page_size
-    messages = queryset[offset:offset + page_size]
+    messages = queryset[offset : offset + page_size]
 
-    return JsonResponse({
-        "messages": [{
-            "id": m.id,
-            "title": m.title,
-            "content": m.content,
-            "type": m.type,
-            "message_type": m.message_type,
-            "status": m.status,
-            "sender": m.sender.nickname if m.sender else "系统",
-            "created_at": m.created_at.isoformat(),
-            "read_at": m.read_at.isoformat() if m.read_at else None,
-        } for m in messages],
-        "total": total,
-        "page": page,
-        "page_size": page_size,
-    })
+    return JsonResponse(
+        {
+            "messages": [
+                {
+                    "id": m.id,
+                    "title": m.title,
+                    "content": m.content,
+                    "type": m.type,
+                    "message_type": m.message_type,
+                    "status": m.status,
+                    "sender": m.sender.nickname if m.sender else "系统",
+                    "created_at": m.created_at.isoformat(),
+                    "read_at": m.read_at.isoformat() if m.read_at else None,
+                }
+                for m in messages
+            ],
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+        }
+    )
 
 
 @csrf_exempt
@@ -853,22 +1050,23 @@ def create_announcement(request):
 
     messages = []
     for target in target_users:
-        messages.append(Message(
-            user=target,
-            sender=user,
-            title=title,
-            content=content,
-            type="announcement",
-            message_type="system",
-            status="unread"
-        ))
+        messages.append(
+            Message(
+                user=target,
+                sender=user,
+                title=title,
+                content=content,
+                type="announcement",
+                message_type="system",
+                status="unread",
+            )
+        )
 
     Message.objects.bulk_create(messages)
 
-    return JsonResponse({
-        "success": True,
-        "message": f"公告已发送给 {len(messages)} 位用户"
-    })
+    return JsonResponse(
+        {"success": True, "message": f"公告已发送给 {len(messages)} 位用户"}
+    )
 
 
 @csrf_exempt
@@ -883,29 +1081,33 @@ def announcement_list(request):
     page = parse_int(request.GET.get("page", 1)) or 1
     page_size = parse_int(request.GET.get("page_size", 20)) or 20
 
-    queryset = Message.objects.filter(
-        sender=user,
-        type="announcement"
-    ).order_by("-created_at")
+    queryset = Message.objects.filter(sender=user, type="announcement").order_by(
+        "-created_at"
+    )
 
     total = queryset.count()
     offset = (page - 1) * page_size
-    messages = queryset[offset:offset + page_size]
+    messages = queryset[offset : offset + page_size]
 
-    return JsonResponse({
-        "messages": [{
-            "id": m.id,
-            "title": m.title,
-            "content": m.content,
-            "status": m.status,
-            "recipient": m.user.nickname,
-            "created_at": m.created_at.isoformat(),
-            "read_at": m.read_at.isoformat() if m.read_at else None,
-        } for m in messages],
-        "total": total,
-        "page": page,
-        "page_size": page_size,
-    })
+    return JsonResponse(
+        {
+            "messages": [
+                {
+                    "id": m.id,
+                    "title": m.title,
+                    "content": m.content,
+                    "status": m.status,
+                    "recipient": m.user.nickname,
+                    "created_at": m.created_at.isoformat(),
+                    "read_at": m.read_at.isoformat() if m.read_at else None,
+                }
+                for m in messages
+            ],
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+        }
+    )
 
 
 @csrf_exempt
@@ -915,11 +1117,12 @@ def survey_detail(request, survey_id):
         return err
 
     try:
-        survey = Survey.objects.select_related('owner').get(id=survey_id)
+        survey = Survey.objects.select_related("owner").get(id=survey_id)
     except Survey.DoesNotExist:
         return error(404, "问卷不存在")
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         return error(500, f"查询问卷失败: {str(e)}")
 
@@ -930,6 +1133,7 @@ def survey_detail(request, survey_id):
         avg_duration = total_duration / response_count if response_count > 0 else 0
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         return error(500, f"查询响应数据失败: {str(e)}")
 
@@ -938,28 +1142,31 @@ def survey_detail(request, survey_id):
         owner_id = survey.owner.id if survey.owner else None
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         owner_nickname = "未知"
         owner_id = None
 
-    return JsonResponse({
-        "id": survey.id,
-        "title": survey.title,
-        "description": survey.description,
-        "owner_nickname": owner_nickname,
-        "owner_id": owner_id,
-        "created_at": survey.created_at.isoformat(),
-        "status": survey.status,
-        "difficulty": survey.difficulty,
-        "estimated_minutes": survey.estimated_minutes,
-        "target": survey.target,
-        "completed": survey.completed,
-        "reward_points": survey.reward_points,
-        "publish_cost_points": survey.publish_cost_points,
-        "ai_generated": survey.ai_generated,
-        "response_count": response_count,
-        "avg_duration_seconds": round(avg_duration, 2),
-    })
+    return JsonResponse(
+        {
+            "id": survey.id,
+            "title": survey.title,
+            "description": survey.description,
+            "owner_nickname": owner_nickname,
+            "owner_id": owner_id,
+            "created_at": survey.created_at.isoformat(),
+            "status": survey.status,
+            "difficulty": survey.difficulty,
+            "estimated_minutes": survey.estimated_minutes,
+            "target": survey.target,
+            "completed": survey.completed,
+            "reward_points": survey.reward_points,
+            "publish_cost_points": survey.publish_cost_points,
+            "ai_generated": survey.ai_generated,
+            "response_count": response_count,
+            "avg_duration_seconds": round(avg_duration, 2),
+        }
+    )
 
 
 @csrf_exempt
@@ -994,7 +1201,7 @@ def create_survey(request):
         target_id=survey.id,
         action="create_survey",
         operator=user,
-        note=f"创建问卷: {title}"
+        note=f"创建问卷: {title}",
     )
 
     return JsonResponse({"success": True, "id": survey.id, "message": "问卷创建成功"})
@@ -1058,7 +1265,7 @@ def delete_survey(request, survey_id):
         target_id=survey_id,
         action="delete_survey",
         operator=user,
-        note=f"删除问卷: {survey_title}"
+        note=f"删除问卷: {survey_title}",
     )
 
     return JsonResponse({"success": True, "message": "问卷已删除"})
@@ -1086,7 +1293,7 @@ def force_close_survey(request, survey_id):
         target_id=survey_id,
         action="force_close_survey",
         operator=user,
-        note=f"强制关闭问卷: {survey.title}"
+        note=f"强制关闭问卷: {survey.title}",
     )
 
     return JsonResponse({"success": True, "message": "问卷已强制结束"})
@@ -1107,25 +1314,30 @@ def pending_surveys(request):
     queryset = Survey.objects.filter(status="pending_review").order_by("-created_at")
     total = queryset.count()
     offset = (page - 1) * page_size
-    surveys = queryset[offset:offset + page_size]
+    surveys = queryset[offset : offset + page_size]
 
-    return JsonResponse({
-        "surveys": [{
-            "id": s.id,
-            "title": s.title,
-            "description": s.description,
-            "owner": s.owner.nickname,
-            "owner_id": s.owner.id,
-            "reward_points": s.reward_points,
-            "difficulty": s.difficulty,
-            "estimated_minutes": s.estimated_minutes,
-            "status": s.status,
-            "created_at": s.created_at.isoformat(),
-        } for s in surveys],
-        "total": total,
-        "page": page,
-        "page_size": page_size,
-    })
+    return JsonResponse(
+        {
+            "surveys": [
+                {
+                    "id": s.id,
+                    "title": s.title,
+                    "description": s.description,
+                    "owner": s.owner.nickname,
+                    "owner_id": s.owner.id,
+                    "reward_points": s.reward_points,
+                    "difficulty": s.difficulty,
+                    "estimated_minutes": s.estimated_minutes,
+                    "status": s.status,
+                    "created_at": s.created_at.isoformat(),
+                }
+                for s in surveys
+            ],
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+        }
+    )
 
 
 @csrf_exempt
@@ -1153,7 +1365,7 @@ def approve_survey(request, survey_id):
         target_id=survey_id,
         action="approve_survey",
         operator=user,
-        note=f"审核通过问卷: {survey.title}"
+        note=f"审核通过问卷: {survey.title}",
     )
 
     return JsonResponse({"success": True, "message": "问卷已审核通过"})
@@ -1187,7 +1399,7 @@ def reject_survey(request, survey_id):
         target_id=survey_id,
         action="reject_survey",
         operator=user,
-        note=f"审核拒绝问卷: {survey.title}，原因: {reason}"
+        note=f"审核拒绝问卷: {survey.title}，原因: {reason}",
     )
 
     return JsonResponse({"success": True, "message": "问卷已审核拒绝"})
@@ -1207,7 +1419,7 @@ def operation_logs(request):
     action = request.GET.get("action", "")
     target_type = request.GET.get("target_type", "")
 
-    queryset = AuditLog.objects.filter(operator=user).order_by("-created_at")
+    queryset = AuditLog.objects.select_related("operator").all().order_by("-created_at")
 
     if action:
         queryset = queryset.filter(action__icontains=action)
@@ -1216,19 +1428,24 @@ def operation_logs(request):
 
     total = queryset.count()
     offset = (page - 1) * page_size
-    logs = queryset[offset:offset + page_size]
+    logs = queryset[offset : offset + page_size]
 
-    return JsonResponse({
-        "logs": [{
-            "id": log.id,
-            "action": log.action,
-            "target_type": log.target_type,
-            "target_id": log.target_id,
-            "note": log.note,
-            "operator": log.operator.nickname,
-            "created_at": log.created_at.isoformat(),
-        } for log in logs],
-        "total": total,
-        "page": page,
-        "page_size": page_size,
-    })
+    return JsonResponse(
+        {
+            "logs": [
+                {
+                    "id": log.id,
+                    "action": log.action,
+                    "target_type": log.target_type,
+                    "target_id": log.target_id,
+                    "note": log.note,
+                    "operator": log.operator.nickname if log.operator else "系统",
+                    "created_at": log.created_at.isoformat(),
+                }
+                for log in logs
+            ],
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+        }
+    )

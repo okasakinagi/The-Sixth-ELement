@@ -2,7 +2,6 @@ import getpass
 
 from django.contrib.auth.hashers import make_password
 from django.core.management.base import BaseCommand
-from django.db import transaction
 
 from core.models import AppUser, AuthCredential, Role, UserRole
 
@@ -18,6 +17,15 @@ class Command(BaseCommand):
         email = options["email"]
         nickname = options["nickname"]
 
+        # create_admin 仅用于冷启动首个管理员初始化。
+        if UserRole.objects.filter(role__name="admin").exists():
+            self.stdout.write(
+                self.style.ERROR(
+                    "系统中已存在管理员。请在后台用户管理中使用提权功能，不允许再次使用 create_admin。"
+                )
+            )
+            return
+
         if not email:
             email = input("请输入管理员邮箱: ").strip()
 
@@ -27,14 +35,15 @@ class Command(BaseCommand):
 
         # 增强密码强度检查
         import re
+
         errors = []
         if len(password) < 8:
             errors.append("密码长度至少8位")
-        if not re.search(r'[A-Z]', password):
+        if not re.search(r"[A-Z]", password):
             errors.append("密码至少包含一个大写字母")
-        if not re.search(r'[a-z]', password):
+        if not re.search(r"[a-z]", password):
             errors.append("密码至少包含一个小写字母")
-        if not re.search(r'[0-9]', password):
+        if not re.search(r"[0-9]", password):
             errors.append("密码至少包含一个数字")
         if not re.search(r'[!@#$%^&*(),.?":{}|<>]', password):
             errors.append("密码至少包含一个特殊字符")
@@ -81,12 +90,13 @@ class Command(BaseCommand):
 
         # 记录审计日志
         from core.models import AuditLog
+
         AuditLog.objects.create(
             target_type="AppUser",
             target_id=user.id,
             action="create_admin",
             operator=None,  # 系统操作
-            note=f"创建/更新管理员账户: {email}"
+            note=f"创建/更新管理员账户: {email}",
         )
 
         self.stdout.write(self.style.SUCCESS(f"\nAdmin user created successfully!"))

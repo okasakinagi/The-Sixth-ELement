@@ -714,3 +714,41 @@ class RiskEvent(models.Model):
             models.Index(fields=["severity"], name="risk_event_severity_idx"),
             models.Index(fields=["created_at"], name="risk_event_created_idx"),
         ]
+
+
+class UserBehaviorLog(models.Model):
+    """用户行为日志。
+
+    仅用于后台分析与运营统计，不对普通用户暴露。
+    """
+
+    EVENT_TYPE_CHOICES = [
+        ("impression", "曝光"),
+        ("click", "点击"),
+        ("refresh", "换一批"),
+        ("dismiss", "不感兴趣"),
+    ]
+
+    SCENE_CHOICES = [
+        ("task_list", "任务列表"),
+        ("task_refresh", "任务换一批"),
+        ("daily_recommend", "每日推荐"),
+        ("home_feed", "首页Feed"),
+        ("home_trending", "首页Trending"),
+        ("fill_entry", "填写入口"),
+    ]
+
+    user = models.ForeignKey(AppUser, on_delete=models.SET_NULL, blank=True, null=True)
+    survey = models.ForeignKey(Survey, on_delete=models.SET_NULL, blank=True, null=True)
+    event_type = models.CharField(max_length=32, choices=EVENT_TYPE_CHOICES)
+    scene = models.CharField(max_length=32, choices=SCENE_CHOICES, default="task_list")
+    meta_json = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["event_type", "created_at"], name="ubl_event_created_idx"),
+            models.Index(fields=["scene", "created_at"], name="ubl_scene_created_idx"),
+            models.Index(fields=["user", "created_at"], name="ubl_user_created_idx"),
+            models.Index(fields=["survey", "created_at"], name="ubl_survey_created_idx"),
+        ]

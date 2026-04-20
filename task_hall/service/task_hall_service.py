@@ -15,6 +15,7 @@ from core.models import (
     UserTag,
 )
 from core.services.similarity_service import SimilarityService
+from core.services.user_behavior_log_service import UserBehaviorLogService
 from task_hall.mapper.task_hall_mapper import TaskHallMapper
 
 
@@ -106,7 +107,12 @@ class TaskHallService:
 
     def _get_feed_items(self, user, limit):
         if user:
-            payload = self.refresh_batch(user, exclude_task_ids=[], batch_size=limit)
+            payload = self.refresh_batch(
+                user,
+                exclude_task_ids=[],
+                batch_size=limit,
+                scene="home_feed",
+            )
             return payload.get("items", [])[:limit]
         return self.get_guest_tasks(limit).get("items", [])[:limit]
 
@@ -167,6 +173,10 @@ class TaskHallService:
                 else "新发布问卷，欢迎抢先参与"
             )
             items.append(card)
+
+        if user and items:
+            self._log_impressions_from_cards(user.id, items, scene="home_trending")
+
         return items
 
     def list_tasks(self, user, filters):
@@ -186,6 +196,7 @@ class TaskHallService:
         offset = (page - 1) * page_size
 
         items = self._list_personalized_items(user.id, queryset, offset, page_size)
+        self._log_impressions_from_cards(user.id, items, scene="task_list")
         return {
             "items": items,
             "page": page,
@@ -193,7 +204,7 @@ class TaskHallService:
             "total": total,
         }
 
-    def refresh_batch(self, user, exclude_task_ids, batch_size):
+    def refresh_batch(self, user, exclude_task_ids, batch_size, scene="task_refresh"):
         normalized = {"status": list(self.STATUS_LIVE_INTERNAL)}
         queryset = (
             self.mapper.list_surveys(normalized)
@@ -212,6 +223,7 @@ class TaskHallService:
             page_size=size,
             exclude_task_ids=exclude_task_ids,
         )
+        self._log_impressions_from_cards(user.id, items, scene=scene)
         return {"items": items}
 
     def _list_personalized_items(
@@ -466,6 +478,31 @@ class TaskHallService:
     def _public_user_id(self, user_id):
         return f"u_{user_id}"
 
+    def _parse_public_survey_id(self, survey_id):
+        if survey_id is None:
+            return None
+        raw = str(survey_id).strip()
+        if not raw:
+            return None
+        if raw.startswith("s_"):
+            raw = raw[2:]
+        try:
+            value = int(raw)
+        except (TypeError, ValueError):
+            return None
+        return value if value > 0 else None
+
+    def _log_impressions_from_cards(self, user_id, items, scene):
+        if not user_id or not items:
+            return
+        survey_ids = []
+        for item in items:
+            sid = self._parse_public_survey_id(item.get("id"))
+            if sid is not None:
+                survey_ids.append(sid)
+        if survey_ids:
+            UserBehaviorLogService.log_impressions(user_id, survey_ids, scene=scene)
+
     def _iso_str(self, dt):
         if not dt:
             return None
@@ -564,6 +601,8 @@ class TaskHallService:
             card["bonus_claimed"] = sid in claimed_ids
             card["daily_recommend"] = True
             items.append(card)
+
+        self._log_impressions_from_cards(user.id, items, scene="daily_recommend")
 
         return {"date": today.isoformat(), "items": items}
 

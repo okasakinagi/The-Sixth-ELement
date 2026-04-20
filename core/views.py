@@ -414,6 +414,15 @@ def register(request):
     AuthCredential.objects.create(user=user, password_hash=make_password(password))
     record.is_used = True
     record.save(update_fields=["is_used"])
+
+    # 注册完成即视为一次登录事件，触发每日登录任务进度
+    try:
+        from task_hall.service.level_service import LevelService
+
+        LevelService.mark_login(user)
+    except Exception:
+        pass
+
     token, _ = issue_token(user)
     return JsonResponse(
         {
@@ -446,6 +455,14 @@ def login(request):
     # 更新用户活跃时间
     user.last_active_at = timezone.now()
     user.save(update_fields=["last_active_at"])
+
+    # 登录成功时触发每日登录任务进度
+    try:
+        from task_hall.service.level_service import LevelService
+
+        LevelService.mark_login(user)
+    except Exception:
+        pass
 
     token, _ = issue_token(user)
     return JsonResponse(

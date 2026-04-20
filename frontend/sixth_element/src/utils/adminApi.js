@@ -64,6 +64,12 @@ export async function updateUserStatus(userId, status) {
   })
 }
 
+export async function promoteUserToAdmin(userId) {
+  return request(`/users/${userId}/promote-admin`, {
+    method: 'POST',
+  })
+}
+
 export async function updateUserInfo(userId, data) {
   return request(`/users/${userId}/info`, {
     method: 'POST',
@@ -132,6 +138,13 @@ export async function forceCloseSurvey(surveyId) {
 
 export async function getRecommendAnalytics(days = 7) {
   return request(`/analytics/recommend?days=${days}`)
+}
+
+export async function getRecommendBehaviorEvents(days = 7, page = 1, pageSize = 20, eventType = '', scene = '') {
+  let url = `/analytics/recommend/events?days=${days}&page=${page}&page_size=${pageSize}`
+  if (eventType) url += `&event_type=${encodeURIComponent(eventType)}`
+  if (scene) url += `&scene=${encodeURIComponent(scene)}`
+  return request(url)
 }
 
 export async function getAiAnalytics(days = 7) {
