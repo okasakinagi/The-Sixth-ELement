@@ -1,113 +1,25 @@
-# 个人界面 API（UserProfileView / EditProfileView）
+# 个人界面 API
 
-本文档按 RESTful 设计逻辑，描述“个人主页（展示）”与“编辑资料（填写/更新画像）”两个界面所需的接口。
+本文档描述账号基础信息、用户画像和画像匹配接口。当前实现把基础账号信息、个人画像和画像摘要分成了三个独立入口。
 
 ## 约定
 
 - Base URL：`/api/v1`
 - Content-Type：`application/json`
-- 认证方式：Bearer Token
-  - Header：`Authorization: Bearer <access_token>`
+- 认证方式：`Authorization: Bearer <access_token>`
 - 时间格式：ISO 8601
 
-## 资源设计
+## 1. 基础账号信息
 
-### 1) 当前用户（账号基础信息）
-- 资源：`/users/me`
-- 语义：账号层面的昵称、学校、标签、积分等（不包含详细画像字段）
-
-### 2) 当前用户画像（个人主页/匹配画像）
-- 资源：`/users/me/profile`
-- 语义：用于匹配推荐的详细画像字段（性别/学院/专业/兴趣/技能等）
-
-> 说明：为避免 `GET /users/me` 越来越臃肿，这里将“画像”拆为独立子资源。
-
----
-
-## 数据模型（建议）
-
-### User（基础）
-
-```json
-{
-  "id": "u_123",
-  "nickname": "Alice",
-  "credit_score": 80,
-  "points": 120,
-  "activity_points": 56,
-  "has_honor": false
-}
-```
-
-### UserProfile（画像）
-
-```json
-{
-  "user_id": "u_123",
-  "gender": "secret",
-  "age": 20,
-  "grade": "大二",
-  "college": "计算机科学学院",
-  "major": "计算机科学与技术",
-
-  "mbti": "INTJ",
-  "interests": "人工智能、德语初级",
-  "organizations": "校学生会、摄影社",
-
-  "consumption_preferences": ["数码", "奶茶"],
-  "career_intention": ["考公", "大厂"],
-  "skills": ["Python", "视频剪辑"],
-
-  "current_status": "正在备战期末",
-
-  "profile_completion": 67,
-  "updated_at": "2024-01-01T12:00:00Z"
-}
-```
-
-- `gender`：建议枚举：`male` / `female` / `other` / `secret`
-- `mbti`：建议枚举 16 种（`INTJ`...`ESFP`），也可允许为空
-- `profile_completion`：可由后端计算（0-100），也可由前端计算（若后端不提供）
-
-### 字段长度与约束（建议，非强制）
-
-- `college`：<= 50
-- `major`：<= 50
-- `interests`：<= 200
-- `organizations`：<= 200
-- `current_status`：<= 100
-- `consumption_preferences` / `career_intention` / `skills`：数组长度建议 <= 20，每个元素 <= 20
-
-### 字段校验 / 枚举表（建议）
-
-| 字段 | 类型 | 约束 | 枚举/说明 |
-| --- | --- | --- | --- |
-| `gender` | string | 可选 | `male` / `female` / `other` / `secret` |
-| `age` | number | 0-120 | 整数 |
-| `grade` | string | <= 10 | 示例：`大一` |
-| `college` | string | <= 50 | 任意文本 |
-| `major` | string | <= 50 | 任意文本 |
-| `mbti` | string | 可选 | 16 种（如 `INTJ`），可为空 |
-| `interests` | string | <= 200 | 逗号分隔或自由文本 |
-| `organizations` | string | <= 200 | 逗号分隔或自由文本 |
-| `consumption_preferences` | string[] | <= 20 项 | 每项 <= 20 |
-| `career_intention` | string[] | <= 20 项 | 每项 <= 20 |
-| `skills` | string[] | <= 20 项 | 每项 <= 20 |
-| `current_status` | string | <= 100 | 任意文本 |
-
----
-
-## 页面：个人主页（展示） UserProfileView
-
-### 获取当前用户基础信息
+### 获取当前用户
 
 `GET /users/me`
 
-响应体：
+响应示例：
 
 ```json
 {
-  "id": "u_123",
+  "id": "1",
   "nickname": "Alice",
   "credit_score": 80,
   "points": 120,
@@ -116,102 +28,152 @@
 }
 ```
 
-> 说明：当前实现的 `GET /users/me` 只返回账号层字段；`school` 和 `tags` 是 `PATCH /users/me` 的写入输入，不会随响应原样返回。
+说明：
 
-### 获取当前用户画像（用于展示与匹配）
+- 这里只返回账号层字段。
+- `has_honor` 按 `credit_score >= 85` 计算。
 
-`GET /users/me/profile`
+### 更新当前用户
 
-响应体：
+`PATCH /users/me`
+
+请求体：
 
 ```json
 {
-  "user_id": "u_123",
-  "gender": "secret",
-  "age": 20,
-  "grade": "大二",
-  "college": "计算机科学学院",
-  "major": "计算机科学与技术",
-  "mbti": "INTJ",
-  "interests": "人工智能、德语初级",
-  "organizations": "校学生会、摄影社",
-  "consumption_preferences": ["数码", "奶茶"],
-  "career_intention": ["考公", "大厂"],
-  "skills": ["Python", "视频剪辑"],
-  "current_status": "正在备战期末",
-  "profile_completion": 67,
-  "updated_at": "2024-01-01T12:00:00Z"
+  "nickname": "Alice2026",
+  "school": "X大学",
+  "tags": ["心理学", "产品", "设计"]
 }
 ```
 
-> 前端建议：页面初始化时并发调用 `GET /users/me` 与 `GET /users/me/profile`，减少首屏等待。
+说明：
 
----
+- `nickname` 直接更新昵称。
+- `school` 和 `tags` 由后端映射为标签系统字段。
 
-## 页面：编辑资料 EditProfileView
+### 通过邮箱搜索用户
 
-### 更新当前用户画像（非强制填写）
+`GET /users/search?email=alice@example.com`
+
+说明：
+
+- 仅支持精确邮箱搜索。
+- 不能搜索自己。
+
+响应示例：
+
+```json
+{
+  "id": "2",
+  "nickname": "Bob",
+  "email": "bob@example.com",
+  "points": 88
+}
+```
+
+## 2. 用户画像
+
+### 获取当前用户画像
+
+`GET /users/me/profile`
+
+响应示例：
+
+```json
+{
+  "user_id": 1,
+  "gender": "female",
+  "age": 20,
+  "grade": "大二",
+  "college": "计算机学院",
+  "major": "计算机科学与技术",
+  "mbti": "INTJ",
+  "interests": ["人工智能", "德语"],
+  "organizations": ["学生会"],
+  "consumption_preferences": ["数码", "奶茶"],
+  "career_intention": ["大厂"],
+  "skills": ["Python"],
+  "current_status": "备战期末",
+  "profile_completion": 67,
+  "updated_at": "2026-01-01T12:00:00Z"
+}
+```
+
+### 部分更新画像
 
 `PATCH /users/me/profile`
 
 说明：
-- “非强制”策略：所有字段均可选；缺省字段不应被强制要求。
-- `PATCH` 语义：仅更新传入字段；未传入字段保持不变。
 
-请求体（示例）：
+- 只更新传入字段，未传字段保持不变。
+- 支持 `careerIntention`、`consumptionPreferences`、`currentStatus` 等 camelCase 兼容字段。
 
-```json
-{
-  "gender": "female",
-  "age": 19,
-  "grade": "大一",
-  "college": "物理学院",
-  "major": "应用物理学",
-  "mbti": "INFP",
-  "interests": "人工智能、德语初级",
-  "organizations": "校学生会、摄影社",
-  "consumption_preferences": ["数码", "户外"],
-  "career_intention": ["学术"],
-  "skills": ["Python", "英语口译"],
-  "current_status": "正在备战期末"
-}
-```
-
-响应体：更新后的画像（字段同 `GET /users/me/profile`）。
-
-###（可选）覆盖式更新画像
+### 完整替换画像
 
 `PUT /users/me/profile`
 
 说明：
-- 若后端更偏好“整对象提交”，可提供 `PUT`。
-- `PUT` 语义：客户端提交完整画像对象，后端用提交内容覆盖（未填字段将被置空/默认）。
 
----
+- 先清空同类标签，再按请求体重建。
+- 适合“整页保存”场景。
 
-## 匹配相关说明（与个人界面强相关）
+## 3. 画像匹配
 
-- 学院/专业改为填空后，后端在匹配算法中应支持关键词模糊匹配
-  - 示例：用户填写“计算机”，可匹配到“计算机科学与技术”相关标签/问卷
+### 获取匹配画像列表
 
----
+`GET /users/me/profile/matches`
 
-## 错误码（本页面常见）
+可选查询参数：
 
-- `401` 未登录或 Token 过期
-- `422` 参数校验失败（如 `age` 非数字、数组元素过长等）
+- `college`
+- `major`
+- `mbti`
+- `min_completion`
 
-错误响应示例：
+响应：
 
 ```json
 {
-  "error": {
-    "code": "validation_error",
-    "message": "参数校验失败",
-    "details": {
-      "age": ["must be between 0 and 120"],
-      "major": ["max length is 50"]
+  "matches": [
+    {
+      "user_id": 2,
+      "gender": "male",
+      "college": "计算机学院",
+      "major": "软件工程",
+      "profile_completion": 82
     }
+  ]
+}
+```
+
+## 4. 画像摘要
+
+### 获取画像摘要
+
+`GET /profile/summary`
+
+响应示例：
+
+```json
+{
+  "profile_summary": "用户兴趣：人工智能\n最近活跃：7天内",
+  "user": {
+    "id": 1,
+    "nickname": "Alice",
+    "email": "alice@example.com"
   }
 }
 ```
+
+说明：
+
+- 这是字符串摘要接口，不是结构化画像接口。
+- 更适合推荐、调试或日志展示。
+
+## 常见错误码
+
+- `401` 未登录或 Token 过期
+- `404` 用户不存在
+- `405` 方法不允许
+- `422` 参数校验失败

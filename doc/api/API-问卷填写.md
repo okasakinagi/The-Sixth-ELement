@@ -1,23 +1,30 @@
-# 问卷填写 API（Survey Fill）
+# 问卷填写 API
 
-本文档描述“问卷填写”页面所需接口，包含问卷详情获取、提交答卷与奖励入账说明。
+本文档描述问卷详情获取、答卷提交与奖励入账接口。当前主流程是“提交即发奖”，不是提交后审核发奖。
 
 ## 约定
 
 - Base URL：`/api/v1`
 - Content-Type：`application/json`
-- 认证方式：Bearer Token（可选开放匿名填写）
+- 认证方式：答卷提交需要 Bearer Token；填写页详情可匿名打开
 - 时间格式：ISO 8601
 
----
+## 1. 获取问卷详情
 
-## 数据模型（建议）
+### 获取填写页数据
 
-### SurveyFill
+`GET /surveys/{survey_id}/fill`
+
+说明：
+
+- 该接口返回题目列表，用于渲染填写页。
+- 当前实现允许匿名访问；如果请求里带有已登录用户，会记录点击行为。
+
+响应示例：
 
 ```json
 {
-  "id": "S-1204",
+  "id": "34",
   "title": "城市通勤满意度问卷",
   "subtitle": "了解通勤体验与痛点",
   "questions": [
@@ -33,88 +40,31 @@
 }
 ```
 
-### SurveyResponse
-
-```json
-{
-  "survey_id": "s_abc123",
-  "answers": [
-    {
-      "question_id": "q_1",
-      "value": "3-4 次"
-    },
-    {
-      "question_id": "q_2",
-      "value": ["家常菜", "轻食沙拉"]
-    },
-    {
-      "question_id": "q_3",
-      "value": "菜品丰富，环境整洁"
-    },
-    {
-      "question_id": "q_4",
-      "value": ["张三", "13800138000", "zhangsan@example.com"]
-    }
-  ],
-  "duration_seconds": 180
-}
-```
-
----
-
-## 字段校验 / 枚举表（建议）
-
-| 字段 | 类型 | 约束 | 枚举/说明 |
-| --- | --- | --- | --- |
-| `questions[].id` | string | <= 32 | 题目唯一ID |
-| `questions[].type` | string | 必填 | `single` / `multi` / `text` / `multi-text` |
-| `questions[].title` | string | <= 200 | 题干文本 |
-| `questions[].options` | string[] | 选项题必填 | 选项数组，单项 <= 50 |
-| `questions[].required` | boolean | 必填 | 是否必填 |
-| `questions[].order` | number | >= 1 | 题目顺序 |
-| `answers[].question_id` | string | 必填 | 题目ID |
-| `answers[].value` | string/array | 必填 | 答案内容，格式见下方说明 |
-| `duration_seconds` | number | >= 0 | 填答耗时（秒），用于防作弊 |
-
-**`value` 字段格式规则：**
-
-- `single`（单选题）：字符串，必须是 `options` 中的一项，如 `"选项1"`
-- `multi`（多选题）：字符串数组，每项必须在 `options` 中，如 `["选项1", "选项3"]`
-- `text`（填空题）：字符串，自由文本，如 `"用户填写的完整回答"`
-- `multi-text`（多项填空）：字符串数组，长度应与 `options` 一致，如 `["张三", "13800138000", "zhangsan@example.com"]`
-
----
-
-## 页面：问卷填写
-
-### 获取问卷详情（用于填写）
-
-**当前实现：**
-
-`GET /surveys/{survey_id}`
-
-**推荐/主流程接口：**
-
-`GET /surveys/{survey_id}/fill`
-
-响应体：`SurveyFill`（必须包含 `questions` 字段）
-
-**注意**：前端依赖 `questions` 数组来渲染题目，后端必须返回此字段。
-**说明**：当前控制器对 `GET /surveys/{survey_id}/fill` 不要求登录，但提交答卷仍然需要认证。
-
----
+## 2. 提交答卷
 
 ### 提交答卷
 
 `POST /surveys/{survey_id}/fills`
 
-请求体：`SurveyResponse`
-
-响应体：
+请求体：
 
 ```json
 {
-  "id": "f_xyz789",
+  "duration_seconds": 180,
+  "answers": [
+    {
+      "question_id": "q_1",
+      "value": "地铁"
+    }
+  ]
+}
+```
+
+响应示例：
+
+```json
+{
+  "id": "f_abc123",
   "status": "submitted",
   "points_awarded": 5,
   "points_expected": 5,
@@ -125,55 +75,24 @@
 }
 ```
 
-**字段说明：**
-- `id`：填写记录ID
-- `status`：当前实现提交后为 `submitted`
-- `points_awarded`：本次已发放积分（提交后即时发放）
-- `points_expected`：预期奖励积分（通常等于 `points_awarded`）
-- `points_receiver_id`：实际入账对象 ID，未加入队伍时为当前用户，加入有效队伍时为队长
-- `points_receiver_nickname`：实际入账对象昵称
-- `points_flow`：`self` / `team_owner`
-- `points_flow_message`：前端可直接展示的提示语
+说明：
 
-**说明（当前实现）**：主流程已取消“提交后等待审核再发奖”，改为提交成功后即时发放奖励积分；如果提交者已加入有效队伍且不是队长，奖励会记到队长账户，但提交者自己的 `activity_points` 仍会增加。
+- `duration_seconds` 不能少于 10 秒。
+- 同一用户对同一问卷只能提交一次。
+- 不能填写自己发布的问卷。
+- 如果提交者已加入有效队伍且不是队长，奖励会记到队长账户。
+- 提交成功后，`activity_points` 仍会增加。
 
-**后端校验规则：**
-1. 所有 `required: true` 的题目必须有答案
-2. 单选/多选题的 `value` 必须在 `options` 范围内
-3. 同一用户对同一问卷只能提交一次（唯一性约束）
-4. `duration_seconds` 不能小于合理阈值（如 10 秒，防作弊）
-5. 不能填写自己发布的问卷
+## 3. 当前校验规则
 
----
+- 问卷必须处于 `published`。
+- 问卷必须已经有已发布的内容。
+- 必答题不能为空。
+- 单选/多选答案必须匹配题目选项。
 
-## 前端本地缓存机制
-
-**LocalStorage 键名：** `survey-fill-{survey_id}`
-
-**存储内容示例：**
-```json
-{
-  "q_1": "3-4 次",
-  "q_2": ["家常菜", "轻食沙拉"],
-  "q_3": "菜品丰富"
-}
-```
-
-**实现逻辑：**
-- 加载时：从 LocalStorage 恢复已填答案
-- 填写时：每次选择/输入立即保存，每 30 秒自动保存
-- 提交后：清除 LocalStorage 缓存
-- 异常恢复：刷新页面后自动恢复进度
-
----
-
-## 错误码（本页面常见）
+## 常见错误码
 
 - `401` 未登录或 Token 过期
 - `404` 问卷不存在
-- `422` 问卷已关闭/不可填写（`survey not active`）
-- `422` 填写自己的问卷（`cannot fill your own survey`）
-- `422` 已提交过该问卷（`already filled`）
-- `422` 必填题未填（`question {id} is required`）
-- `422` 选项不合法（`invalid option for question {id}`）
-- `422` 填写时间过短（`fill duration too short`）
+- `405` 方法不允许
+- `422` 问卷不可填写、自己问卷、已提交过、时长过短或答案非法

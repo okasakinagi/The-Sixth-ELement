@@ -1,6 +1,6 @@
-# 问卷管理 API（SurveyManagementView）
+# 问卷管理 API
 
-本文档描述“问卷管理”页面所需接口，包括列表、状态切换、删除与发布确认。
+本文档描述问卷列表、详情、状态切换、发布、取消和删除接口。
 
 ## 约定
 
@@ -9,80 +9,22 @@
 - 认证方式：Bearer Token
 - 时间格式：ISO 8601
 
----
+## 1. 问卷列表
 
-## 数据模型（建议）
+### 获取我的问卷列表
 
-```json
-{
-  "id": "S-1204",
-  "title": "城市通勤满意度问卷",
-  "status": "draft",
-  "completed": 0,
-  "target": 120,
-  "updated_at": "2026-01-12",
-  "subtitle": "了解通勤体验与痛点",
-  "created_at": "2026-01-10T12:00:00Z"
-}
-```
+`GET /surveys?status=&keyword=`
 
-- `status`：`draft` / `live` / `paused` / `ended`
-- `subtitle`：对应问卷说明（来自编辑器“问卷说明”）
+说明：
 
-### 字段校验 / 枚举表（建议）
+- `status` 支持 `draft`、`live`、`paused`、`ended`。
+- `keyword` 按标题模糊搜索。
 
-| 字段 | 类型 | 约束 | 枚举/说明 |
-| --- | --- | --- | --- |
-| `id` | string | <= 20 | 问卷编号 |
-| `title` | string | <= 60 | 问卷主标题 |
-| `subtitle` | string | <= 120 | 问卷说明 |
-| `status` | string | 必填 | `draft` / `live` / `paused` / `ended` |
-| `completed` | number | >= 0 | 已完成份数 |
-| `target` | number | >= 1 | 目标份数 |
-| `updated_at` | string | ISO 8601 | 最后更新时间 |
-
----
-
-## 页面：问卷列表
-
-前端交互说明（当前实现）：
-
-- 列表操作按钮按状态区分：
-  - `draft` 显示“编辑问卷”，进入可编辑模式；
-  - `live/paused/ended` 显示“查看问卷”，进入查看并可编辑；保存时另存为新草稿，不覆盖原问卷。
-
-### 获取问卷列表
-
-`GET /surveys`
-
-Query 参数：
-
-- `status`（可选）：筛选状态，支持 `draft` / `live` / `paused` / `ended`
-- `keyword`（可选）：按标题模糊搜索
-
-响应体：
-
-```json
-{
-  "items": [
-    {
-      "id": "S-1204",
-      "title": "城市通勤满意度问卷",
-      "status": "draft",
-      "completed": 0,
-      "target": 120,
-      "updated_at": "2026-01-12",
-      "subtitle": "了解通勤体验与痛点"
-    }
-  ]
-}
-```
-
-### 获取问卷统计摘要
+### 获取统计摘要
 
 `GET /surveys/summary`
 
-响应体：
+响应：
 
 ```json
 {
@@ -92,96 +34,35 @@ Query 参数：
 }
 ```
 
----
+## 2. 草稿
 
-## 页面：问卷操作
+### 创建草稿
 
-### 删除问卷
+`POST /surveys/drafts`
 
-`DELETE /surveys/{survey_id}`
+### 获取草稿详情
 
-响应体：
+`GET /surveys/drafts/{draft_id}`
 
-```json
-{
-  "success": true
-}
-```
+### 更新草稿
 
-说明：
+`PATCH /surveys/drafts/{draft_id}`
 
-- 当前实现会在删除已发布/暂停问卷前先按同一退款口径结算可退还预算。
-- 与 `cancel` 的区别是：`delete` 会直接移除问卷，而 `cancel` 只会把问卷置为 `ended` 并保留数据。
+### AI 生成题目
 
-### 暂停投放
+`POST /surveys/drafts/{draft_id}/ai-generate`
 
-`POST /surveys/{survey_id}/pause`
+### 删除草稿题目
 
-响应体：
+`DELETE /surveys/drafts/{draft_id}/questions/{question_id}`
 
-```json
-{
-  "id": "S-1205",
-  "status": "paused"
-}
-```
+## 3. 发布与投放
 
-### 恢复投放
-
-`POST /surveys/{survey_id}/resume`
-
-响应体：
-
-```json
-{
-  "id": "S-1205",
-  "status": "live"
-}
-```
-
-### 取消发布
-
-`POST /surveys/{survey_id}/cancel`
-
-响应体：
-
-```json
-{
-  "id": "S-1205",
-  "status": "ended",
-  "refund": 80
-}
-```
-
-说明：
-
-- 取消发布不会删除问卷数据，只会把状态改为 `ended`。
-- 退款按当前实现计算为：`max(0, 剩余总额 - 推断的加速预算)`。
-- 推断的加速预算 = `max(0, publish_cost_points - reward_points * target)`。
-
-### 问卷评估（兼容）
-
-`GET /surveys/{survey_id}/evaluate`
-
-响应体：
-
-```json
-{
-  "difficulty_level": 3,
-  "estimated_time_minutes": 5
-}
-```
-
-说明：
-
-- 该接口用于根据题目内容估算难度和预计填写时长。
-- 如果 AI 评估不可用，后端会退回到简单规则估算。
-
-### 发布问卷（积分结算前确认）
+### 发布问卷
 
 `POST /surveys/{survey_id}/publish`
 
-请求体（示例）：
+请求体：
 
 ```json
 {
@@ -191,36 +72,58 @@ Query 参数：
 }
 ```
 
-参数说明（当前实现）：
+规则：
 
-- `reward_points`：必填，每份问卷奖励积分（后端不再自动推测）
-- `budget_points`：必填，总预算，需满足 `budget_points >= reward_points * target`
-- `target`：必填，目标份数，且必须大于 0
-- 发布前约束：草稿问卷必须至少包含 1 道题，否则返回 `422`
-- 当前实现会把 `survey.reward_points` 直接写成请求体中的 `reward_points`，并把 `survey.publish_cost_points` 写成 `budget_points`。
-- 预算扣费会立即发生，发布成功后返回 `status: live`。
+- `reward_points`、`budget_points`、`target` 都必填。
+- `budget_points >= reward_points * target`。
+- 草稿必须至少有 1 道题。
+- 发布成功后，问卷状态为 `live`。
 
-响应体：
+### 暂停投放
 
-```json
-{
-  "id": "S-1204",
-  "status": "live",
-  "published_at": "2026-01-12T10:00:00Z"
-}
-```
+`POST /surveys/{survey_id}/pause`
 
----
+### 恢复投放
 
-## 错误码（本页面常见）
+`POST /surveys/{survey_id}/resume`
+
+### 取消发布
+
+`POST /surveys/{survey_id}/cancel`
+
+说明：
+
+- 状态会变为 `ended`。
+- 会按当前退款规则退还剩余预算。
+- 退款不包含推断出的加速预算部分。
+
+## 4. 问卷详情与删除
+
+### 获取问卷详情
+
+`GET /surveys/{survey_id}`
+
+### 删除问卷
+
+`DELETE /surveys/{survey_id}`
+
+说明：
+
+- 如果问卷曾经发布或暂停，删除前会先按同一退款逻辑结算。
+
+## 5. 评估
+
+### 问卷评估
+
+`GET /surveys/{survey_id}/evaluate`
+
+说明：
+
+- 这是兼容接口，用于估算难度和预计时长。
+
+## 常见错误码
 
 - `401` 未登录或 Token 过期
 - `404` 问卷不存在
-- `409` 状态冲突（如已结束不可暂停）
-- `422` 参数校验失败（常见场景）：
-  - 草稿问卷为空（无题目）
-  - 预算不足以覆盖 `reward_points * target`
-  - 用户积分不足
-  - `reward_points / budget_points / target` 类型或范围不合法
-
-说明：前端发布弹窗会将发布错误提示统一显示为中文提示语（便于用户理解）。
+- `409` 状态冲突
+- `422` 参数校验失败

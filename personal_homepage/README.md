@@ -305,4 +305,4 @@ Tag.objects.annotate(user_count=Count('usertag')).order_by('-user_count')
 ---
 
 **实现完成时间：** 2026-01-28  
-**遵循文档：** doc/api/API-个人界面.md + doc/ER文档.md（Tag系统设计）
+**遵循文档：** doc/api/API-个人界面.md + doc/实体关系说明.md（Tag系统设计）
