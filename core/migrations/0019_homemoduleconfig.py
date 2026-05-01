@@ -34,7 +34,7 @@ def unseed_home_module_configs(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("core", "0025_appuser_level_title"),
+        ("core", "0018_merge_20260418_1352"),
     ]
 
     operations = [
