@@ -3,6 +3,7 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
 from core.services.similarity_service import SimilarityService
+from core.services.user_behavior_log_service import UserBehaviorLogService
 from core.managers.similarity_manager import SimilarityManager
 from core.views import error, require_auth
 from core.views import (
@@ -133,6 +134,14 @@ def dismiss_survey(request):
         SimilarityManager.invalidate_vector("user", str(user.id))
     except Exception:
         pass
+
+    UserBehaviorLogService.log_event(
+        user_id=user.id,
+        event_type="dismiss",
+        survey_id=survey_pk,
+        scene="task_list",
+    )
+
     return JsonResponse({"status": "ok"})
 
 

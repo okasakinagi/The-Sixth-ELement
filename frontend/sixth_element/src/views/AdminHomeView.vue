@@ -116,9 +116,9 @@ const lineChartPlugins = [{
 
 const doughnutChartData = computed(() => {
   const total = stats.value?.total_surveys || 1
-  const completed = Math.round((stats.value?.survey_completion_rate || 0) / 100 * total)
-  const inProgress = Math.round(total * 0.3)
-  const notStarted = total - completed - inProgress
+  const completed = stats.value?.completed_surveys || 0
+  const inProgress = stats.value?.published_surveys || 0
+  const notStarted = Math.max(total - completed - inProgress, 0)
   return {
     labels: ['已完成', '进行中', '未开始'],
     datasets: [{
@@ -186,7 +186,7 @@ const menuItems = computed(() => [
     link: '/admin/users',
     stats: stats.value ? [
       { label: '总用户', value: stats.value.total_users, suffix: '人' },
-      { label: '活跃用户', value: Math.round(stats.value.total_users * 0.7), suffix: '人' },
+      { label: '7日活跃用户', value: stats.value.active_users_7d || 0, suffix: '人' },
     ] : [],
     change: stats.value ? { value: stats.value.today_new_users, label: '今日新增' } : null,
     gradient: isDark.value
@@ -201,7 +201,7 @@ const menuItems = computed(() => [
     link: '/admin/surveys',
     stats: stats.value ? [
       { label: '总问卷', value: stats.value.total_surveys, suffix: '份' },
-      { label: '已发布', value: Math.round(stats.value.total_surveys * 0.6), suffix: '份' },
+      { label: '已发布', value: stats.value.published_surveys || 0, suffix: '份' },
     ] : [],
     change: stats.value ? { value: stats.value.today_new_surveys, label: '今日新增' } : null,
     gradient: isDark.value
@@ -275,9 +275,13 @@ async function loadData() {
     }
 
     try {
-      const analyticsData = await getRecommendAnalytics(7)
-      if (analyticsData) {
-        analytics.value = analyticsData
+      const [recommendData, aiData] = await Promise.all([
+        getRecommendAnalytics(7),
+        getAiAnalytics(7),
+      ])
+      analytics.value = {
+        ...(recommendData || {}),
+        ...(aiData || {}),
       }
     } catch (e) {
       console.error('Failed to load analytics:', e)

@@ -2,8 +2,22 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { handleTokenExpired } from '@/utils/authHelper'
-import { getPointsLogs, getPointsSummary } from '@/utils/pointsApi'
+import { getPointsLogs, getPointsSummary, getPointsTrend } from '@/utils/pointsApi'
 import { updateUserPoints } from '@/utils/userPointsHelper'
+import { Line } from 'vue-chartjs'
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler,
+} from 'chart.js'
+
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler)
 
 const router = useRouter()
 
@@ -21,6 +35,73 @@ const pageSize = ref(20)
 const totalRecords = ref(0)
 const loading = ref(false)
 const showHonorTooltip = ref(false)
+
+// Trend chart
+const trendGranularity = ref('day')
+const trendDays = ref(30)
+const trendData = ref(null)
+const trendLoading = ref(false)
+
+const trendChartData = computed(() => {
+  if (!trendData.value || !trendData.value.items.length) {
+    return null
+  }
+  const items = trendData.value.items
+  return {
+    labels: items.map(i => i.date),
+    datasets: [
+      {
+        label: '收入',
+        data: items.map(i => i.income),
+        borderColor: '#22c55e',
+        backgroundColor: 'rgba(34, 197, 94, 0.1)',
+        fill: true,
+        tension: 0.3,
+        pointRadius: 3,
+      },
+      {
+        label: '支出',
+        data: items.map(i => i.expense),
+        borderColor: '#ef4444',
+        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+        fill: true,
+        tension: 0.3,
+        pointRadius: 3,
+      },
+    ],
+  }
+})
+
+const trendChartOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: {
+    legend: { position: 'top' },
+    tooltip: { mode: 'index', intersect: false },
+  },
+  scales: {
+    y: { beginAtZero: true, ticks: { precision: 0 } },
+  },
+}
+
+async function fetchTrend() {
+  try {
+    trendLoading.value = true
+    trendData.value = await getPointsTrend({
+      granularity: trendGranularity.value,
+      days: trendDays.value,
+    })
+  } catch (err) {
+    console.error('Failed to fetch points trend:', err)
+  } finally {
+    trendLoading.value = false
+  }
+}
+
+function changeTrendGranularity(g) {
+  trendGranularity.value = g
+  fetchTrend()
+}
 
 // Computed
 const displayedLogs = computed(() => logs.value)
@@ -130,6 +211,7 @@ function goBack() {
 
 onMounted(() => {
   fetchPointsLogs()
+  fetchTrend()
 })
 
 onUnmounted(() => {
@@ -180,6 +262,25 @@ onUnmounted(() => {
             <span class="badge-text">升级中...</span>
           </div>
         </div>
+      </section>
+
+      <section class="trend-section">
+        <div class="trend-header">
+          <h2 class="trend-title">积分趋势</h2>
+          <div class="trend-tabs">
+            <button
+              v-for="g in [{ key: 'day', label: '日' }, { key: 'week', label: '周' }, { key: 'month', label: '月' }]"
+              :key="g.key"
+              :class="['trend-tab', trendGranularity === g.key ? 'active' : '']"
+              @click="changeTrendGranularity(g.key)"
+            >{{ g.label }}</button>
+          </div>
+        </div>
+        <div v-if="trendLoading" class="trend-loading">加载中...</div>
+        <div v-else-if="trendChartData" class="trend-chart-wrap">
+          <Line :data="trendChartData" :options="trendChartOptions" />
+        </div>
+        <div v-else class="trend-empty">暂无趋势数据</div>
       </section>
 
       <section class="filter-tabs">
@@ -531,6 +632,61 @@ onUnmounted(() => {
   padding: 0 0 10px;
   background: transparent;
   border-bottom: none;
+}
+
+/* Trend section */
+.trend-section {
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 16px 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.trend-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.trend-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1a202c;
+  margin: 0;
+}
+
+.trend-tabs {
+  display: flex;
+  gap: 6px;
+}
+
+.trend-tab {
+  background: #f0f4fa;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: #555;
+  padding: 4px 12px;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.trend-tab.active {
+  background: #1e4fb4;
+  color: #fff;
+}
+
+.trend-chart-wrap {
+  height: 220px;
+}
+
+.trend-loading,
+.trend-empty {
+  text-align: center;
+  color: #999;
+  padding: 32px 0;
+  font-size: 14px;
 }
 
 .tab {

@@ -100,3 +100,22 @@ def update_points(request):
         return error(exc.status, exc.message)
     except Exception as exc:
         return error(500, f"Internal server error: {str(exc)}")
+
+
+@csrf_exempt
+def points_trend(request):
+    """GET /api/v1/points/trend — 积分趋势聚合数据"""
+    if request.method != "GET":
+        return error(405, "Method not allowed")
+    user, err = require_auth(request)
+    if err:
+        return err
+    try:
+        granularity = request.GET.get("granularity", "day")
+        days = _parse_int(request.GET.get("days"), default=30)
+        payload = service.get_points_trend(user, granularity, days)
+        return JsonResponse(payload, status=200)
+    except PointsRecordError as exc:
+        return error(exc.status, exc.message)
+    except Exception as exc:
+        return error(500, f"Internal server error: {str(exc)}")

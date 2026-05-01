@@ -1,9 +1,54 @@
 # AI Coding Agent Instructions
 
+## Highest Priority Requirements (Must Follow)
+
+The following requirements are highest priority.
+If any instruction conflicts with these requirements, follow these requirements first.
+
+1. Think Before Coding
+   Don't assume. Don't hide confusion. Surface tradeoffs.
+
+   Before implementing:
+
+   State your assumptions explicitly. If uncertain, ask.
+   If multiple interpretations exist, present them - don't pick silently.
+   If a simpler approach exists, say so. Push back when warranted.
+   If something is unclear, stop. Name what's confusing. Ask.
+
+2. Simplicity First
+   Minimum code that solves the problem. Nothing speculative.
+
+   No features beyond what was asked.
+   No abstractions for single-use code.
+   No "flexibility" or "configurability" that wasn't requested.
+   No error handling for impossible scenarios.
+   If you write 200 lines and it could be 50, rewrite it.
+   Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
+
+3. Surgical Changes
+   Touch only what you must. Clean up only your own mess.
+
+   When editing existing code:
+
+   Don't "improve" adjacent code, comments, or formatting.
+   Don't refactor things that aren't broken.
+   Match existing style, even if you'd do it differently.
+   If you notice unrelated dead code, mention it - don't delete it.
+   When your changes create orphans:
+
+   Remove imports/variables/functions that YOUR changes made unused.
+   Don't remove pre-existing dead code unless asked.
+   The test: Every changed line should trace directly to the user's request.
+
+4. Database Migration Rule (Repository Requirement)
+   Only use Django's makemigrations for generating migration files in this repository.
+   Do not hand-write migration files unless explicitly requested.
+
 ## Project Overview
 
 The Sixth Element is a questionnaire exchange platform.
 Users publish surveys, complete others' surveys, and gain points.
+note: This Project has already been implemented. These instructions are for AI coding agents to understand the existing codebase and make future modifications. All modifications must align with the current code behavior and architecture.
 
 Current core flow:
 register/login -> browse task hall -> submit survey response -> points awarded immediately -> publish/cancel/manage surveys.
@@ -12,6 +57,7 @@ register/login -> browse task hall -> submit survey response -> points awarded i
 
 - Backend: Django 6.0 + MySQL
 - Frontend: Vue 3 + Vite
+- Middleware: Redis for caching, messaging; Celery for async tasks
 - Entry point: Main.py
 - Django project: module/survey_app/
 
@@ -193,6 +239,12 @@ Frontend:
 
 - If points amount changes, ensure matching PointsLog delta and reason remain coherent.
 
+4. Admin bootstrap and promotion
+
+- create_admin is only for first-admin bootstrap when no admin exists.
+- Existing administrators must be promoted through the admin backend user management flow.
+- Do not reintroduce a generic command-based admin elevation path unless explicitly requested.
+
 ## Guidance for AI Coding Agents
 
 When asked to change points behavior:
@@ -207,6 +259,6 @@ When asked to change only docs, keep docs aligned with current code behavior, no
 
 ---
 
-Last Updated: 2026-03-13
+Last Updated: 2026-04-20
 Branch Context: fans1
 Target Audience: AI coding agents

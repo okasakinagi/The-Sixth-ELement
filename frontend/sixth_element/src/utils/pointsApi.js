@@ -158,3 +158,45 @@ export async function updatePoints(data) {
   }
   return result;
 }
+
+/**
+ * 获取积分趋势聚合数据
+ * GET /points/trend
+ * @param {Object} params 查询参数
+ * @param {string} params.granularity 粒度 (day/week/month)
+ * @param {number} params.days 天数范围
+ */
+export async function getPointsTrend(params = {}) {
+  const token = getAuthToken();
+  if (!token) {
+    throw new Error('未登录，请先登录');
+  }
+
+  const queryParams = new URLSearchParams();
+  if (params.granularity) queryParams.append('granularity', params.granularity);
+  if (params.days) queryParams.append('days', params.days);
+
+  const url = `${API_BASE_URL}/points/trend${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
+
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      throw new Error('登录已过期，请重新登录');
+    }
+    const error = await parseJsonResponse(response);
+    throw new Error(error?.error || '获取积分趋势失败');
+  }
+
+  const data = await parseJsonResponse(response);
+  if (!data) {
+    throw new Error('服务返回空内容');
+  }
+  return data;
+}

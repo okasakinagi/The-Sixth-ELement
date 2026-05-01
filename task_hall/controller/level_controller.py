@@ -44,7 +44,6 @@ def get_daily_tasks(request):
     if err:
         return err
     try:
-        LevelService.mark_login(user)
         payload = LevelService.get_daily_tasks(user)
         return JsonResponse(payload, status=200)
     except Exception as exc:
