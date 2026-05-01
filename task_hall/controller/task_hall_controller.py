@@ -8,8 +8,7 @@ import re
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
-from core.views import error, get_current_user, require_auth
-from core.services.user_behavior_log_service import UserBehaviorLogService
+from core.views import error, require_auth
 from task_hall.service.task_hall_service import TaskHallError, TaskHallService
 
 
@@ -67,13 +66,70 @@ def task_hall_overview(request):
 
 @csrf_exempt
 def task_hall_home_modules(request):
-    """首页模块编排接口。登录用户返回个性化推荐，访客返回随机内容。"""
     if request.method != "GET":
         return error(405, "Method not allowed")
-    user = get_current_user(request)
+    user, err = require_auth(request)
+    if err:
+        return err
     try:
         payload = service.get_home_modules(user)
         return JsonResponse(payload, status=200)
+    except TaskHallError as exc:
+        return error(exc.status, exc.message)
+    except Exception as exc:
+        return error(500, f"Internal server error: {str(exc)}")
+
+
+@csrf_exempt
+def track_recommend_click(request, survey_id):
+    if request.method != "POST":
+        return error(405, "Method not allowed")
+    user, err = require_auth(request)
+    if err:
+        return err
+    raw = str(survey_id)
+    sid = _parse_int(raw.split("_")[-1] if "_" in raw else raw)
+    if sid is None:
+        return error(400, "invalid survey_id")
+    try:
+        service.track_click(user, sid)
+        return JsonResponse({"success": True}, status=200)
+    except TaskHallError as exc:
+        return error(exc.status, exc.message)
+    except Exception as exc:
+        return error(500, f"Internal server error: {str(exc)}")
+
+
+@csrf_exempt
+def track_recommend_refresh(request):
+    if request.method != "POST":
+        return error(405, "Method not allowed")
+    user, err = require_auth(request)
+    if err:
+        return err
+    try:
+        service.track_refresh(user)
+        return JsonResponse({"success": True}, status=200)
+    except TaskHallError as exc:
+        return error(exc.status, exc.message)
+    except Exception as exc:
+        return error(500, f"Internal server error: {str(exc)}")
+
+
+@csrf_exempt
+def track_recommend_delete(request, survey_id):
+    if request.method != "POST":
+        return error(405, "Method not allowed")
+    user, err = require_auth(request)
+    if err:
+        return err
+    raw = str(survey_id)
+    sid = _parse_int(raw.split("_")[-1] if "_" in raw else raw)
+    if sid is None:
+        return error(400, "invalid survey_id")
+    try:
+        service.track_delete(user, sid)
+        return JsonResponse({"success": True}, status=200)
     except TaskHallError as exc:
         return error(exc.status, exc.message)
     except Exception as exc:
@@ -120,12 +176,6 @@ def task_hall_refresh_batch(request):
     batch_size = _parse_int(data.get("batch_size"), default=15)
     try:
         payload = service.refresh_batch(user, exclude_ids, batch_size)
-        UserBehaviorLogService.log_event(
-            user_id=user.id,
-            event_type="refresh",
-            scene="task_refresh",
-            meta={"exclude_count": len(exclude_ids), "batch_size": batch_size},
-        )
         return JsonResponse(payload, status=200)
     except TaskHallError as exc:
         return error(exc.status, exc.message)
