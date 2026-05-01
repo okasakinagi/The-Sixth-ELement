@@ -65,6 +65,22 @@ def task_hall_overview(request):
 
 
 @csrf_exempt
+def task_hall_home_modules(request):
+    if request.method != "GET":
+        return error(405, "Method not allowed")
+    user, err = require_auth(request)
+    if err:
+        return err
+    try:
+        payload = service.get_home_modules(user)
+        return JsonResponse(payload, status=200)
+    except TaskHallError as exc:
+        return error(exc.status, exc.message)
+    except Exception as exc:
+        return error(500, f"Internal server error: {str(exc)}")
+
+
+@csrf_exempt
 def track_recommend_click(request, survey_id):
     if request.method != "POST":
         return error(405, "Method not allowed")

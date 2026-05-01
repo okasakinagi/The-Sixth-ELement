@@ -506,6 +506,89 @@ class TaskHallService:
             reasons.append("✔ 为你智能推荐")
         return "  ".join(reasons)
 
+    HOME_MODULE_FALLBACKS = [
+        {"module_key": "feed", "title": "为你推荐", "weight": 100, "item_limit": 10},
+        {"module_key": "trending", "title": "近期热门", "weight": 90, "item_limit": 10},
+    ]
+
+    def get_home_modules(self, user=None):
+        modules = []
+        for cfg in self._load_home_module_configs():
+            key = cfg["module_key"]
+            limit = max(1, min(int(cfg.get("item_limit") or 0), 30))
+            if key == "feed":
+                items = self._get_feed_items(user, limit)
+                subtitle = "基于你的兴趣偏好" if user else "热门可填问卷"
+            elif key == "trending":
+                items = self._get_trending_items(user, limit)
+                subtitle = "近七天参与热度"
+            else:
+                continue
+
+            modules.append(
+                {
+                    "key": key,
+                    "title": cfg.get("title") or key,
+                    "subtitle": subtitle,
+                    "weight": cfg.get("weight", 0),
+                    "item_limit": limit,
+                    "items": items,
+                }
+            )
+
+        return {
+            "modules": modules,
+            "generated_at": self._iso_str(timezone.now()),
+        }
+
+    def _load_home_module_configs(self):
+        rows = list(
+            HomeModuleConfig.objects.filter(enabled=True)
+            .order_by("-weight", "id")
+            .values("module_key", "title", "enabled", "weight", "item_limit")
+        )
+        if rows:
+            return rows
+        return [item.copy() for item in self.HOME_MODULE_FALLBACKS]
+
+    def _get_feed_items(self, user, limit):
+        if user:
+            payload = self.refresh_batch(
+                user,
+                exclude_task_ids=[],
+                batch_size=limit,
+                scene="home_feed",
+            )
+            return payload.get("items", [])[:limit]
+        return self.get_guest_tasks(limit).get("items", [])[:limit]
+
+    def _get_trending_items(self, user, limit):
+        queryset = self.mapper.base_queryset().filter(
+            status__in=self.STATUS_LIVE_INTERNAL,
+            active_questionnaire__status="published",
+        )
+        if user:
+            queryset = queryset.exclude(owner=user).exclude(response__user=user)
+        queryset = queryset.distinct()
+
+        surveys = list(queryset.select_related("owner")[: limit * 2])
+
+        surveys.sort(
+            key=lambda s: (
+                -sum(
+                    claim.count
+                    for claim in s.claims.all()
+                    if claim.created_at >= timezone.now() - timedelta(days=7)
+                ),
+                s.created_at,
+            )
+        )
+        items = []
+        for survey in surveys[:limit]:
+            card = self._survey_to_card(survey, user)
+            items.append(card)
+        return items
+
     def track_click(self, user, survey_id):
         today = timezone.now().date()
         rec, _ = DailyRecommendation.objects.get_or_create(

@@ -14,6 +14,8 @@ class AppUser(models.Model):
     last_active_at = models.DateTimeField(auto_now=True)
     profile_completion_rate = models.FloatField(default=0.0)
     profile_last_updated_at = models.DateTimeField(null=True, blank=True)
+    level = models.IntegerField(default=1)
+    title = models.CharField(max_length=32, default="新手探索者")
 
     PROFILE_REQUIRED_FIELDS = ["gender", "age", "school", "major", "mbti", "interest"]
 
@@ -712,6 +714,23 @@ class TaskCompletion(models.Model):
         ]
 
 
+class HomeModuleConfig(models.Model):
+    """首页模块配置。用于编排 Feed / Trending 等模块排序与数量。"""
+
+    module_key = models.CharField(max_length=32, unique=True)
+    title = models.CharField(max_length=64)
+    enabled = models.BooleanField(default=True)
+    weight = models.IntegerField(default=100)
+    item_limit = models.IntegerField(default=10)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["enabled", "weight"], name="home_module_enabled_weight_idx"),
+        ]
+
+
 class RiskEvent(models.Model):
     """风控事件记录。
 
@@ -821,3 +840,40 @@ class RiskRule(models.Model):
         if event_type:
             queryset = queryset.filter(event_type=event_type)
         return queryset.order_by("priority")
+
+
+class UserBehaviorLog(models.Model):
+    """用户行为日志。
+
+    仅用于后端分析与运营统计，不对普通用户开放。
+    """
+
+    EVENT_TYPE_CHOICES = [
+        ("impression", "曝光"),
+        ("click", "点击"),
+        ("refresh", "刷新一次"),
+        ("dismiss", "不感兴趣"),
+    ]
+
+    SCENE_CHOICES = [
+        ("task_list", "任务列表"),
+        ("task_refresh", "任务刷新一次"),
+        ("home_feed", "首页Feed"),
+        ("home_trending", "首页Trending"),
+        ("fill_entry", "填写入口"),
+    ]
+
+    user = models.ForeignKey(AppUser, on_delete=models.SET_NULL, blank=True, null=True)
+    survey = models.ForeignKey(Survey, on_delete=models.SET_NULL, blank=True, null=True)
+    event_type = models.CharField(max_length=32, choices=EVENT_TYPE_CHOICES)
+    scene = models.CharField(max_length=32, choices=SCENE_CHOICES, default="task_list")
+    meta_json = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["event_type", "created_at"], name="ubl_event_created_idx"),
+            models.Index(fields=["scene", "created_at"], name="ubl_scene_created_idx"),
+            models.Index(fields=["user", "created_at"], name="ubl_user_created_idx"),
+            models.Index(fields=["survey", "created_at"], name="ubl_survey_created_idx"),
+        ]

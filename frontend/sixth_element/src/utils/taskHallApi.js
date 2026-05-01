@@ -96,6 +96,15 @@ export async function claimDailyBonus(surveyId, router = null) {
 }
 
 /**
+ * 获取首页模块（Trending 等）
+ * GET /task-hall/home-modules
+ * 支持未登录用户（返回随机内容）
+ */
+export async function getTaskHallHomeModules(router = null) {
+  return await get('/task-hall/home-modules', router)
+}
+
+/**
  * 记录每日推荐点击行为
  * POST /task-hall/daily-recommendations/:surveyId/click
  */
