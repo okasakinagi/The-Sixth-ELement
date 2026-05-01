@@ -132,7 +132,7 @@
 <script setup>
 import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { refreshTaskHallBatch, dismissSurvey, getGuestTasks, getDailyRecommendations, claimDailyBonus } from '@/utils/taskHallApi'
+import { refreshTaskHallBatch, dismissSurvey, getGuestTasks, getDailyRecommendations, claimDailyBonus, trackDailyRecClick, trackDailyRecRefresh, trackDailyRecDelete } from '@/utils/taskHallApi'
 import DailyWeeklyTaskPanel from '@/components/DailyWeeklyTaskPanel.vue'
 
 const keyword = ref('')
@@ -321,6 +321,13 @@ async function refreshBatch() {
   if (!confirm) return
   try {
     loading.value = true
+    // 记录刷新埋点
+    try {
+      await trackDailyRecRefresh(router)
+    } catch (err) {
+      console.warn('trackDailyRecRefresh failed:', err)
+    }
+    
     const response = await refreshTaskHallBatch(
       seenTaskIds.value,
       fixedBatchSize.value,
@@ -360,6 +367,17 @@ async function handleDelete(taskId) {
       await dismissSurvey(taskId)
     } catch (err) {
       console.warn('dismissSurvey failed:', err)
+    }
+
+    // 如果是每日推荐，记录删除埋点
+    const task = visibleTasks.value[index]
+    if (task?.daily_recommend) {
+      const rawId = extractRawId(taskId)
+      try {
+        await trackDailyRecDelete(rawId, router)
+      } catch (err) {
+        console.warn('trackDailyRecDelete failed:', err)
+      }
     }
 
     const response = await refreshTaskHallBatch(
@@ -413,6 +431,15 @@ async function openTaskFill(task) {
   }
   const rawId = extractRawId(task.id)
   if (!rawId) return
+
+  // 如果是每日推荐，记录点击埋点
+  if (task.daily_recommend) {
+    try {
+      await trackDailyRecClick(rawId, router)
+    } catch (err) {
+      console.warn('trackDailyRecClick failed:', err)
+    }
+  }
 
   // 在导航前尝试请求问卷填写数据以确认问卷已准备好
   const token = localStorage.getItem('access_token')

@@ -17,6 +17,7 @@ from core.models import (
     Message,
     PointsLog,
     Questionnaire,
+    RecommendationClaim,
     Response,
     Survey,
     TaskCompletion,
@@ -117,7 +118,7 @@ def dashboard_stats(request):
 
     avg_surveys_per_user = total_surveys / total_users if total_users > 0 else 0
 
-    completed_surveys = Survey.objects.filter(status="completed").count()
+    completed_surveys = Survey.objects.filter(status__in=["ended", "closed"]).count()
     survey_completion_rate = (
         completed_surveys / total_surveys * 100 if total_surveys > 0 else 0
     )
@@ -223,6 +224,8 @@ def user_list(request):
     page = parse_int(request.GET.get("page", 1))
     page_size = parse_int(request.GET.get("page_size", 20))
     search = request.GET.get("search", "")
+    profile_min = request.GET.get("profile_completion_min", "")
+    profile_max = request.GET.get("profile_completion_max", "")
 
     queryset = AppUser.objects.all().order_by("-created_at")
 
@@ -230,6 +233,11 @@ def user_list(request):
         queryset = queryset.filter(nickname__icontains=search) | queryset.filter(
             email__icontains=search
         )
+
+    if profile_min:
+        queryset = queryset.filter(profile_completion_rate__gte=float(profile_min))
+    if profile_max:
+        queryset = queryset.filter(profile_completion_rate__lte=float(profile_max))
 
     total = queryset.count()
     offset = (page - 1) * page_size
@@ -262,6 +270,7 @@ def user_list(request):
             "surveys_published": surveys_published,
             "fills_count": fills_count,
             "last_active_at": u.last_active_at.isoformat() if u.last_active_at else None,
+            "profile_completion_rate": u.profile_completion_rate,
         })
 
     return JsonResponse({
@@ -328,6 +337,19 @@ def survey_list(request):
 
     result = []
     for s in surveys:
+        survey_id = s.id
+
+        impressions = RecommendationClaim.objects.filter(survey_id=survey_id).count()
+        claimed_count = RecommendationClaim.objects.filter(survey_id=survey_id, status="completed").count()
+        responses = Response.objects.filter(survey_id=survey_id, status="submitted")
+        completed_count = responses.count()
+        avg_duration = responses.aggregate(avg_dur=models.Avg("duration_seconds"))["avg_dur"] or 0
+        risk_count = responses.filter(risk_flag=True).count()
+
+        ctr = (claimed_count / impressions * 100) if impressions > 0 else 0
+        completion_rate = (completed_count / impressions * 100) if impressions > 0 else 0
+        risk_rate = (risk_count / completed_count * 100) if completed_count > 0 else 0
+
         result.append({
             "id": s.id,
             "title": s.title,
@@ -341,6 +363,12 @@ def survey_list(request):
             "completed": s.completed,
             "reward_points": s.reward_points,
             "publish_cost_points": s.publish_cost_points,
+            "impressions": impressions,
+            "completed_count": completed_count,
+            "ctr": round(ctr, 2),
+            "completion_rate": round(completion_rate, 2),
+            "avg_duration": round(avg_duration, 1),
+            "risk_rate": round(risk_rate, 2),
         })
 
     return JsonResponse({
@@ -388,24 +416,48 @@ def analytics_recommend(request):
 
     today = timezone.now().date()
     start_date = today - timedelta(days=days)
+    start_dt = timezone.make_aware(datetime.combine(start_date, datetime.min.time()))
 
-    impressions = DailyRecommendation.objects.filter(
-        date__gte=start_date
+    recs = list(DailyRecommendation.objects.filter(date__gte=start_date))
+
+    impressions = len(recs)
+
+    all_clicked = set()
+    for rec in recs:
+        if rec.clicked_ids:
+            all_clicked.update(rec.clicked_ids)
+    clicks = len(all_clicked)
+
+    ctr = (clicks / impressions * 100) if impressions > 0 else 0
+
+    total_claims = sum(len(rec.claimed_ids or []) for rec in recs)
+
+    refresh_count = sum(rec.refresh_count or 0 for rec in recs)
+
+    delete_count = sum(len(rec.deleted_ids or []) for rec in recs)
+
+    claimed_count = RecommendationClaim.objects.filter(
+        claimed_at__gte=start_dt
     ).count()
 
-    total_claims = sum(
-        len(rec.claimed_ids) for rec in
-        DailyRecommendation.objects.filter(date__gte=start_date)
-    )
+    completed_count = RecommendationClaim.objects.filter(
+        claimed_at__gte=start_dt,
+        status="completed"
+    ).count()
 
-    ctr = 0
+    claim_rate = (claimed_count / impressions * 100) if impressions > 0 else 0
+    completion_rate = (completed_count / claimed_count * 100) if claimed_count > 0 else 0
 
     return JsonResponse({
         "impressions": impressions,
-        "clicks": total_claims,
+        "clicks": clicks,
         "ctr": round(ctr, 2),
-        "refresh_count": 0,
-        "delete_count": 0,
+        "refresh_count": refresh_count,
+        "delete_count": delete_count,
+        "claim_count": claimed_count,
+        "completed_count": completed_count,
+        "claim_rate": round(claim_rate, 2),
+        "completion_rate": round(completion_rate, 2),
     })
 
 
@@ -564,6 +616,8 @@ def user_detail(request, user_id):
         "total_consumed": abs(total_consumed),
         "surveys_published": surveys_published.count(),
         "fills_count": fills.count(),
+        "profile_completion_rate": target.profile_completion_rate,
+        "profile_last_updated_at": target.profile_last_updated_at.isoformat() if target.profile_last_updated_at else None,
         "recent_surveys": [
             {"id": s.id, "title": s.title, "status": s.status, "created_at": s.created_at.isoformat()}
             for s in surveys_published[:5]
@@ -715,34 +769,60 @@ def batch_adjust_points(request):
         return error(400, "积分调整值不能为0")
 
     updated_users = []
+    insufficient_users = []
+    
     for uid in user_ids:
         try:
             target_user = AppUser.objects.get(id=uid)
-            target_user.points += delta
-            if target_user.points < 0:
-                target_user.points = 0
+            old_points = target_user.points
+            new_points = old_points + delta
+            
+            actual_delta = delta
+            is_insufficient = False
+            
+            if new_points < 0:
+                actual_delta = -old_points
+                new_points = 0
+                is_insufficient = True
+            
+            target_user.points = new_points
             target_user.save(update_fields=["points", "updated_at"])
 
+            log_reason = reason
+            if is_insufficient:
+                log_reason = f"{reason}（积分不足，已全部扣除）"
+            
             PointsLog.objects.create(
                 user=target_user,
                 points_type="admin_adjust",
-                delta=delta,
-                reason=reason,
+                delta=actual_delta,
+                reason=log_reason,
                 ref_type="batch_adjust",
                 ref_id=user.id,
             )
-            updated_users.append({
+            
+            user_info = {
                 "id": target_user.id,
                 "nickname": target_user.nickname,
-                "new_points": target_user.points,
-            })
+                "old_points": old_points,
+                "actual_delta": actual_delta,
+                "new_points": new_points,
+                "is_insufficient": is_insufficient,
+            }
+            
+            updated_users.append(user_info)
+            if is_insufficient:
+                insufficient_users.append(user_info)
+                
         except AppUser.DoesNotExist:
             continue
 
     return JsonResponse({
         "success": True,
         "updated_count": len(updated_users),
+        "insufficient_count": len(insufficient_users),
         "updated_users": updated_users,
+        "insufficient_users": insufficient_users,
     })
 
 
@@ -1078,7 +1158,7 @@ def force_close_survey(request, survey_id):
     except Survey.DoesNotExist:
         return error(404, "问卷不存在")
 
-    survey.status = "completed"
+    survey.status = "ended"
     survey.save()
 
     AuditLog.objects.create(
@@ -1232,3 +1312,154 @@ def operation_logs(request):
         "page": page,
         "page_size": page_size,
     })
+
+
+@csrf_exempt
+def risk_rules(request):
+    user, err = require_admin(request)
+    if err:
+        return err
+
+    from core.models import RiskRule
+
+    if request.method == "GET":
+        queryset = RiskRule.objects.all().order_by("priority")
+        rules = []
+        for rule in queryset:
+            rules.append({
+                "id": rule.id,
+                "rule_code": rule.rule_code,
+                "rule_name": rule.rule_name,
+                "description": rule.description,
+                "enabled": rule.enabled,
+                "priority": rule.priority,
+                "event_type": rule.event_type,
+                "severity": rule.severity,
+                "conditions": rule.conditions,
+                "actions": rule.actions,
+                "created_at": rule.created_at.isoformat(),
+                "updated_at": rule.updated_at.isoformat(),
+            })
+        return JsonResponse({"rules": rules})
+
+    elif request.method == "POST":
+        data = parse_json(request)
+        try:
+            rule = RiskRule.objects.create(
+                rule_code=data["rule_code"],
+                rule_name=data["rule_name"],
+                description=data.get("description", ""),
+                enabled=data.get("enabled", True),
+                priority=data.get("priority", 100),
+                event_type=data["event_type"],
+                severity=data.get("severity", "medium"),
+                conditions=data.get("conditions", {}),
+                actions=data.get("actions", []),
+            )
+            AuditLog.objects.create(
+                target_type="risk_rule",
+                target_id=rule.id,
+                action="create_risk_rule",
+                operator=user,
+                note=f"创建风控规则: {rule.rule_name}"
+            )
+            return JsonResponse({"success": True, "rule_id": rule.id})
+        except Exception as e:
+            return error(400, f"创建规则失败: {str(e)}")
+
+
+@csrf_exempt
+def risk_rule_detail(request, rule_id):
+    user, err = require_admin(request)
+    if err:
+        return err
+
+    from core.models import RiskRule
+
+    try:
+        rule = RiskRule.objects.get(id=rule_id)
+    except RiskRule.DoesNotExist:
+        return error(404, "规则不存在")
+
+    if request.method == "GET":
+        return JsonResponse({
+            "id": rule.id,
+            "rule_code": rule.rule_code,
+            "rule_name": rule.rule_name,
+            "description": rule.description,
+            "enabled": rule.enabled,
+            "priority": rule.priority,
+            "event_type": rule.event_type,
+            "severity": rule.severity,
+            "conditions": rule.conditions,
+            "actions": rule.actions,
+            "created_at": rule.created_at.isoformat(),
+            "updated_at": rule.updated_at.isoformat(),
+        })
+
+    elif request.method == "PUT":
+        data = parse_json(request)
+        if "rule_name" in data:
+            rule.rule_name = data["rule_name"]
+        if "description" in data:
+            rule.description = data["description"]
+        if "enabled" in data:
+            rule.enabled = data["enabled"]
+        if "priority" in data:
+            rule.priority = data["priority"]
+        if "event_type" in data:
+            rule.event_type = data["event_type"]
+        if "severity" in data:
+            rule.severity = data["severity"]
+        if "conditions" in data:
+            rule.conditions = data["conditions"]
+        if "actions" in data:
+            rule.actions = data["actions"]
+        rule.save()
+
+        AuditLog.objects.create(
+            target_type="risk_rule",
+            target_id=rule.id,
+            action="update_risk_rule",
+            operator=user,
+            note=f"更新风控规则: {rule.rule_name}"
+        )
+        return JsonResponse({"success": True})
+
+    elif request.method == "DELETE":
+        rule_name = rule.rule_name
+        rule.delete()
+        AuditLog.objects.create(
+            target_type="risk_rule",
+            target_id=rule_id,
+            action="delete_risk_rule",
+            operator=user,
+            note=f"删除风控规则: {rule_name}"
+        )
+        return JsonResponse({"success": True})
+
+
+@csrf_exempt
+def risk_rule_toggle(request, rule_id):
+    user, err = require_admin(request)
+    if err:
+        return err
+
+    from core.models import RiskRule
+
+    try:
+        rule = RiskRule.objects.get(id=rule_id)
+    except RiskRule.DoesNotExist:
+        return error(404, "规则不存在")
+
+    rule.enabled = not rule.enabled
+    rule.save()
+
+    AuditLog.objects.create(
+        target_type="risk_rule",
+        target_id=rule.id,
+        action="toggle_risk_rule",
+        operator=user,
+        note=f"{'启用' if rule.enabled else '禁用'}风控规则: {rule.rule_name}"
+    )
+    return JsonResponse({"success": True, "enabled": rule.enabled})

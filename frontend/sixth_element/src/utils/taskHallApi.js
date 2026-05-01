@@ -94,3 +94,27 @@ export async function getDailyRecommendations(router = null) {
 export async function claimDailyBonus(surveyId, router = null) {
   return await post(`/task-hall/daily-recommendations/${surveyId}/claim-bonus`, {}, router)
 }
+
+/**
+ * 记录每日推荐点击行为
+ * POST /task-hall/daily-recommendations/:surveyId/click
+ */
+export async function trackDailyRecClick(surveyId, router = null) {
+  return await post(`/task-hall/daily-recommendations/${surveyId}/click`, {}, router)
+}
+
+/**
+ * 记录每日推荐刷新行为
+ * POST /task-hall/daily-recommendations/refresh
+ */
+export async function trackDailyRecRefresh(router = null) {
+  return await post('/task-hall/daily-recommendations/refresh', {}, router)
+}
+
+/**
+ * 记录每日推荐删除行为
+ * POST /task-hall/daily-recommendations/:surveyId/delete
+ */
+export async function trackDailyRecDelete(surveyId, router = null) {
+  return await post(`/task-hall/daily-recommendations/${surveyId}/delete`, {}, router)
+}

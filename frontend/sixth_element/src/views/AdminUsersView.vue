@@ -20,6 +20,8 @@ const total = ref(0)
 const page = ref(1)
 const pageSize = ref(20)
 const search = ref('')
+const profileMin = ref('')
+const profileMax = ref('')
 const loading = ref(false)
 const selectedUser = ref(null)
 const showDetailModal = ref(false)
@@ -41,6 +43,8 @@ function saveFilters() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({
     search: search.value,
     page: page.value,
+    profileMin: profileMin.value,
+    profileMax: profileMax.value,
   }))
 }
 
@@ -51,6 +55,8 @@ function loadFilters() {
       const filters = JSON.parse(saved)
       search.value = filters.search || ''
       page.value = filters.page || 1
+      profileMin.value = filters.profileMin || ''
+      profileMax.value = filters.profileMax || ''
     }
   } catch (e) {
     console.error('Failed to load filters:', e)
@@ -60,7 +66,7 @@ function loadFilters() {
 async function fetchUsers() {
   loading.value = true
   try {
-    const data = await getUserList(page.value, pageSize.value, search.value)
+    const data = await getUserList(page.value, pageSize.value, search.value, profileMin.value, profileMax.value)
     users.value = data.users || []
     total.value = data.total || 0
     saveFilters()
@@ -69,6 +75,12 @@ async function fetchUsers() {
   } finally {
     loading.value = false
   }
+}
+
+function clearProfileFilter() {
+  profileMin.value = ''
+  profileMax.value = ''
+  handleSearch()
 }
 
 async function handleSearch() {
@@ -245,6 +257,13 @@ function getStatusText(status) {
   return status
 }
 
+function getCompletionClass(rate) {
+  if (rate === undefined || rate === null || rate === 0) return 'completion-none'
+  if (rate < 30) return 'completion-low'
+  if (rate < 70) return 'completion-medium'
+  return 'completion-high'
+}
+
 function toggleSelect(userId) {
   const idx = selectedUsers.value.indexOf(userId)
   if (idx === -1) {
@@ -309,6 +328,30 @@ function openBatchModal(action) {
         <button class="search-btn" @click="handleSearch">搜索</button>
       </div>
 
+      <div class="filter-bar">
+        <span class="filter-label">画像完成度筛选：</span>
+        <input
+          v-model="profileMin"
+          type="number"
+          class="filter-input"
+          placeholder="最小值"
+          min="0"
+          max="100"
+        />
+        <span class="filter-sep">~</span>
+        <input
+          v-model="profileMax"
+          type="number"
+          class="filter-input"
+          placeholder="最大值"
+          min="0"
+          max="100"
+        />
+        <span class="filter-unit">%</span>
+        <button class="filter-btn" @click="handleSearch">筛选</button>
+        <button class="filter-clear-btn" @click="clearProfileFilter">清除</button>
+      </div>
+
       <div v-if="selectedUsers.length > 0" class="batch-actions">
         <span class="selected-count">已选择 {{ selectedUsers.length }} 项</span>
         <button class="batch-btn batch-normal" @click="openBatchModal('normal')">设为正常</button>
@@ -338,6 +381,7 @@ function openBatchModal(action) {
                 <th>积分</th>
                 <th>发布/填写</th>
                 <th>状态</th>
+                <th>画像完成度</th>
                 <th>注册时间</th>
                 <th>最近活跃</th>
                 <th>操作</th>
@@ -372,6 +416,18 @@ function openBatchModal(action) {
                   <span class="status-badge" :class="getStatusClass(user.status)">
                     {{ getStatusText(user.status) }}
                   </span>
+                </td>
+                <td>
+                  <div class="completion-cell">
+                    <div class="completion-bar">
+                      <div
+                        class="completion-fill"
+                        :style="{ width: (user.profile_completion_rate || 0) + '%' }"
+                        :class="getCompletionClass(user.profile_completion_rate)"
+                      ></div>
+                    </div>
+                    <span class="completion-text">{{ user.profile_completion_rate || 0 }}%</span>
+                  </div>
                 </td>
                 <td>{{ user.created_at?.slice(0, 10) }}</td>
                 <td>{{ user.last_active_at?.slice(0, 10) || '从未' }}</td>
@@ -462,9 +518,17 @@ function openBatchModal(action) {
               <span>{{ selectedUser.last_active_at?.slice(0, 19) || '从未活跃' }}</span>
             </div>
             <div class="detail-item">
+              <label>画像完成度</label>
+              <span>{{ selectedUser.profile_completion_rate || 0 }}%</span>
+            </div>
+            <div class="detail-item">
+              <label>画像更新时间</label>
+              <span>{{ selectedUser.profile_last_updated_at?.slice(0, 19) || '从未' }}</span>
+            </div>
+            <div class="detail-item">
               <label>状态</label>
               <span class="status-badge" :class="getStatusClass(selectedUser.status)">
-                {{ getStatusText(selectedUser.status) }}
+                {{ getStatusText(selectedUser.status) || '未知' }}
               </span>
             </div>
           </div>
@@ -528,23 +592,59 @@ function openBatchModal(action) {
     </div>
 
     <div v-if="showEditModal" class="modal-overlay" @click.self="showEditModal = false">
-      <div class="modal-content">
-        <h3>编辑用户</h3>
-        <div class="form-group">
-          <label>昵称</label>
-          <input v-model="editForm.nickname" type="text" />
+      <div class="modal-content edit-modal">
+        <div class="modal-header-bar">
+          <h3>编辑用户</h3>
+          <span class="user-id-badge">ID: {{ editingUser?.id }}</span>
         </div>
-        <div class="form-group">
-          <label>邮箱</label>
-          <input v-model="editForm.email" type="email" />
+        
+        <div class="user-info-preview" v-if="editingUser">
+          <div class="info-row">
+            <span class="info-label">注册时间</span>
+            <span class="info-value">{{ editingUser.created_at?.slice(0, 10) }}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">画像完成度</span>
+            <span class="info-value completion">{{ editingUser.profile_completion_rate || 0 }}%</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">当前状态</span>
+            <span class="info-value">
+              <span class="status-badge" :class="getStatusClass(editingUser.status)">
+                {{ getStatusText(editingUser.status) }}
+              </span>
+            </span>
+          </div>
         </div>
-        <div class="form-group">
-          <label>积分</label>
-          <input v-model.number="editForm.points" type="number" min="0" />
+        
+        <div class="form-divider"></div>
+        
+        <div class="edit-form">
+          <div class="form-group">
+            <label>昵称</label>
+            <input v-model="editForm.nickname" type="text" placeholder="请输入昵称" />
+          </div>
+          <div class="form-group">
+            <label>邮箱</label>
+            <input v-model="editForm.email" type="email" placeholder="请输入邮箱" />
+          </div>
+          <div class="form-group">
+            <label>积分</label>
+            <div class="points-input-wrapper">
+              <input v-model.number="editForm.points" type="number" min="0" placeholder="请输入积分" />
+              <span class="points-unit">积分</span>
+            </div>
+          </div>
         </div>
-        <div class="modal-actions">
+        
+        <div class="modal-actions edit-actions">
           <button class="cancel-btn" @click="showEditModal = false">取消</button>
-          <button class="confirm-btn" @click="handleEdit">保存</button>
+          <button class="confirm-btn" @click="handleEdit">
+            <svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M20 6L9 17L4 12"/>
+            </svg>
+            保存修改
+          </button>
         </div>
       </div>
     </div>
@@ -862,6 +962,8 @@ function openBatchModal(action) {
   border-radius: 12px;
   font-size: 11px;
   font-weight: 500;
+  background: #e8f5e9;
+  color: #2e7d32;
 }
 
 .status-normal {
@@ -877,6 +979,21 @@ function openBatchModal(action) {
 .status-restricted {
   background: #ffebee;
   color: #c62828;
+}
+
+.admin-dark .status-badge {
+  background: #2e7d32;
+  color: #ffffff;
+}
+
+.admin-dark .status-suspicious {
+  background: #e65100;
+  color: #ffffff;
+}
+
+.admin-dark .status-restricted {
+  background: #c62828;
+  color: #ffffff;
 }
 
 .action-btn {
@@ -1210,5 +1327,267 @@ function openBatchModal(action) {
   height: 16px;
   cursor: pointer;
   accent-color: #667eea;
+}
+
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  background: var(--admin-bg-secondary);
+  border-radius: 8px;
+  flex-wrap: wrap;
+}
+
+.filter-label {
+  font-size: 14px;
+  color: var(--admin-text-secondary);
+  font-weight: 500;
+}
+
+.filter-input {
+  width: 80px;
+  padding: 6px 10px;
+  border: 1px solid var(--admin-border-color);
+  border-radius: 4px;
+  font-size: 13px;
+  background: var(--admin-bg-primary);
+  color: var(--admin-text-primary);
+}
+
+.filter-input:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.filter-sep {
+  color: var(--admin-text-muted);
+}
+
+.filter-unit {
+  color: var(--admin-text-secondary);
+  font-size: 13px;
+}
+
+.filter-btn {
+  padding: 6px 16px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+  color: white;
+  font-weight: 500;
+}
+
+.filter-btn:hover {
+  opacity: 0.9;
+}
+
+.filter-clear-btn {
+  padding: 6px 12px;
+  background: #f5f5f5;
+  border: 1px solid var(--admin-border-color);
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--admin-text-secondary);
+}
+
+.filter-clear-btn:hover {
+  background: #e0e0e0;
+}
+
+.completion-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.completion-bar {
+  width: 60px;
+  height: 8px;
+  background: #e0e0e0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.completion-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.completion-none {
+  background: #e0e0e0;
+}
+
+.completion-low {
+  background: #ef5350;
+}
+
+.completion-medium {
+  background: #ff9800;
+}
+
+.completion-high {
+  background: #4caf50;
+}
+
+.completion-text {
+  font-size: 12px;
+  color: var(--admin-text-secondary);
+  min-width: 35px;
+}
+
+.edit-modal {
+  max-width: 480px;
+}
+
+.modal-header-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 2px solid var(--admin-border-color);
+}
+
+.modal-header-bar h3 {
+  margin: 0;
+  font-size: 1.25rem;
+  color: var(--admin-text-primary);
+}
+
+.user-id-badge {
+  padding: 4px 12px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.user-info-preview {
+  background: var(--admin-bg-secondary);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.info-row + .info-row {
+  border-top: 1px dashed var(--admin-border-color);
+}
+
+.info-label {
+  font-size: 0.875rem;
+  color: var(--admin-text-secondary);
+}
+
+.info-value {
+  font-size: 0.875rem;
+  color: var(--admin-text-primary);
+  font-weight: 500;
+}
+
+.info-value.completion {
+  color: #4caf50;
+}
+
+.form-divider {
+  height: 1px;
+  background: var(--admin-border-color);
+  margin: 20px 0;
+}
+
+.edit-form .form-group {
+  margin-bottom: 20px;
+}
+
+.edit-form label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+  color: var(--admin-text-primary);
+  font-size: 0.875rem;
+}
+
+.edit-form input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 2px solid var(--admin-border-color);
+  border-radius: 8px;
+  font-size: 0.9375rem;
+  transition: all 0.2s ease;
+  background: var(--admin-bg-primary);
+  color: var(--admin-text-primary);
+}
+
+.edit-form input:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+}
+
+.points-input-wrapper {
+  position: relative;
+}
+
+.points-input-wrapper input {
+  padding-right: 60px;
+}
+
+.points-unit {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--admin-text-muted);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.edit-actions {
+  margin-top: 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--admin-border-color);
+}
+
+.edit-actions .confirm-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  font-weight: 500;
+}
+
+.btn-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.admin-dark .user-info-preview {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.admin-dark .modal-header-bar {
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+.admin-dark .form-divider {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.admin-dark .edit-actions {
+  border-top-color: rgba(255, 255, 255, 0.1);
 }
 </style>

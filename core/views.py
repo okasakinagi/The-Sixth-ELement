@@ -111,19 +111,17 @@ def set_user_tags(user, tag_type, tags):
         seen.add(name)
         tag, _ = Tag.objects.get_or_create(name=name, type=tag_type)
         UserTag.objects.create(user=user, tag=tag)
-        # 手动编辑标签时将权重写为 1.0（覆盖）
         try:
             utw, created = UserTagWeight.objects.get_or_create(user=user, tag=tag)
             utw.weight = WEIGHT_MANUAL
             utw.save(update_fields=["weight", "updated_at"])
         except Exception:
-            # 保守失败，不阻塞主流程
             pass
-    # 用户标签更新后立即刷新 user 向量，减少推荐滞后
     try:
         SimilarityManager.generate_and_store_vector("user", str(user.id), force=True)
     except Exception:
         pass
+    user.calculate_profile_completion()
 
 
 def get_current_user(request):

@@ -65,6 +65,62 @@ def task_hall_overview(request):
 
 
 @csrf_exempt
+def track_recommend_click(request, survey_id):
+    if request.method != "POST":
+        return error(405, "Method not allowed")
+    user, err = require_auth(request)
+    if err:
+        return err
+    raw = str(survey_id)
+    sid = _parse_int(raw.split("_")[-1] if "_" in raw else raw)
+    if sid is None:
+        return error(400, "invalid survey_id")
+    try:
+        service.track_click(user, sid)
+        return JsonResponse({"success": True}, status=200)
+    except TaskHallError as exc:
+        return error(exc.status, exc.message)
+    except Exception as exc:
+        return error(500, f"Internal server error: {str(exc)}")
+
+
+@csrf_exempt
+def track_recommend_refresh(request):
+    if request.method != "POST":
+        return error(405, "Method not allowed")
+    user, err = require_auth(request)
+    if err:
+        return err
+    try:
+        service.track_refresh(user)
+        return JsonResponse({"success": True}, status=200)
+    except TaskHallError as exc:
+        return error(exc.status, exc.message)
+    except Exception as exc:
+        return error(500, f"Internal server error: {str(exc)}")
+
+
+@csrf_exempt
+def track_recommend_delete(request, survey_id):
+    if request.method != "POST":
+        return error(405, "Method not allowed")
+    user, err = require_auth(request)
+    if err:
+        return err
+    raw = str(survey_id)
+    sid = _parse_int(raw.split("_")[-1] if "_" in raw else raw)
+    if sid is None:
+        return error(400, "invalid survey_id")
+    try:
+        service.track_delete(user, sid)
+        return JsonResponse({"success": True}, status=200)
+    except TaskHallError as exc:
+        return error(exc.status, exc.message)
+    except Exception as exc:
+        return error(500, f"Internal server error: {str(exc)}")
+
+
+@csrf_exempt
 def task_hall_tasks(request):
     if request.method != "GET":
         return error(405, "Method not allowed")

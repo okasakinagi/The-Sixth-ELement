@@ -5,7 +5,7 @@ from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
-from core.models import DailyRecommendation, PointsLog, Response, SurveyTag, UserTag
+from core.models import DailyRecommendation, PointsLog, RecommendationClaim, Response, SurveyTag, UserTag
 from core.services.similarity_service import SimilarityService
 from task_hall.mapper.task_hall_mapper import TaskHallMapper
 
@@ -505,3 +505,40 @@ class TaskHallService:
         if not reasons:
             reasons.append("✔ 为你智能推荐")
         return "  ".join(reasons)
+
+    def track_click(self, user, survey_id):
+        today = timezone.now().date()
+        rec, _ = DailyRecommendation.objects.get_or_create(
+            user=user, date=today, defaults={"survey_ids": [], "claimed_ids": []}
+        )
+        clicked = list(rec.clicked_ids) if rec.clicked_ids else []
+        if survey_id not in clicked:
+            clicked.append(survey_id)
+            rec.clicked_ids = clicked
+            rec.save(update_fields=["clicked_ids"])
+            RecommendationClaim.objects.create(
+                user=user,
+                recommendation=rec,
+                survey_id=survey_id,
+                status="claimed",
+            )
+
+    def track_refresh(self, user):
+        today = timezone.now().date()
+        rec, _ = DailyRecommendation.objects.get_or_create(
+            user=user, date=today, defaults={"survey_ids": [], "claimed_ids": []}
+        )
+        rec.refresh_count = (rec.refresh_count or 0) + 1
+        rec.refreshed_at = timezone.now()
+        rec.save(update_fields=["refresh_count", "refreshed_at"])
+
+    def track_delete(self, user, survey_id):
+        today = timezone.now().date()
+        rec, _ = DailyRecommendation.objects.get_or_create(
+            user=user, date=today, defaults={"survey_ids": [], "claimed_ids": []}
+        )
+        deleted = list(rec.deleted_ids) if rec.deleted_ids else []
+        if survey_id not in deleted:
+            deleted.append(survey_id)
+            rec.deleted_ids = deleted
+            rec.save(update_fields=["deleted_ids"])

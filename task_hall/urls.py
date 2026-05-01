@@ -16,7 +16,18 @@ urlpatterns = [
         "task-hall/daily-recommendations/<str:survey_id>/claim-bonus",
         task_hall_controller.task_hall_claim_daily_bonus,
     ),
-    # 等级与任务
+    path(
+        "task-hall/daily-recommendations/<str:survey_id>/click",
+        task_hall_controller.track_recommend_click,
+    ),
+    path(
+        "task-hall/daily-recommendations/refresh",
+        task_hall_controller.track_recommend_refresh,
+    ),
+    path(
+        "task-hall/daily-recommendations/<str:survey_id>/delete",
+        task_hall_controller.track_recommend_delete,
+    ),
     path("user/level", level_controller.get_level),
     path("tasks/daily", level_controller.get_daily_tasks),
     path("tasks/weekly", level_controller.get_weekly_tasks),

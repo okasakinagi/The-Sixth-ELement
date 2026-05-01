@@ -49,8 +49,11 @@ export async function exportDashboard(days = 7) {
   return request(`/dashboard/export?days=${days}`)
 }
 
-export async function getUserList(page = 1, pageSize = 20, search = '') {
-  return request(`/users?page=${page}&page_size=${pageSize}&search=${encodeURIComponent(search)}`)
+export async function getUserList(page = 1, pageSize = 20, search = '', profileMin = '', profileMax = '') {
+  let url = `/users?page=${page}&page_size=${pageSize}&search=${encodeURIComponent(search)}`
+  if (profileMin !== '') url += `&profile_completion_min=${profileMin}`
+  if (profileMax !== '') url += `&profile_completion_max=${profileMax}`
+  return request(url)
 }
 
 export async function getUserDetail(userId) {
@@ -140,6 +143,36 @@ export async function getAiAnalytics(days = 7) {
 
 export async function getRiskControl(type = 'short_duration') {
   return request(`/risk?type=${type}`)
+}
+
+export async function getRiskRules() {
+  return request('/risk/rules')
+}
+
+export async function createRiskRule(data) {
+  return request('/risk/rules', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+}
+
+export async function updateRiskRule(ruleId, data) {
+  return request(`/risk/rules/${ruleId}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  })
+}
+
+export async function deleteRiskRule(ruleId) {
+  return request(`/risk/rules/${ruleId}`, {
+    method: 'DELETE',
+  })
+}
+
+export async function toggleRiskRule(ruleId) {
+  return request(`/risk/rules/${ruleId}/toggle`, {
+    method: 'POST',
+  })
 }
 
 export async function getAnnouncementList(page = 1, pageSize = 20) {

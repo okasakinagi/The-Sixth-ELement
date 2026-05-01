@@ -21,28 +21,46 @@ class Command(BaseCommand):
         if not email:
             email = input("请输入管理员邮箱: ").strip()
 
-        password = getpass.getpass("请输入密码: ")
-        if not password:
-            password = getpass.getpass("密码不能为空，请重新输入: ")
+        self.stdout.write(self.style.WARNING("\n密码要求："))
+        self.stdout.write("  - 长度至少8位")
+        self.stdout.write("  - 至少包含一个大写字母")
+        self.stdout.write("  - 至少包含一个小写字母")
+        self.stdout.write("  - 至少包含一个数字")
+        self.stdout.write("  - 至少包含一个特殊字符 (!@#$%^&*(),.?\":{}|<>)\n")
 
-        # 增强密码强度检查
-        import re
-        errors = []
-        if len(password) < 8:
-            errors.append("密码长度至少8位")
-        if not re.search(r'[A-Z]', password):
-            errors.append("密码至少包含一个大写字母")
-        if not re.search(r'[a-z]', password):
-            errors.append("密码至少包含一个小写字母")
-        if not re.search(r'[0-9]', password):
-            errors.append("密码至少包含一个数字")
-        if not re.search(r'[!@#$%^&*(),.?":{}|<>]', password):
-            errors.append("密码至少包含一个特殊字符")
+        while True:
+            password = getpass.getpass("请输入密码: ")
+            if not password:
+                self.stdout.write(self.style.ERROR("密码不能为空，请重新输入"))
+                continue
 
-        if errors:
-            for error in errors:
-                self.stdout.write(self.style.ERROR(f"- {error}"))
-            return
+            password_confirm = getpass.getpass("请再次输入密码确认: ")
+            
+            if password != password_confirm:
+                self.stdout.write(self.style.ERROR("两次密码不一致，请重新输入\n"))
+                continue
+
+            import re
+            errors = []
+            if len(password) < 8:
+                errors.append("密码长度至少8位")
+            if not re.search(r'[A-Z]', password):
+                errors.append("密码至少包含一个大写字母")
+            if not re.search(r'[a-z]', password):
+                errors.append("密码至少包含一个小写字母")
+            if not re.search(r'[0-9]', password):
+                errors.append("密码至少包含一个数字")
+            if not re.search(r'[!@#$%^&*(),.?":{}|<>]', password):
+                errors.append("密码至少包含一个特殊字符")
+
+            if errors:
+                self.stdout.write(self.style.ERROR("\n密码强度不足："))
+                for error in errors:
+                    self.stdout.write(self.style.ERROR(f"  - {error}"))
+                self.stdout.write("\n请重新输入密码\n")
+                continue
+            
+            break
 
         admin_role, _ = Role.objects.get_or_create(
             name="admin", defaults={"description": "系统管理员"}
