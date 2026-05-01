@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils import timezone
 
 
 class AppUser(models.Model):
@@ -7,15 +8,33 @@ class AppUser(models.Model):
     credit_score = models.IntegerField(default=0)
     points = models.IntegerField(default=0)
     activity_points = models.IntegerField(default=0)
-    level = models.IntegerField(default=1)
-    title = models.CharField(max_length=32, default="新手探索者")
     status = models.CharField(max_length=32, default="normal")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     last_active_at = models.DateTimeField(auto_now=True)
+    profile_completion_rate = models.FloatField(default=0.0)
+    profile_last_updated_at = models.DateTimeField(null=True, blank=True)
+    level = models.IntegerField(default=1)
+    title = models.CharField(max_length=32, default="新手探索者")
+
+    PROFILE_REQUIRED_FIELDS = ["gender", "age", "school", "major", "mbti", "interest"]
 
     def __str__(self):
         return self.nickname
+
+    def calculate_profile_completion(self):
+        from core.models import Tag
+        user_tags = set(Tag.objects.filter(
+            usertag__user=self,
+            type__in=self.PROFILE_REQUIRED_FIELDS
+        ).values_list("type", flat=True))
+        completed = len(user_tags)
+        total = len(self.PROFILE_REQUIRED_FIELDS)
+        rate = (completed / total * 100) if total > 0 else 0
+        self.profile_completion_rate = round(rate, 2)
+        self.profile_last_updated_at = timezone.now()
+        self.save(update_fields=["profile_completion_rate", "profile_last_updated_at"])
+        return self.profile_completion_rate
 
 
 class AuthCredential(models.Model):
@@ -612,6 +631,10 @@ class DailyRecommendation(models.Model):
     survey_ids = models.JSONField(default=list)
     claimed_ids = models.JSONField(default=list)
     created_at = models.DateTimeField(auto_now_add=True)
+    clicked_ids = models.JSONField(default=list)
+    deleted_ids = models.JSONField(default=list)
+    refresh_count = models.IntegerField(default=0)
+    refreshed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         constraints = [
@@ -621,6 +644,40 @@ class DailyRecommendation(models.Model):
         ]
         indexes = [
             models.Index(fields=["user", "date"], name="daily_rec_user_date_idx"),
+        ]
+
+
+class RecommendationClaim(models.Model):
+    """每日推荐完成明细：追踪用户从推荐到完成的完整链路。
+
+    - status: claimed(已点击)/completed(已完成)/abandoned(超时未完成)
+    """
+
+    STATUS_CHOICES = [
+        ("claimed", "已点击"),
+        ("completed", "已完成"),
+        ("abandoned", "超时未完成"),
+    ]
+
+    user = models.ForeignKey(AppUser, on_delete=models.CASCADE)
+    recommendation = models.ForeignKey(DailyRecommendation, on_delete=models.CASCADE, null=True, blank=True)
+    survey = models.ForeignKey("Survey", on_delete=models.CASCADE, related_name="recommendation_claims")
+    claimed_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="claimed")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "survey", "claimed_at"],
+                name="unique_user_survey_claim",
+                condition=models.Q(claimed_at__isnull=False),
+            )
+        ]
+        indexes = [
+            models.Index(fields=["user", "status"], name="rc_user_status_idx"),
+            models.Index(fields=["status"], name="rc_status_idx"),
+            models.Index(fields=["claimed_at"], name="rc_claimed_at_idx"),
         ]
 
 
@@ -658,7 +715,7 @@ class TaskCompletion(models.Model):
 
 
 class HomeModuleConfig(models.Model):
-    """首页模块配置。用于编排 Feed / Trending 等模块顺序与容量。"""
+    """首页模块配置。用于编排 Feed / Trending 等模块排序与数量。"""
 
     module_key = models.CharField(max_length=32, unique=True)
     title = models.CharField(max_length=64)
@@ -716,23 +773,91 @@ class RiskEvent(models.Model):
         ]
 
 
+class RiskRule(models.Model):
+    """风控规则配置。
+
+    - rule_code: 规则编码（唯一标识符）
+    - rule_name: 规则名称
+    - description: 规则描述
+    - enabled: 是否启用
+    - priority: 优先级（数字越小优先级越高）
+    - event_type: 触发的事件类型
+    - severity: 严重程度
+    - conditions: 规则条件（JSON格式）
+    - actions: 触发后的处理动作（JSON格式）
+    - created_at: 创建时间
+    - updated_at: 更新时间
+    """
+
+    EVENT_TYPE_CHOICES = [
+        ("short_duration", "短时长回答"),
+        ("ip_anomaly", "IP异常"),
+        ("device_anomaly", "设备异常"),
+        ("time_anomaly", "时间异常"),
+        ("fixed_answer", "固定答案检测"),
+    ]
+
+    SEVERITY_CHOICES = [
+        ("low", "低"),
+        ("medium", "中"),
+        ("high", "高"),
+    ]
+
+    ACTION_CHOICES = [
+        ("log", "仅记录"),
+        ("mark_suspicious", "标记为可疑"),
+        ("restrict_user", "禁用用户"),
+        ("alert_admin", "告警通知管理员"),
+    ]
+
+    rule_code = models.CharField(max_length=64, unique=True)
+    rule_name = models.CharField(max_length=128)
+    description = models.TextField(blank=True, null=True)
+    enabled = models.BooleanField(default=True)
+    priority = models.IntegerField(default=100)
+    event_type = models.CharField(max_length=32, choices=EVENT_TYPE_CHOICES)
+    severity = models.CharField(max_length=32, choices=SEVERITY_CHOICES, default="medium")
+    conditions = models.JSONField(default=dict)
+    actions = models.JSONField(default=list)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["rule_code"], name="risk_rule_code_idx"),
+            models.Index(fields=["enabled"], name="risk_rule_enabled_idx"),
+            models.Index(fields=["priority"], name="risk_rule_priority_idx"),
+        ]
+        ordering = ["priority", "-created_at"]
+
+    def __str__(self):
+        return f"{self.rule_name} ({'启用' if self.enabled else '禁用'})"
+
+    @classmethod
+    def get_enabled_rules(cls, event_type=None):
+        """获取启用的规则。"""
+        queryset = cls.objects.filter(enabled=True)
+        if event_type:
+            queryset = queryset.filter(event_type=event_type)
+        return queryset.order_by("priority")
+
+
 class UserBehaviorLog(models.Model):
     """用户行为日志。
 
-    仅用于后台分析与运营统计，不对普通用户暴露。
+    仅用于后端分析与运营统计，不对普通用户开放。
     """
 
     EVENT_TYPE_CHOICES = [
         ("impression", "曝光"),
         ("click", "点击"),
-        ("refresh", "换一批"),
+        ("refresh", "刷新一次"),
         ("dismiss", "不感兴趣"),
     ]
 
     SCENE_CHOICES = [
         ("task_list", "任务列表"),
-        ("task_refresh", "任务换一批"),
-        ("daily_recommend", "每日推荐"),
+        ("task_refresh", "任务刷新一次"),
         ("home_feed", "首页Feed"),
         ("home_trending", "首页Trending"),
         ("fill_entry", "填写入口"),

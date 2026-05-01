@@ -58,13 +58,12 @@ class UserProfileService:
         Raises:
             ValueError: 数据验证失败
         """
-        # 数据验证
         validated_data = self._validate_profile_data(profile_data, partial=True)
 
-        # 调用Mapper更新
         self.mapper.update_user_profile(user, validated_data)
 
-        # 返回完整画像
+        user.calculate_profile_completion()
+
         return self.get_profile(user)
 
     def replace_profile(self, user, profile_data):
@@ -81,16 +80,14 @@ class UserProfileService:
         Raises:
             ValueError: 数据验证失败
         """
-        # 数据验证（完整验证）
         validated_data = self._validate_profile_data(profile_data, partial=False)
 
-        # 先删除所有画像标签
         self.mapper.delete_user_profile(user)
 
-        # 再设置新的标签
         self.mapper.update_user_profile(user, validated_data)
 
-        # 返回完整画像
+        user.calculate_profile_completion()
+
         return self.get_profile(user)
 
     def _validate_profile_data(self, data, partial=True):

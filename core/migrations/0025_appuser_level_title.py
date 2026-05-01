@@ -4,7 +4,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("core", "0015_taskcompletion"),
+        ("core", "0016_appuser_last_active_at_survey_ai_generated_riskevent"),
     ]
 
     operations = [
