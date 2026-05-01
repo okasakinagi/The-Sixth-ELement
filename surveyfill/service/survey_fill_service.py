@@ -8,7 +8,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from core.managers.similarity_manager import SimilarityManager
-from core.models import PointsLog, SurveyTag, TeamMember, UserTagWeight
+from core.models import PointsLog, RecommendationClaim, SurveyTag, TeamMember, UserTagWeight
 from surveyfill.mapper.survey_fill_mapper import SurveyFillMapper
 
 
@@ -73,21 +73,6 @@ class SurveyFillService:
             duration_seconds = int(duration_seconds)
         except (TypeError, ValueError):
             raise SurveyFillError(422, "填写时长必须为数字")
-        if duration_seconds < 10:
-            # 记录短时长回答风控事件
-            from core.models import RiskEvent
-            RiskEvent.objects.create(
-                user=user,
-                survey=survey,
-                event_type="short_duration",
-                severity="medium",
-                detail={
-                    "duration_seconds": duration_seconds,
-                    "survey_id": survey.id,
-                    "user_id": user.id
-                }
-            )
-            raise SurveyFillError(422, "填写时长过短，请完整填写后提交")
 
         answers = data.get("answers")
         if not isinstance(answers, list):
@@ -143,6 +128,19 @@ class SurveyFillService:
         )
         response.submitted_at = timezone.now()
         response.save(update_fields=["submitted_at"])
+
+        # 调用风控规则引擎（只记录事件，不拦截提交）
+        try:
+            from core.services.risk_engine_service import RiskEngine
+            answers_list = [item.get("value") for item in answers if isinstance(item, dict)]
+            RiskEngine.evaluate_submission(
+                user=user,
+                survey=survey,
+                duration_seconds=duration_seconds,
+                answers=answers_list,
+            )
+        except Exception:
+            pass
 
         # 提交即时发放积分（已取消审核机制）
         reward = survey.reward_points or 0
@@ -215,6 +213,20 @@ class SurveyFillService:
             # 更新用户活跃时间
             user.last_active_at = timezone.now()
             user.save(update_fields=["last_active_at"])
+
+        # 推荐完成明细：更新 claim 记录状态为 completed
+        try:
+            claim = RecommendationClaim.objects.filter(
+                user=user,
+                survey=survey,
+                status="claimed",
+            ).order_by("-claimed_at").first()
+            if claim:
+                claim.status = "completed"
+                claim.completed_at = timezone.now()
+                claim.save(update_fields=["status", "completed_at"])
+        except Exception:
+            pass
 
         # 推荐闭环（阶段5）：提交成功后，对当前问卷标签做正反馈增权。
         try:
