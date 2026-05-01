@@ -3,10 +3,19 @@ import random
 
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Count
 from django.utils import timezone
 
-from core.models import DailyRecommendation, PointsLog, RecommendationClaim, Response, SurveyTag, UserTag
+from core.models import (
+    DailyRecommendation,
+    HomeModuleConfig,
+    PointsLog,
+    Response,
+    SurveyTag,
+    UserTag,
+)
 from core.services.similarity_service import SimilarityService
+from core.services.user_behavior_log_service import UserBehaviorLogService
 from task_hall.mapper.task_hall_mapper import TaskHallMapper
 
 
@@ -30,6 +39,11 @@ class TaskHallService:
         "full": ["published", "active", "live", "paused", "closed", "ended", "expired"],
     }
 
+    HOME_MODULE_FALLBACKS = [
+        {"module_key": "feed", "title": "为你推荐", "enabled": True, "weight": 100, "item_limit": 12},
+        {"module_key": "trending", "title": "热门趋势", "enabled": True, "weight": 80, "item_limit": 8},
+    ]
+
     def __init__(self):
         self.mapper = TaskHallMapper()
 
@@ -48,6 +62,123 @@ class TaskHallService:
             "notices": notices,
         }
 
+    # ─── 首页模块编排 ─────────────────────────────────────────────────────
+
+    def get_home_modules(self, user=None):
+        modules = []
+        for cfg in self._load_home_module_configs():
+            key = cfg["module_key"]
+            limit = max(1, min(int(cfg.get("item_limit") or 0), 30))
+
+            if key == "feed":
+                items = self._get_feed_items(user, limit)
+                subtitle = "基于你的兴趣偏好" if user else "热门可填问卷"
+            elif key == "trending":
+                items = self._get_trending_items(user, limit)
+                subtitle = "近7天参与热度"
+            else:
+                continue
+
+            modules.append(
+                {
+                    "key": key,
+                    "title": cfg.get("title") or key,
+                    "subtitle": subtitle,
+                    "weight": cfg.get("weight", 0),
+                    "item_limit": limit,
+                    "items": items,
+                }
+            )
+
+        return {
+            "modules": modules,
+            "generated_at": self._iso_str(timezone.now()),
+        }
+
+    def _load_home_module_configs(self):
+        rows = list(
+            HomeModuleConfig.objects.filter(enabled=True)
+            .order_by("-weight", "id")
+            .values("module_key", "title", "enabled", "weight", "item_limit")
+        )
+        if rows:
+            return rows
+        return [item.copy() for item in self.HOME_MODULE_FALLBACKS]
+
+    def _get_feed_items(self, user, limit):
+        if user:
+            payload = self.refresh_batch(
+                user,
+                exclude_task_ids=[],
+                batch_size=limit,
+                scene="home_feed",
+            )
+            return payload.get("items", [])[:limit]
+        return self.get_guest_tasks(limit).get("items", [])[:limit]
+
+    def _get_trending_items(self, user, limit):
+        queryset = self.mapper.base_queryset().filter(
+            status__in=self.STATUS_LIVE_INTERNAL,
+            active_questionnaire__status="published",
+        )
+        if user:
+            queryset = queryset.exclude(owner=user).exclude(response__user=user)
+        queryset = queryset.distinct()
+
+        surveys = list(queryset.select_related("owner"))
+        if not surveys:
+            return []
+
+        survey_map = {survey.id: survey for survey in surveys}
+        survey_ids = list(survey_map.keys())
+        since = timezone.now() - timezone.timedelta(days=7)
+
+        hot_rows = (
+            Response.objects.filter(
+                survey_id__in=survey_ids,
+                status="submitted",
+                submitted_at__gte=since,
+            )
+            .values("survey_id")
+            .annotate(cnt=Count("id"))
+        )
+        hot_map = {row["survey_id"]: row["cnt"] for row in hot_rows}
+
+        hot_ids = [sid for sid in survey_ids if hot_map.get(sid, 0) > 0]
+        cold_ids = [sid for sid in survey_ids if sid not in hot_ids]
+
+        hot_ids.sort(
+            key=lambda sid: (
+                -hot_map.get(sid, 0),
+                -survey_map[sid].created_at.timestamp(),
+                -sid,
+            )
+        )
+        cold_ids.sort(key=lambda sid: (-survey_map[sid].created_at.timestamp(), -sid))
+
+        ranked_ids = (hot_ids + cold_ids)[:limit]
+        filled_counts = self.mapper.get_filled_counts(ranked_ids)
+
+        items = []
+        for sid in ranked_ids:
+            survey = survey_map.get(sid)
+            if not survey:
+                continue
+            card = self._to_task_card(survey, filled_counts.get(sid, 0))
+            hot_count = int(hot_map.get(sid, 0) or 0)
+            card["hot_count_7d"] = hot_count
+            card["hot_reason"] = (
+                f"近7天已有 {hot_count} 人参与"
+                if hot_count > 0
+                else "新发布问卷，欢迎抢先参与"
+            )
+            items.append(card)
+
+        if user and items:
+            self._log_impressions_from_cards(user.id, items, scene="home_trending")
+
+        return items
+
     def list_tasks(self, user, filters):
         normalized = self._normalize_filters(filters)
         queryset = (
@@ -65,6 +196,7 @@ class TaskHallService:
         offset = (page - 1) * page_size
 
         items = self._list_personalized_items(user.id, queryset, offset, page_size)
+        self._log_impressions_from_cards(user.id, items, scene="task_list")
         return {
             "items": items,
             "page": page,
@@ -72,7 +204,7 @@ class TaskHallService:
             "total": total,
         }
 
-    def refresh_batch(self, user, exclude_task_ids, batch_size):
+    def refresh_batch(self, user, exclude_task_ids, batch_size, scene="task_refresh"):
         normalized = {"status": list(self.STATUS_LIVE_INTERNAL)}
         queryset = (
             self.mapper.list_surveys(normalized)
@@ -91,6 +223,7 @@ class TaskHallService:
             page_size=size,
             exclude_task_ids=exclude_task_ids,
         )
+        self._log_impressions_from_cards(user.id, items, scene=scene)
         return {"items": items}
 
     def _list_personalized_items(
@@ -320,9 +453,12 @@ class TaskHallService:
         }
 
     def _get_sender_title(self, owner):
-        """根据发布者的 activity_points 计算称号"""
+        """根据发布者的快照 title 字段返回称号，若为默认值则动态计算"""
         if not owner:
             return ""
+        # 优先使用快照字段（由 LevelService.get_level_info 回写）
+        if getattr(owner, "title", None) and owner.title != "新手探索者":
+            return owner.title
         try:
             from task_hall.service.level_service import LEVEL_TABLE
             exp = owner.activity_points or 0
@@ -341,6 +477,31 @@ class TaskHallService:
 
     def _public_user_id(self, user_id):
         return f"u_{user_id}"
+
+    def _parse_public_survey_id(self, survey_id):
+        if survey_id is None:
+            return None
+        raw = str(survey_id).strip()
+        if not raw:
+            return None
+        if raw.startswith("s_"):
+            raw = raw[2:]
+        try:
+            value = int(raw)
+        except (TypeError, ValueError):
+            return None
+        return value if value > 0 else None
+
+    def _log_impressions_from_cards(self, user_id, items, scene):
+        if not user_id or not items:
+            return
+        survey_ids = []
+        for item in items:
+            sid = self._parse_public_survey_id(item.get("id"))
+            if sid is not None:
+                survey_ids.append(sid)
+        if survey_ids:
+            UserBehaviorLogService.log_impressions(user_id, survey_ids, scene=scene)
 
     def _iso_str(self, dt):
         if not dt:
@@ -419,7 +580,11 @@ class TaskHallService:
 
         surveys = {
             s.id: s
-            for s in self.mapper.base_queryset().filter(id__in=survey_ids)
+            for s in self.mapper.base_queryset().filter(
+                id__in=survey_ids,
+                status__in=self.STATUS_LIVE_INTERNAL,
+                active_questionnaire__status="published",
+            )
         }
         filled_counts = self.mapper.get_filled_counts(survey_ids)
 
@@ -436,6 +601,8 @@ class TaskHallService:
             card["bonus_claimed"] = sid in claimed_ids
             card["daily_recommend"] = True
             items.append(card)
+
+        self._log_impressions_from_cards(user.id, items, scene="daily_recommend")
 
         return {"date": today.isoformat(), "items": items}
 
@@ -481,7 +648,7 @@ class TaskHallService:
         }
 
     def _build_daily_reason(self, user_id, survey_id, score):
-        """根据用户与问卷标签重叠生成中文推荐理由。"""
+        """根据用户与问卷标签重叠及填写历史生成中文推荐理由。"""
         user_tag_types = set(
             UserTag.objects.filter(user_id=user_id)
             .select_related("tag")
@@ -500,128 +667,24 @@ class TaskHallService:
             reasons.append("✔ 兴趣匹配")
         if "school" in overlap:
             reasons.append("✔ 同学校")
+        # 检查用户是否填过同类标签的问卷（填写历史证据链）
+        if not reasons:
+            survey_tag_ids = set(
+                SurveyTag.objects.filter(survey_id=survey_id).values_list("tag_id", flat=True)
+            )
+            if survey_tag_ids:
+                filled_survey_ids = set(
+                    Response.objects.filter(user_id=user_id, status="submitted")
+                    .values_list("survey_id", flat=True)
+                )
+                if filled_survey_ids:
+                    similar_exists = SurveyTag.objects.filter(
+                        survey_id__in=filled_survey_ids, tag_id__in=survey_tag_ids
+                    ).exists()
+                    if similar_exists:
+                        reasons.append("✔ 你填过同类问卷")
         if not reasons and score is not None and score >= 0.2:
             reasons.append("✔ 内容偏好匹配")
         if not reasons:
             reasons.append("✔ 为你智能推荐")
         return "  ".join(reasons)
-
-    HOME_MODULE_FALLBACKS = [
-        {"module_key": "feed", "title": "为你推荐", "weight": 100, "item_limit": 10},
-        {"module_key": "trending", "title": "近期热门", "weight": 90, "item_limit": 10},
-    ]
-
-    def get_home_modules(self, user=None):
-        modules = []
-        for cfg in self._load_home_module_configs():
-            key = cfg["module_key"]
-            limit = max(1, min(int(cfg.get("item_limit") or 0), 30))
-            if key == "feed":
-                items = self._get_feed_items(user, limit)
-                subtitle = "基于你的兴趣偏好" if user else "热门可填问卷"
-            elif key == "trending":
-                items = self._get_trending_items(user, limit)
-                subtitle = "近七天参与热度"
-            else:
-                continue
-
-            modules.append(
-                {
-                    "key": key,
-                    "title": cfg.get("title") or key,
-                    "subtitle": subtitle,
-                    "weight": cfg.get("weight", 0),
-                    "item_limit": limit,
-                    "items": items,
-                }
-            )
-
-        return {
-            "modules": modules,
-            "generated_at": self._iso_str(timezone.now()),
-        }
-
-    def _load_home_module_configs(self):
-        rows = list(
-            HomeModuleConfig.objects.filter(enabled=True)
-            .order_by("-weight", "id")
-            .values("module_key", "title", "enabled", "weight", "item_limit")
-        )
-        if rows:
-            return rows
-        return [item.copy() for item in self.HOME_MODULE_FALLBACKS]
-
-    def _get_feed_items(self, user, limit):
-        if user:
-            payload = self.refresh_batch(
-                user,
-                exclude_task_ids=[],
-                batch_size=limit,
-                scene="home_feed",
-            )
-            return payload.get("items", [])[:limit]
-        return self.get_guest_tasks(limit).get("items", [])[:limit]
-
-    def _get_trending_items(self, user, limit):
-        queryset = self.mapper.base_queryset().filter(
-            status__in=self.STATUS_LIVE_INTERNAL,
-            active_questionnaire__status="published",
-        )
-        if user:
-            queryset = queryset.exclude(owner=user).exclude(response__user=user)
-        queryset = queryset.distinct()
-
-        surveys = list(queryset.select_related("owner")[: limit * 2])
-
-        surveys.sort(
-            key=lambda s: (
-                -sum(
-                    claim.count
-                    for claim in s.claims.all()
-                    if claim.created_at >= timezone.now() - timedelta(days=7)
-                ),
-                s.created_at,
-            )
-        )
-        items = []
-        for survey in surveys[:limit]:
-            card = self._survey_to_card(survey, user)
-            items.append(card)
-        return items
-
-    def track_click(self, user, survey_id):
-        today = timezone.now().date()
-        rec, _ = DailyRecommendation.objects.get_or_create(
-            user=user, date=today, defaults={"survey_ids": [], "claimed_ids": []}
-        )
-        clicked = list(rec.clicked_ids) if rec.clicked_ids else []
-        if survey_id not in clicked:
-            clicked.append(survey_id)
-            rec.clicked_ids = clicked
-            rec.save(update_fields=["clicked_ids"])
-            RecommendationClaim.objects.create(
-                user=user,
-                recommendation=rec,
-                survey_id=survey_id,
-                status="claimed",
-            )
-
-    def track_refresh(self, user):
-        today = timezone.now().date()
-        rec, _ = DailyRecommendation.objects.get_or_create(
-            user=user, date=today, defaults={"survey_ids": [], "claimed_ids": []}
-        )
-        rec.refresh_count = (rec.refresh_count or 0) + 1
-        rec.refreshed_at = timezone.now()
-        rec.save(update_fields=["refresh_count", "refreshed_at"])
-
-    def track_delete(self, user, survey_id):
-        today = timezone.now().date()
-        rec, _ = DailyRecommendation.objects.get_or_create(
-            user=user, date=today, defaults={"survey_ids": [], "claimed_ids": []}
-        )
-        deleted = list(rec.deleted_ids) if rec.deleted_ids else []
-        if survey_id not in deleted:
-            deleted.append(survey_id)
-            rec.deleted_ids = deleted
-            rec.save(update_fields=["deleted_ids"])

@@ -96,34 +96,10 @@ export async function claimDailyBonus(surveyId, router = null) {
 }
 
 /**
- * 获取首页模块（Trending 等）
+ * 获取首页模块编排数据（Feed + Trending 等）
  * GET /task-hall/home-modules
- * 支持未登录用户（返回随机内容）
+ * 支持未登录访客（返回随机内容）
  */
 export async function getTaskHallHomeModules(router = null) {
   return await get('/task-hall/home-modules', router)
-}
-
-/**
- * 记录每日推荐点击行为
- * POST /task-hall/daily-recommendations/:surveyId/click
- */
-export async function trackDailyRecClick(surveyId, router = null) {
-  return await post(`/task-hall/daily-recommendations/${surveyId}/click`, {}, router)
-}
-
-/**
- * 记录每日推荐刷新行为
- * POST /task-hall/daily-recommendations/refresh
- */
-export async function trackDailyRecRefresh(router = null) {
-  return await post('/task-hall/daily-recommendations/refresh', {}, router)
-}
-
-/**
- * 记录每日推荐删除行为
- * POST /task-hall/daily-recommendations/:surveyId/delete
- */
-export async function trackDailyRecDelete(surveyId, router = null) {
-  return await post(`/task-hall/daily-recommendations/${surveyId}/delete`, {}, router)
 }
