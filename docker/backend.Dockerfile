@@ -6,13 +6,20 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# 安装系统依赖（MySQL 客户端编译依赖）并安装 Python 依赖
-COPY requirements.txt /app/requirements.txt
-RUN apt-get update \
+# 先把容器内 apt 源切到腾讯云镜像，避免默认 Debian 源过慢
+RUN sed -i \
+    -e 's#http://deb.debian.org/debian#https://mirrors.cloud.tencent.com/debian#g' \
+    -e 's#http://deb.debian.org/debian-security#https://mirrors.cloud.tencent.com/debian-security#g' \
+    /etc/apt/sources.list.d/debian.sources \
+    && apt-get update \
     && apt-get install -y --no-install-recommends \
     build-essential default-libmysqlclient-dev pkg-config gcc \
-    && python -m pip install --upgrade pip \
-    && pip install --no-cache-dir -r /app/requirements.txt \
+    && rm -rf /var/lib/apt/lists/*
+
+# 单独安装 Python 依赖，命中缓存时只会重跑这一层
+COPY requirements.txt /app/requirements.txt
+RUN python -m pip install --upgrade pip \
+    && pip install -i https://mirrors.cloud.tencent.com/pypi/simple --no-cache-dir -r /app/requirements.txt \
     && apt-get purge -y --auto-remove build-essential gcc \
     && rm -rf /var/lib/apt/lists/*
 
