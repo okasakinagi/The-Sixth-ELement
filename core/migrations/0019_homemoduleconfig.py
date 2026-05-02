@@ -34,14 +34,22 @@ def unseed_home_module_configs(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("core", "0025_appuser_level_title"),
+        ("core", "0018_merge_20260418_1352"),
     ]
 
     operations = [
         migrations.CreateModel(
             name="HomeModuleConfig",
             fields=[
-                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
                 ("module_key", models.CharField(max_length=32, unique=True)),
                 ("title", models.CharField(max_length=64)),
                 ("enabled", models.BooleanField(default=True)),
@@ -51,8 +59,15 @@ class Migration(migrations.Migration):
                 ("updated_at", models.DateTimeField(auto_now=True)),
             ],
             options={
-                "indexes": [models.Index(fields=["enabled", "weight"], name="home_module_enabled_weight_idx")],
+                "indexes": [
+                    models.Index(
+                        fields=["enabled", "weight"],
+                        name="home_module_enabled_weight_idx",
+                    )
+                ],
             },
         ),
-        migrations.RunPython(seed_home_module_configs, reverse_code=unseed_home_module_configs),
+        migrations.RunPython(
+            seed_home_module_configs, reverse_code=unseed_home_module_configs
+        ),
     ]

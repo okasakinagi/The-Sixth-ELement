@@ -6,9 +6,8 @@ from django.db import migrations
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('core', '0025_appuser_level_title'),
-        ('core', '0017_alter_auditlog_operator'),
+        ("core", "0016_appuser_level_title"),
+        ("core", "0017_alter_auditlog_operator"),
     ]
 
-    operations = [
-    ]
+    operations = []

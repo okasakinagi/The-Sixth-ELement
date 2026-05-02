@@ -24,10 +24,12 @@ class AppUser(models.Model):
 
     def calculate_profile_completion(self):
         from core.models import Tag
-        user_tags = set(Tag.objects.filter(
-            usertag__user=self,
-            type__in=self.PROFILE_REQUIRED_FIELDS
-        ).values_list("type", flat=True))
+
+        user_tags = set(
+            Tag.objects.filter(
+                usertag__user=self, type__in=self.PROFILE_REQUIRED_FIELDS
+            ).values_list("type", flat=True)
+        )
         completed = len(user_tags)
         total = len(self.PROFILE_REQUIRED_FIELDS)
         rate = (completed / total * 100) if total > 0 else 0
@@ -270,7 +272,9 @@ class AuditLog(models.Model):
     target_type = models.CharField(max_length=32)
     target_id = models.BigIntegerField()
     action = models.CharField(max_length=64)
-    operator = models.ForeignKey(AppUser, on_delete=models.CASCADE, blank=True, null=True)
+    operator = models.ForeignKey(
+        AppUser, on_delete=models.CASCADE, blank=True, null=True
+    )
     note = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -451,7 +455,6 @@ class TeamInvitation(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=["team", "invitee"],
-                condition=models.Q(status="pending"),
                 name="unique_team_invitee_pending",
             ),
         ]
@@ -623,6 +626,7 @@ class SurveyUserSimilarity(models.Model):
             models.Index(fields=["cosine"], name="survey_user_cosine_idx"),
         ]
 
+
 class DailyRecommendation(models.Model):
     """每日推荐缓存：每用户每天一条，存储推荐问卷ID列表和已领取奖励ID列表。"""
 
@@ -660,8 +664,12 @@ class RecommendationClaim(models.Model):
     ]
 
     user = models.ForeignKey(AppUser, on_delete=models.CASCADE)
-    recommendation = models.ForeignKey(DailyRecommendation, on_delete=models.CASCADE, null=True, blank=True)
-    survey = models.ForeignKey("Survey", on_delete=models.CASCADE, related_name="recommendation_claims")
+    recommendation = models.ForeignKey(
+        DailyRecommendation, on_delete=models.CASCADE, null=True, blank=True
+    )
+    survey = models.ForeignKey(
+        "Survey", on_delete=models.CASCADE, related_name="recommendation_claims"
+    )
     claimed_at = models.DateTimeField(auto_now_add=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="claimed")
@@ -671,7 +679,6 @@ class RecommendationClaim(models.Model):
             models.UniqueConstraint(
                 fields=["user", "survey", "claimed_at"],
                 name="unique_user_survey_claim",
-                condition=models.Q(claimed_at__isnull=False),
             )
         ]
         indexes = [
@@ -727,7 +734,9 @@ class HomeModuleConfig(models.Model):
 
     class Meta:
         indexes = [
-            models.Index(fields=["enabled", "weight"], name="home_module_enabled_weight_idx"),
+            models.Index(
+                fields=["enabled", "weight"], name="home_module_enabled_weight_idx"
+            ),
         ]
 
 
@@ -759,7 +768,9 @@ class RiskEvent(models.Model):
     user = models.ForeignKey(AppUser, on_delete=models.CASCADE, blank=True, null=True)
     survey = models.ForeignKey(Survey, on_delete=models.CASCADE, blank=True, null=True)
     event_type = models.CharField(max_length=32, choices=EVENT_TYPE_CHOICES)
-    severity = models.CharField(max_length=32, choices=SEVERITY_CHOICES, default="medium")
+    severity = models.CharField(
+        max_length=32, choices=SEVERITY_CHOICES, default="medium"
+    )
     detail = models.JSONField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -816,7 +827,9 @@ class RiskRule(models.Model):
     enabled = models.BooleanField(default=True)
     priority = models.IntegerField(default=100)
     event_type = models.CharField(max_length=32, choices=EVENT_TYPE_CHOICES)
-    severity = models.CharField(max_length=32, choices=SEVERITY_CHOICES, default="medium")
+    severity = models.CharField(
+        max_length=32, choices=SEVERITY_CHOICES, default="medium"
+    )
     conditions = models.JSONField(default=dict)
     actions = models.JSONField(default=list)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -872,8 +885,12 @@ class UserBehaviorLog(models.Model):
 
     class Meta:
         indexes = [
-            models.Index(fields=["event_type", "created_at"], name="ubl_event_created_idx"),
+            models.Index(
+                fields=["event_type", "created_at"], name="ubl_event_created_idx"
+            ),
             models.Index(fields=["scene", "created_at"], name="ubl_scene_created_idx"),
             models.Index(fields=["user", "created_at"], name="ubl_user_created_idx"),
-            models.Index(fields=["survey", "created_at"], name="ubl_survey_created_idx"),
+            models.Index(
+                fields=["survey", "created_at"], name="ubl_survey_created_idx"
+            ),
         ]

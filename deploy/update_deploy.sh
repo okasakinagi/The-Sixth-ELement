@@ -122,11 +122,10 @@ on_error() {
 			git fetch --all
 			git reset --hard "${ROLLBACK_COMMIT}" || true
 			cp "$BACKUP_DIR/deploy.env.bak" deploy/.env || true
-			
-			# 回滚时强制使用上一版本的 commit 作为 tag，如果镜像还在，秒起；如果不在，docker compose 会自动不重新 build (除非指定)，
-			# 但为了确保快速回滚，我们显式恢复
+
+			# 回滚时切回上一次成功版本对应的镜像标签，并强制重建容器。
 			export APP_VERSION="${ROLLBACK_COMMIT}"
-			docker compose -f deploy/docker-compose.yml up -d --remove-orphans || true
+			docker compose -f deploy/docker-compose.yml up -d --force-recreate --no-build --remove-orphans || true
 		fi
 	fi
 
@@ -193,7 +192,7 @@ docker image prune -f
 
 # 6. 启动/替换容器（平滑替换）
 export APP_VERSION="${TARGET_COMMIT}"
-docker compose -f deploy/docker-compose.yml up -d --remove-orphans
+docker compose -f deploy/docker-compose.yml up -d --force-recreate --no-build --remove-orphans
 
 # 7. 运行迁移与收集静态（若需要）
 docker compose -f deploy/docker-compose.yml run --rm web python Main.py migrate
