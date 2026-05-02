@@ -30,11 +30,41 @@ const statusOptions = [
   { label: '全部', value: '' },
   { label: '草稿', value: 'draft' },
   { label: '已发布', value: 'published' },
-  { label: '已结束', value: 'completed' },
+  { label: '已结束', value: 'ended' },
 ]
 
 const startDate = ref('')
 const endDate = ref('')
+const sortField = ref('created_at')
+const sortOrder = ref('desc')
+
+const sortedSurveys = computed(() => {
+  const surveysCopy = [...surveys.value]
+  return surveysCopy.sort((a, b) => {
+    const field = sortField.value
+    const order = sortOrder.value === 'asc' ? 1 : -1
+
+    if (field === 'created_at') {
+      return (new Date(a.created_at) - new Date(b.created_at)) * order
+    }
+    if (field === 'ctr') {
+      return (a.ctr - b.ctr) * order
+    }
+    if (field === 'completion_rate') {
+      return (a.completion_rate - b.completion_rate) * order
+    }
+    if (field === 'avg_duration') {
+      return (a.avg_duration - b.avg_duration) * order
+    }
+    if (field === 'risk_rate') {
+      return (a.risk_rate - b.risk_rate) * order
+    }
+    if (field === 'completed') {
+      return (a.completed - b.completed) * order
+    }
+    return 0
+  })
+})
 
 function saveFilters() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({
@@ -106,6 +136,15 @@ async function applyDateFilter() {
   await fetchSurveys()
 }
 
+function toggleSort(field) {
+  if (sortField.value === field) {
+    sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc'
+  } else {
+    sortField.value = field
+    sortOrder.value = 'desc'
+  }
+}
+
 async function changePage(newPage) {
   page.value = newPage
   await fetchSurveys()
@@ -158,7 +197,8 @@ const totalPages = computed(() => Math.ceil(total.value / pageSize.value))
 function getStatusClass(status) {
   if (status === 'draft') return 'status-draft'
   if (status === 'published') return 'status-published'
-  if (status === 'completed') return 'status-completed'
+  if (status === 'ended') return 'status-completed'
+  if (status === 'closed') return 'status-completed'
   if (status === 'abnormal') return 'status-abnormal'
   return ''
 }
@@ -166,7 +206,8 @@ function getStatusClass(status) {
 function getStatusText(status) {
   if (status === 'draft') return '草稿'
   if (status === 'published') return '已发布'
-  if (status === 'completed') return '已结束'
+  if (status === 'ended') return '已结束'
+  if (status === 'closed') return '已关闭'
   if (status === 'abnormal') return '异常'
   return status
 }
@@ -174,6 +215,18 @@ function getStatusText(status) {
 function getDifficultyText(difficulty) {
   const map = { 1: '简单', 2: '较简单', 3: '中等', 4: '较难', 5: '困难' }
   return map[difficulty] || '中等'
+}
+
+function getMetricClass(value) {
+  if (value >= 50) return 'metric-high'
+  if (value >= 20) return 'metric-medium'
+  return 'metric-low'
+}
+
+function getRiskClass(value) {
+  if (value >= 10) return 'risk-high'
+  if (value >= 5) return 'risk-medium'
+  return 'risk-low'
 }
 
 onMounted(() => {
@@ -322,17 +375,36 @@ function highlightText(text, keyword) {
             <thead>
               <tr>
                 <th>ID</th>
-                <th>问卷标题</th>
+                <th @click="toggleSort('title')" class="sortable-header">问卷标题</th>
                 <th>创建者</th>
                 <th>状态</th>
                 <th>难度</th>
-                <th>完成/目标</th>
-                <th>发布时间</th>
+                <th @click="toggleSort('completed')" class="sortable-header">完成/目标</th>
+                <th @click="toggleSort('ctr')" class="sortable-header">
+                  点击率
+                  <span v-if="sortField === 'ctr'" class="sort-icon">{{ sortOrder === 'asc' ? '↑' : '↓' }}</span>
+                </th>
+                <th @click="toggleSort('completion_rate')" class="sortable-header">
+                  完成率
+                  <span v-if="sortField === 'completion_rate'" class="sort-icon">{{ sortOrder === 'asc' ? '↑' : '↓' }}</span>
+                </th>
+                <th @click="toggleSort('avg_duration')" class="sortable-header">
+                  平均时长
+                  <span v-if="sortField === 'avg_duration'" class="sort-icon">{{ sortOrder === 'asc' ? '↑' : '↓' }}</span>
+                </th>
+                <th @click="toggleSort('risk_rate')" class="sortable-header">
+                  风险率
+                  <span v-if="sortField === 'risk_rate'" class="sort-icon">{{ sortOrder === 'asc' ? '↑' : '↓' }}</span>
+                </th>
+                <th @click="toggleSort('created_at')" class="sortable-header">
+                  发布时间
+                  <span v-if="sortField === 'created_at'" class="sort-icon">{{ sortOrder === 'asc' ? '↑' : '↓' }}</span>
+                </th>
                 <th>操作</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="survey in surveys" :key="survey.id">
+              <tr v-for="survey in sortedSurveys" :key="survey.id">
                 <td>{{ survey.id }}</td>
                 <td class="title-cell"><span v-html="highlightText(survey.title, search)"></span></td>
                 <td>
@@ -347,6 +419,18 @@ function highlightText(text, keyword) {
                 <td>
                   <span class="count-text">{{ survey.completed }}</span> /
                   <span class="target-text">{{ survey.target }}</span>
+                </td>
+                <td>
+                  <span class="metric-value" :class="getMetricClass(survey.ctr)">{{ survey.ctr }}%</span>
+                </td>
+                <td>
+                  <span class="metric-value" :class="getMetricClass(survey.completion_rate)">{{ survey.completion_rate }}%</span>
+                </td>
+                <td>
+                  <span class="metric-value">{{ survey.avg_duration }}秒</span>
+                </td>
+                <td>
+                  <span class="metric-value" :class="getRiskClass(survey.risk_rate)">{{ survey.risk_rate }}%</span>
                 </td>
                 <td>{{ survey.created_at?.slice(0, 10) }}</td>
                 <td>
@@ -1053,6 +1137,57 @@ function highlightText(text, keyword) {
 .count-text {
   color: #667eea;
   font-weight: 600;
+}
+
+.metric-value {
+  font-weight: 600;
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+
+.metric-high {
+  color: #52c41a;
+  background: rgba(82, 196, 26, 0.1);
+}
+
+.metric-medium {
+  color: #faad14;
+  background: rgba(250, 173, 20, 0.1);
+}
+
+.metric-low {
+  color: #ff4d4f;
+  background: rgba(255, 77, 79, 0.1);
+}
+
+.risk-high {
+  color: #ff4d4f;
+  background: rgba(255, 77, 79, 0.1);
+}
+
+.risk-medium {
+  color: #faad14;
+  background: rgba(250, 173, 20, 0.1);
+}
+
+.risk-low {
+  color: #52c41a;
+  background: rgba(82, 196, 26, 0.1);
+}
+
+.sortable-header {
+  cursor: pointer;
+  user-select: none;
+}
+
+.sortable-header:hover {
+  color: #667eea;
+}
+
+.sort-icon {
+  margin-left: 4px;
+  font-weight: bold;
 }
 
 .target-text {
