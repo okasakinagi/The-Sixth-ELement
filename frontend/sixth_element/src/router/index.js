@@ -179,8 +179,16 @@ const router = createRouter({
 
 // 全局路由守卫：检查认证状态
 router.beforeEach((to, from, next) => {
-  const token = localStorage.getItem('access_token')
-  const adminToken = localStorage.getItem('admin_token')
+  let token = localStorage.getItem('access_token')
+  if (token === 'null' || token === 'undefined') {
+    token = null
+    localStorage.removeItem('access_token')
+  }
+  let adminToken = localStorage.getItem('admin_token')
+  if (adminToken === 'null' || adminToken === 'undefined') {
+    adminToken = null
+    localStorage.removeItem('admin_token')
+  }
   const requiresAuth = to.meta.requiresAuth !== false
   const requiresAdmin = to.meta.requiresAdmin === true
 

@@ -7,6 +7,8 @@ import { useRouter } from 'vue-router'
 
 const API_BASE_URL = '/api/v1'
 
+let isRedirecting = false
+
 /**
  * 统一的 fetch 封装，自动处理token、错误等
  * @param {string} url API路径
@@ -16,6 +18,7 @@ const API_BASE_URL = '/api/v1'
  */
 export async function apiRequest(url, options = {}, router = null) {
   const token = localStorage.getItem('access_token')
+  const isValidToken = token && token !== 'null' && token !== 'undefined'
   
   // 构建完整URL
   const fullUrl = url.startsWith('http') ? url : `${API_BASE_URL}${url}`
@@ -27,7 +30,7 @@ export async function apiRequest(url, options = {}, router = null) {
   }
   
   // 如果有token，添加认证头
-  if (token) {
+  if (isValidToken) {
     headers['Authorization'] = `Bearer ${token}`
   }
   
@@ -46,11 +49,14 @@ export async function apiRequest(url, options = {}, router = null) {
       localStorage.removeItem('sixth_element_profile')
       
       // 如果有router实例，显示提示并跳转到登录页
-      if (router) {
+      if (router && !isRedirecting) {
+        isRedirecting = true
         alert('您的登录已过期，请重新登录。')
         router.replace({
           name: 'auth',
           query: { redirect: router.currentRoute.value.fullPath }
+        }).finally(() => {
+          setTimeout(() => { isRedirecting = false }, 1000)
         })
       }
       

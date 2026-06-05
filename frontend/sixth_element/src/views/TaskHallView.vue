@@ -141,7 +141,10 @@ const loading = ref(false)
 const fixedBatchSize = computed(() => window.innerWidth < 768 ? 5 : 15)
 
 // Guest 模式：未登录用户
-const isGuest = computed(() => !localStorage.getItem('access_token'))
+const isGuest = computed(() => {
+  const token = localStorage.getItem('access_token')
+  return !token || token === 'null' || token === 'undefined'
+})
 
 function showLoginPrompt() {
   const ok = window.confirm('该功能需要登录，是否前往登录？')

@@ -130,6 +130,11 @@ function toggleMobileMenu() {
     <!-- 主内容区域 -->
     <main class="main-content">
       <slot></slot>
+      <div class="global-footer">
+        <a href="https://beian.miit.gov.cn" target="_blank" rel="noopener noreferrer">闽ICP备2026005398号-1</a>
+        <br />
+        @copyright 2026 The Sixth Element. All Rights Reserved.
+      </div>
     </main>
   </div>
 </template>
@@ -275,6 +280,8 @@ function toggleMobileMenu() {
 /* ====== 主内容区域 ====== */
 .main-content {
   flex: 1;
+  display: flex;
+  flex-direction: column;
   margin-left: 260px;
   width: calc(100% - 260px);
   min-height: 100vh;
@@ -283,6 +290,21 @@ function toggleMobileMenu() {
   overflow-x: hidden;
   background: radial-gradient(circle at top left, #edf3ff 0%, #f7f9ff 45%, #ffffff 100%);
   transition: margin-left 0.3s ease;
+}
+
+.global-footer {
+  text-align: center;
+  padding: 16px 0 8px 0;
+  font-size: 13px;
+  color: #8c9eb5;
+  margin-top: auto;
+}
+.global-footer a {
+  color: inherit;
+  text-decoration: none;
+}
+.global-footer a:hover {
+  text-decoration: underline;
 }
 
 /* ====== 移动端 ====== */

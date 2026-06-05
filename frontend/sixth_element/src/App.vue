@@ -83,7 +83,8 @@ const showDailyModal = ref(false)
 function tryShowDailyModal() {
   const name = route.name
   if (name !== 'task-hall') return
-  if (!localStorage.getItem('access_token')) return
+  const token = localStorage.getItem('access_token')
+  if (!token || token === 'null' || token === 'undefined') return
   if (showIntroModal.value) return
   const today = new Date().toISOString().slice(0, 10)
   if (localStorage.getItem('sixth_element_daily_modal_date') === today) return
@@ -106,9 +107,14 @@ const showGlobalFloatingMenu = computed(() => !isAuthPage(route.name) && !isAdmi
   <AppSidebar v-if="showSidebar">
     <RouterView :key="router.currentRoute.value.fullPath" />
   </AppSidebar>
-  <template v-else>
+  <div v-else class="no-sidebar-layout">
     <RouterView :key="router.currentRoute.value.fullPath" />
-  </template>
+    <div class="global-footer">
+      <a href="https://beian.miit.gov.cn" target="_blank" rel="noopener noreferrer">闽ICP备2026005398号-1</a>
+      <br />
+      @copyright 2026 The Sixth Element. All Rights Reserved.
+    </div>
+  </div>
   <GlobalFloatingMenu
     v-if="showGlobalFloatingMenu"
     ref="globalMenuRef"
@@ -187,5 +193,27 @@ input, select, textarea {
 
 ::-webkit-scrollbar-thumb:hover {
   background: #1976d2;
+}
+</style>
+
+<style scoped>
+.no-sidebar-layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+.global-footer {
+  text-align: center;
+  padding: 16px 0 8px 0;
+  font-size: 13px;
+  color: #8c9eb5;
+  margin-top: auto;
+}
+.global-footer a {
+  color: inherit;
+  text-decoration: none;
+}
+.global-footer a:hover {
+  text-decoration: underline;
 }
 </style>
