@@ -1,5 +1,6 @@
 import hashlib
 import json
+import logging
 import secrets
 from datetime import datetime, time, timedelta, timezone as dt_timezone
 from typing import Optional
@@ -12,6 +13,8 @@ from django.http import JsonResponse
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 from django.views.decorators.csrf import csrf_exempt
+
+logger = logging.getLogger(__name__)
 
 from .models import (
     AppUser,
@@ -54,6 +57,12 @@ def parse_json(request):
 
 def error(status, message):
     return JsonResponse({"error": message}, status=status)
+
+
+def internal_error(exc):
+    """Log full exception details, return generic 500 response without exposing internals."""
+    logger.exception("Unhandled exception in request")
+    return JsonResponse({"error": "Internal server error"}, status=500)
 
 
 def parse_int_id(value):

@@ -8,7 +8,7 @@ import re
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
-from core.views import error, require_auth, parse_deadline
+from core.views import error, internal_error, require_auth, parse_deadline
 from survey_management.service.survey_management_service import (
     SurveyManagementError,
     SurveyManagementService,
@@ -67,7 +67,7 @@ def surveys_handler(request):
         except SurveyManagementError as exc:
             return error(exc.status, exc.message)
         except Exception as exc:
-            return error(500, f"Internal server error: {str(exc)}")
+            return internal_error(exc)
 
     if request.method == "POST":
         data = _parse_json(request)
@@ -79,7 +79,7 @@ def surveys_handler(request):
         except SurveyManagementError as exc:
             return error(exc.status, exc.message)
         except Exception as exc:
-            return error(500, f"Internal server error: {str(exc)}")
+            return internal_error(exc)
 
     return error(405, "Method not allowed")
 
@@ -100,7 +100,7 @@ def survey_drafts_handler(request):
     except SurveyManagementError as exc:
         return error(exc.status, exc.message)
     except Exception as exc:
-        return error(500, f"Internal server error: {str(exc)}")
+        return internal_error(exc)
 
 
 @csrf_exempt
@@ -119,7 +119,7 @@ def survey_draft_detail(request, draft_id):
         except SurveyManagementError as exc:
             return error(exc.status, exc.message)
         except Exception as exc:
-            return error(500, f"Internal server error: {str(exc)}")
+            return internal_error(exc)
 
     if request.method == "PATCH":
         data = _parse_json(request)
@@ -129,7 +129,7 @@ def survey_draft_detail(request, draft_id):
         except SurveyManagementError as exc:
             return error(exc.status, exc.message)
         except Exception as exc:
-            return error(500, f"Internal server error: {str(exc)}")
+            return internal_error(exc)
 
     return error(405, "Method not allowed")
 
@@ -152,7 +152,7 @@ def survey_draft_ai_generate(request, draft_id):
     except SurveyManagementError as exc:
         return error(exc.status, exc.message)
     except Exception as exc:
-        return error(500, f"Internal server error: {str(exc)}")
+        return internal_error(exc)
 
 
 @csrf_exempt
@@ -174,7 +174,7 @@ def survey_draft_delete_question(request, draft_id, question_id):
     except SurveyManagementError as exc:
         return error(exc.status, exc.message)
     except Exception as exc:
-        return error(500, f"Internal server error: {str(exc)}")
+        return internal_error(exc)
 
 
 @csrf_exempt
@@ -190,7 +190,7 @@ def surveys_summary(request):
     except SurveyManagementError as exc:
         return error(exc.status, exc.message)
     except Exception as exc:
-        return error(500, f"Internal server error: {str(exc)}")
+        return internal_error(exc)
 
 
 @csrf_exempt
@@ -209,7 +209,7 @@ def survey_detail_handler(request, survey_id):
         except SurveyManagementError as exc:
             return error(exc.status, exc.message)
         except Exception as exc:
-            return error(500, f"Internal server error: {str(exc)}")
+            return internal_error(exc)
 
     if request.method == "DELETE":
         try:
@@ -218,7 +218,7 @@ def survey_detail_handler(request, survey_id):
         except SurveyManagementError as exc:
             return error(exc.status, exc.message)
         except Exception as exc:
-            return error(500, f"Internal server error: {str(exc)}")
+            return internal_error(exc)
 
     return error(405, "Method not allowed")
 
@@ -239,7 +239,7 @@ def pause_survey(request, survey_id):
     except SurveyManagementError as exc:
         return error(exc.status, exc.message)
     except Exception as exc:
-        return error(500, f"Internal server error: {str(exc)}")
+        return internal_error(exc)
 
 
 @csrf_exempt
@@ -258,7 +258,7 @@ def resume_survey(request, survey_id):
     except SurveyManagementError as exc:
         return error(exc.status, exc.message)
     except Exception as exc:
-        return error(500, f"Internal server error: {str(exc)}")
+        return internal_error(exc)
 
 
 @csrf_exempt
@@ -282,7 +282,7 @@ def publish_survey(request, survey_id):
             )
         return error(exc.status, exc.message)
     except Exception as exc:
-        return error(500, f"Internal server error: {str(exc)}")
+        return internal_error(exc)
 
 
 @csrf_exempt
@@ -301,7 +301,7 @@ def cancel_publish(request, survey_id):
     except SurveyManagementError as exc:
         return error(exc.status, exc.message)
     except Exception as exc:
-        return error(500, f"Internal server error: {str(exc)}")
+        return internal_error(exc)
 
 
 @csrf_exempt
@@ -320,4 +320,4 @@ def survey_evaluate_handler(request, survey_id):
     except SurveyManagementError as exc:
         return error(exc.status, exc.message)
     except Exception as exc:
-        return error(500, f"Internal server error: {str(exc)}")
+        return internal_error(exc)

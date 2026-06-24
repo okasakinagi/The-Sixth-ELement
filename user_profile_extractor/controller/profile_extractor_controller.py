@@ -2,7 +2,7 @@ from django.http import JsonResponse
 from user_profile_extractor.service.profile_extractor_service import ProfileExtractorService
 
 # 导入认证相关函数（从现有的模块中）
-from core.views import error, require_auth, parse_json
+from core.views import error, internal_error, require_auth, parse_json
 
 
 def get_user_profile_summary(request):
@@ -35,4 +35,4 @@ def get_user_profile_summary(request):
             }
         }, status=200)
     except Exception as exc:
-        return error(500, f"Internal server error: {str(exc)}")
+        return internal_error(exc)

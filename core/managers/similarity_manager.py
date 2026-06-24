@@ -26,7 +26,6 @@ from core.models import (
 
 
 class SimilarityManager:
-    _AI_CONFIG_CACHE = None
     _TAG_WEIGHT_DECAY_LAMBDA = 0.05
 
     # 大学生场景兴趣关联映射：用于补齐“语义相关但标签不完全相同”的情况。
@@ -152,59 +151,11 @@ class SimilarityManager:
         base_url = os.getenv("EMBEDDING_BASE_URL", "").strip()
         model = os.getenv("EMBEDDING_MODEL", "").strip()
 
-        # Fallback to deploy/ai_config.json when env vars are not fully provided.
-        if not (api_key and base_url and model):
-            file_cfg = SimilarityManager._load_ai_config()
-            api_key = api_key or file_cfg.get("api_key", "")
-            base_url = base_url or file_cfg.get("base_url", "")
-            model = model or file_cfg.get("model", "")
-
         return {
-            "api_key": api_key.strip(),
+            "api_key": api_key,
             "base_url": SimilarityManager._normalize_embedding_base_url(base_url),
-            "model": model.strip(),
+            "model": model,
         }
-
-    @staticmethod
-    def _load_ai_config():
-        if SimilarityManager._AI_CONFIG_CACHE is not None:
-            return SimilarityManager._AI_CONFIG_CACHE
-        try:
-            project_root = Path(__file__).resolve().parents[2]
-            config_path = project_root / "deploy" / "ai_config.json"
-            if not config_path.exists():
-                SimilarityManager._AI_CONFIG_CACHE = {}
-                return {}
-            with config_path.open("r", encoding="utf-8") as f:
-                data = json.load(f)
-            if not isinstance(data, dict):
-                SimilarityManager._AI_CONFIG_CACHE = {}
-                return {}
-
-            # Backward compatibility: old flat fields remain supported.
-            flat = {
-                "api_key": str(data.get("api_key") or "").strip(),
-                "base_url": str(data.get("base_url") or "").strip(),
-                "model": str(data.get("model") or "").strip(),
-            }
-            embedding_raw = data.get("embedding")
-            if isinstance(embedding_raw, dict):
-                cfg = {
-                    "api_key": str(
-                        embedding_raw.get("api_key") or flat["api_key"]
-                    ).strip(),
-                    "base_url": str(
-                        embedding_raw.get("base_url") or flat["base_url"]
-                    ).strip(),
-                    "model": str(embedding_raw.get("model") or flat["model"]).strip(),
-                }
-            else:
-                cfg = flat
-            SimilarityManager._AI_CONFIG_CACHE = cfg
-            return cfg
-        except Exception:
-            SimilarityManager._AI_CONFIG_CACHE = {}
-            return {}
 
     @staticmethod
     def _normalize_embedding_base_url(base_url):

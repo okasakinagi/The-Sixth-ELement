@@ -26,8 +26,11 @@ def main():
     project_root = Path(__file__).resolve().parent
     if str(project_root) not in sys.path:
         sys.path.insert(0, str(project_root))
-    _load_env_file(project_root / "deploy" / ".env")
-    _load_env_file(project_root / ".env")
+
+    # 仅在本地开发环境加载 .env（Docker 生产环境通过 env_file 注入，无需文件）
+    if not os.environ.get("DJANGO_DEBUG"):
+        _load_env_file(project_root / "deploy" / ".env")
+        _load_env_file(project_root / ".env")
     module_dir = project_root / "module"
     if module_dir.exists():
         sys.path.insert(0, str(module_dir))

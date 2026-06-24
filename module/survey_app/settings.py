@@ -1,10 +1,14 @@
 import os
 from pathlib import Path
 
+from django.core.exceptions import ImproperlyConfigured
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "dev-secret-key")
-DEBUG = os.environ.get("DJANGO_DEBUG", "1") == "1"
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "")
+DEBUG = os.environ.get("DJANGO_DEBUG", "0") == "1"
+if not SECRET_KEY and not DEBUG:
+    raise ImproperlyConfigured("DJANGO_SECRET_KEY must be set in production")
 ALLOWED_HOSTS = [
     host.strip()
     for host in os.environ.get("DJANGO_ALLOWED_HOSTS", "*").split(",")
@@ -58,11 +62,11 @@ ASGI_APPLICATION = "survey_app.asgi.application"
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.mysql",
-        "NAME": os.environ.get("DJANGO_DB_NAME", "sixth_element"),
-        "USER": os.environ.get("DJANGO_DB_USER", "sixth_element"),
-        "PASSWORD": os.environ.get("DJANGO_DB_PASSWORD", "123456"),
-        "HOST": os.environ.get("DJANGO_DB_HOST", "localhost"),
-        "PORT": os.environ.get("DJANGO_DB_PORT", "3306"),
+        "NAME": os.environ.get("DB_NAME", "sixth_element"),
+        "USER": os.environ.get("DB_USER", "sixth_element"),
+        "PASSWORD": os.environ.get("DB_PASSWORD", ""),
+        "HOST": os.environ.get("DB_HOST", "db"),
+        "PORT": os.environ.get("DB_PORT", "3306"),
         "OPTIONS": {"charset": "utf8mb4"},
     }
 }
@@ -77,7 +81,7 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-# 日志配置 - 在控制台显示详细错误
+# 日志配置
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -95,19 +99,18 @@ LOGGING = {
     },
     "root": {
         "handlers": ["console"],
-        "level": "DEBUG",
+        "level": "WARNING" if not DEBUG else "DEBUG",
     },
     "loggers": {
         "django.request": {
             "handlers": ["console"],
-            "level": "DEBUG",
+            "level": "WARNING" if not DEBUG else "DEBUG",
             "propagate": True,
         },
     },
 }
 
-# 开发环境下显示详细错误
-DEBUG_PROPAGATE_EXCEPTIONS = True
+DEBUG_PROPAGATE_EXCEPTIONS = DEBUG
 
 # 推荐模式：'personalized' 使用相似度推荐，'random' 使用纯随机候选
 # 可通过环境变量 RECOMMENDATION_MODE 修改（修改后需要重启服务以生效）

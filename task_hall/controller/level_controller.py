@@ -7,7 +7,7 @@ import json
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
-from core.views import error, require_auth
+from core.views import error, internal_error, require_auth
 from task_hall.service.level_service import LevelService, LevelServiceError
 
 
@@ -32,7 +32,7 @@ def get_level(request):
         payload = LevelService.get_level_info(user)
         return JsonResponse(payload, status=200)
     except Exception as exc:
-        return error(500, f"Internal server error: {str(exc)}")
+        return internal_error(exc)
 
 
 @csrf_exempt
@@ -47,7 +47,7 @@ def get_daily_tasks(request):
         payload = LevelService.get_daily_tasks(user)
         return JsonResponse(payload, status=200)
     except Exception as exc:
-        return error(500, f"Internal server error: {str(exc)}")
+        return internal_error(exc)
 
 
 @csrf_exempt
@@ -62,7 +62,7 @@ def get_weekly_tasks(request):
         payload = LevelService.get_weekly_tasks(user)
         return JsonResponse(payload, status=200)
     except Exception as exc:
-        return error(500, f"Internal server error: {str(exc)}")
+        return internal_error(exc)
 
 
 @csrf_exempt
@@ -79,4 +79,4 @@ def claim_task(request, task_code):
     except LevelServiceError as exc:
         return error(exc.status, exc.message)
     except Exception as exc:
-        return error(500, f"Internal server error: {str(exc)}")
+        return internal_error(exc)

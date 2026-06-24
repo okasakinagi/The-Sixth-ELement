@@ -29,7 +29,7 @@ def healthz(request):
         overall_ok = False
         checks["db"] = {
             "ok": False,
-            "error": str(exc),
+            "error": "unhealthy",
         }
 
     # Redis 连通性检查
@@ -49,7 +49,7 @@ def healthz(request):
         overall_ok = False
         checks["redis"] = {
             "ok": False,
-            "error": str(exc),
+            "error": "unhealthy",
         }
 
     status = 200 if overall_ok else 503

@@ -5,7 +5,7 @@ UserProfile Controller - 控制器层
 
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-from core.views import parse_json, error, require_auth
+from core.views import parse_json, error, internal_error, require_auth
 from ..services.profile_service import UserProfileService
 
 
@@ -48,13 +48,7 @@ def get_user_profile(request):
         return JsonResponse(profile_data, status=200)
 
     except Exception as e:
-        import traceback
-
-        print("=" * 80)
-        print("ERROR in get_user_profile:")
-        print(traceback.format_exc())
-        print("=" * 80)
-        return error(500, f"Internal server error: {str(e)}")
+        return internal_error(e)
 
 
 @csrf_exempt
@@ -79,20 +73,10 @@ def update_user_profile(request):
         return JsonResponse(profile_data, status=200)
 
     except ValueError as e:
-        # 数据验证失败
-        return JsonResponse(
-            {
-                "error": {
-                    "code": "validation_error",
-                    "message": "参数校验失败",
-                    "details": e.args[0] if e.args else {},
-                }
-            },
-            status=422,
-        )
+        return error(422, "参数校验失败")
 
     except Exception as e:
-        return error(500, f"Internal server error: {str(e)}")
+        return internal_error(e)
 
 
 @csrf_exempt
@@ -140,20 +124,10 @@ def replace_user_profile(request):
         return JsonResponse(profile_data, status=200)
 
     except ValueError as e:
-        # 数据验证失败
-        return JsonResponse(
-            {
-                "error": {
-                    "code": "validation_error",
-                    "message": "参数校验失败",
-                    "details": e.args[0] if e.args else {},
-                }
-            },
-            status=422,
-        )
+        return error(422, "参数校验失败")
 
     except Exception as e:
-        return error(500, f"Internal server error: {str(e)}")
+        return internal_error(e)
 
 
 @csrf_exempt
@@ -200,4 +174,4 @@ def search_matching_profiles(request):
         return JsonResponse({"matches": matches}, status=200)
 
     except Exception as e:
-        return error(500, f"Internal server error: {str(e)}")
+        return internal_error(e)

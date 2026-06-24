@@ -8,7 +8,7 @@ import re
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
-from core.views import error, require_auth
+from core.views import error, internal_error, require_auth
 from task_hall.service.task_hall_service import TaskHallError, TaskHallService
 
 
@@ -61,7 +61,7 @@ def task_hall_overview(request):
     except TaskHallError as exc:
         return error(exc.status, exc.message)
     except Exception as exc:
-        return error(500, f"Internal server error: {str(exc)}")
+        return internal_error(exc)
 
 
 @csrf_exempt
@@ -77,7 +77,7 @@ def task_hall_home_modules(request):
     except TaskHallError as exc:
         return error(exc.status, exc.message)
     except Exception as exc:
-        return error(500, f"Internal server error: {str(exc)}")
+        return internal_error(exc)
 
 
 @csrf_exempt
@@ -97,7 +97,7 @@ def track_recommend_click(request, survey_id):
     except TaskHallError as exc:
         return error(exc.status, exc.message)
     except Exception as exc:
-        return error(500, f"Internal server error: {str(exc)}")
+        return internal_error(exc)
 
 
 @csrf_exempt
@@ -113,7 +113,7 @@ def track_recommend_refresh(request):
     except TaskHallError as exc:
         return error(exc.status, exc.message)
     except Exception as exc:
-        return error(500, f"Internal server error: {str(exc)}")
+        return internal_error(exc)
 
 
 @csrf_exempt
@@ -133,7 +133,7 @@ def track_recommend_delete(request, survey_id):
     except TaskHallError as exc:
         return error(exc.status, exc.message)
     except Exception as exc:
-        return error(500, f"Internal server error: {str(exc)}")
+        return internal_error(exc)
 
 
 @csrf_exempt
@@ -161,7 +161,7 @@ def task_hall_tasks(request):
     except TaskHallError as exc:
         return error(exc.status, exc.message)
     except Exception as exc:
-        return error(500, f"Internal server error: {str(exc)}")
+        return internal_error(exc)
 
 
 @csrf_exempt
@@ -180,7 +180,7 @@ def task_hall_refresh_batch(request):
     except TaskHallError as exc:
         return error(exc.status, exc.message)
     except Exception as exc:
-        return error(500, f"Internal server error: {str(exc)}")
+        return internal_error(exc)
 
 
 @csrf_exempt
@@ -196,7 +196,7 @@ def task_hall_guest_tasks(request):
     except TaskHallError as exc:
         return error(exc.status, exc.message)
     except Exception as exc:
-        return error(500, f"Internal server error: {str(exc)}")
+        return internal_error(exc)
 
 
 @csrf_exempt
@@ -213,7 +213,7 @@ def task_hall_daily_recommendations(request):
     except TaskHallError as exc:
         return error(exc.status, exc.message)
     except Exception as exc:
-        return error(500, f"Internal server error: {str(exc)}")
+        return internal_error(exc)
 
 
 @csrf_exempt
@@ -235,4 +235,4 @@ def task_hall_claim_daily_bonus(request, survey_id):
     except TaskHallError as exc:
         return error(exc.status, exc.message)
     except Exception as exc:
-        return error(500, f"Internal server error: {str(exc)}")
+        return internal_error(exc)

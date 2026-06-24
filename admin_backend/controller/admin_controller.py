@@ -1,5 +1,6 @@
 from django.contrib.auth.hashers import check_password
 import json
+import logging
 import secrets
 from datetime import datetime, timedelta
 
@@ -24,8 +25,10 @@ from core.models import (
     UserBehaviorLog,
     UserRole,
 )
-from core.views import error, get_current_user, parse_json
+from core.views import error, get_current_user, internal_error, parse_json
 from task_hall.service.level_service import LevelService
+
+logger = logging.getLogger(__name__)
 
 
 def parse_int(value):
@@ -1191,10 +1194,8 @@ def survey_detail(request, survey_id):
     except Survey.DoesNotExist:
         return error(404, "问卷不存在")
     except Exception as e:
-        import traceback
-
-        traceback.print_exc()
-        return error(500, f"查询问卷失败: {str(e)}")
+        logger.exception("查询问卷失败")
+        return internal_error(e)
 
     try:
         responses = Response.objects.filter(survey=survey)
@@ -1202,18 +1203,14 @@ def survey_detail(request, survey_id):
         response_count = responses.count()
         avg_duration = total_duration / response_count if response_count > 0 else 0
     except Exception as e:
-        import traceback
-
-        traceback.print_exc()
-        return error(500, f"查询响应数据失败: {str(e)}")
+        logger.exception("查询响应数据失败")
+        return internal_error(e)
 
     try:
         owner_nickname = survey.owner.nickname if survey.owner else "未知"
         owner_id = survey.owner.id if survey.owner else None
     except Exception as e:
-        import traceback
-
-        traceback.print_exc()
+        logger.exception("查询问卷所有者失败")
         owner_nickname = "未知"
         owner_id = None
 

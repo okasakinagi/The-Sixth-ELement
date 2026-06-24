@@ -604,27 +604,17 @@ class SurveyManagementService:
         return normalized
 
     def _call_siliconflow(self, prompt, question_count):
-        file_cfg = self._load_ai_config().get("survey_generation", {})
         api_key = os.getenv("GENERATION_API_KEY", "").strip()
-        if not api_key:
-            api_key = str(file_cfg.get("api_key") or "").strip()
         if not api_key:
             raise SurveyManagementError(500, "GENERATION_API_KEY not configured")
 
-        base_url = os.getenv("GENERATION_BASE_URL", "").strip()
-        if not base_url:
-            base_url = str(
-                file_cfg.get("base_url")
-                or "https://api.siliconflow.cn/v1/chat/completions"
-            ).strip()
+        base_url = os.getenv("GENERATION_BASE_URL", "https://api.siliconflow.cn/v1/chat/completions").strip()
         normalized_base = base_url.rstrip("/")
         if normalized_base.endswith("/v1"):
             base_url = f"{normalized_base}/chat/completions"
         elif "chat/completions" not in normalized_base:
             base_url = normalized_base
         model = os.getenv("GENERATION_MODEL", "").strip()
-        if not model:
-            model = str(file_cfg.get("model") or "").strip()
         if not model:
             raise SurveyManagementError(500, "GENERATION_MODEL not configured")
 
@@ -658,9 +648,14 @@ class SurveyManagementService:
                 body = resp.read().decode("utf-8")
         except url_error.HTTPError as exc:
             error_body = exc.read().decode("utf-8") if exc.fp else str(exc)
-            raise SurveyManagementError(502, f"llm error: {error_body}")
+            import logging as _logging
+            _lg = _logging.getLogger(__name__)
+            _lg.error("SiliconFlow HTTP error: %s", error_body[:200])
+            raise SurveyManagementError(502, "AI service temporarily unavailable")
         except url_error.URLError as exc:
-            raise SurveyManagementError(502, f"llm error: {str(exc)}")
+            _lg = _logging.getLogger(__name__)
+            _lg.error("SiliconFlow URL error: %s", exc)
+            raise SurveyManagementError(502, "AI service temporarily unavailable")
 
         try:
             data = json.loads(body)
@@ -726,19 +721,11 @@ class SurveyManagementService:
             return {"difficulty_level": 3, "estimated_time_minutes": fallback_time}
 
     def _call_siliconflow_for_evaluation(self, survey_content):
-        file_cfg = self._load_ai_config().get("difficulties", {})
         api_key = os.getenv("DIFFICULTIES_API_KEY", "").strip()
-        if not api_key:
-            api_key = str(file_cfg.get("api_key") or "").strip()
         if not api_key:
             raise SurveyManagementError(500, "DIFFICULTIES_API_KEY not configured")
 
-        base_url = os.getenv("DIFFICULTIES_BASE_URL", "").strip()
-        if not base_url:
-            base_url = str(
-                file_cfg.get("base_url")
-                or "https://api.siliconflow.cn/v1/chat/completions"
-            ).strip()
+        base_url = os.getenv("DIFFICULTIES_BASE_URL", "https://api.siliconflow.cn/v1/chat/completions").strip()
         normalized_base = base_url.rstrip("/")
         if normalized_base.endswith("/v1"):
             base_url = f"{normalized_base}/chat/completions"
@@ -746,8 +733,6 @@ class SurveyManagementService:
             base_url = normalized_base
 
         model = os.getenv("DIFFICULTIES_MODEL", "").strip()
-        if not model:
-            model = str(file_cfg.get("model") or "").strip()
         if not model:
             raise SurveyManagementError(500, "DIFFICULTIES_MODEL not configured")
 
@@ -782,9 +767,14 @@ class SurveyManagementService:
                 body = resp.read().decode("utf-8")
         except url_error.HTTPError as exc:
             error_body = exc.read().decode("utf-8") if exc.fp else str(exc)
-            raise SurveyManagementError(502, f"llm error: {error_body}")
+            import logging as _logging
+            _lg = _logging.getLogger(__name__)
+            _lg.error("SiliconFlow HTTP error: %s", error_body[:200])
+            raise SurveyManagementError(502, "AI service temporarily unavailable")
         except url_error.URLError as exc:
-            raise SurveyManagementError(502, f"llm error: {str(exc)}")
+            _lg = _logging.getLogger(__name__)
+            _lg.error("SiliconFlow URL error: %s", exc)
+            raise SurveyManagementError(502, "AI service temporarily unavailable")
 
         try:
             data = json.loads(body)
@@ -822,77 +812,6 @@ class SurveyManagementService:
         return {
             "difficulty_level": max(1, min(5, difficulty)),
             "estimated_time_minutes": max(1, estimated_minutes),
-        }
-
-    def _load_ai_config(self):
-        project_root = Path(__file__).resolve().parents[2]
-        config_path = project_root / "deploy" / "ai_config.json"
-        if not config_path.exists():
-            return {"survey_generation": {}, "embedding": {}}
-        try:
-            content = config_path.read_text(encoding="utf-8")
-            data = json.loads(content)
-        except (OSError, json.JSONDecodeError):
-            return {"survey_generation": {}, "embedding": {}}
-        if not isinstance(data, dict):
-            return {"survey_generation": {}, "embedding": {}}
-
-        # Backward compatibility: if old flat fields exist, treat them as defaults.
-        flat = {
-            "api_key": str(data.get("api_key") or "").strip(),
-            "model": str(data.get("model") or "").strip(),
-            "base_url": str(data.get("base_url") or "").strip(),
-        }
-
-        survey_cfg_raw = data.get("survey_generation")
-        survey_cfg = flat.copy()
-        if isinstance(survey_cfg_raw, dict):
-            survey_cfg = {
-                "api_key": str(
-                    survey_cfg_raw.get("api_key") or survey_cfg["api_key"]
-                ).strip(),
-                "model": str(
-                    survey_cfg_raw.get("model") or survey_cfg["model"]
-                ).strip(),
-                "base_url": str(
-                    survey_cfg_raw.get("base_url") or survey_cfg["base_url"]
-                ).strip(),
-            }
-
-        embedding_cfg_raw = data.get("embedding")
-        embedding_cfg = flat.copy()
-        if isinstance(embedding_cfg_raw, dict):
-            embedding_cfg = {
-                "api_key": str(
-                    embedding_cfg_raw.get("api_key") or embedding_cfg["api_key"]
-                ).strip(),
-                "model": str(
-                    embedding_cfg_raw.get("model") or embedding_cfg["model"]
-                ).strip(),
-                "base_url": str(
-                    embedding_cfg_raw.get("base_url") or embedding_cfg["base_url"]
-                ).strip(),
-            }
-
-        difficulties_cfg_raw = data.get("diffculties")
-        difficulties_cfg = flat.copy()
-        if isinstance(difficulties_cfg_raw, dict):
-            difficulties_cfg = {
-                "api_key": str(
-                    difficulties_cfg_raw.get("api_key") or difficulties_cfg["api_key"]
-                ).strip(),
-                "model": str(
-                    difficulties_cfg_raw.get("model") or difficulties_cfg["model"]
-                ).strip(),
-                "base_url": str(
-                    difficulties_cfg_raw.get("base_url") or difficulties_cfg["base_url"]
-                ).strip(),
-            }
-
-        return {
-            "survey_generation": survey_cfg,
-            "embedding": embedding_cfg,
-            "difficulties": difficulties_cfg,
         }
 
     def _extract_json(self, text):

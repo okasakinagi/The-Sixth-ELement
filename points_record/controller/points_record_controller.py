@@ -7,7 +7,7 @@ import json
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
-from core.views import error, require_auth
+from core.views import error, internal_error, require_auth
 from points_record.service.points_record_service import PointsRecordError, PointsRecordService
 
 
@@ -45,7 +45,7 @@ def points_summary(request):
     except PointsRecordError as exc:
         return error(exc.status, exc.message)
     except Exception as exc:
-        return error(500, f"Internal server error: {str(exc)}")
+        return internal_error(exc)
 
 
 @csrf_exempt
@@ -76,7 +76,7 @@ def points_logs(request):
     except PointsRecordError as exc:
         return error(exc.status, exc.message)
     except Exception as exc:
-        return error(500, f"Internal server error: {str(exc)}")
+        return internal_error(exc)
 
 
 @csrf_exempt
@@ -99,7 +99,7 @@ def update_points(request):
     except PointsRecordError as exc:
         return error(exc.status, exc.message)
     except Exception as exc:
-        return error(500, f"Internal server error: {str(exc)}")
+        return internal_error(exc)
 
 
 @csrf_exempt
@@ -118,4 +118,4 @@ def points_trend(request):
     except PointsRecordError as exc:
         return error(exc.status, exc.message)
     except Exception as exc:
-        return error(500, f"Internal server error: {str(exc)}")
+        return internal_error(exc)

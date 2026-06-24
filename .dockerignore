@@ -1,0 +1,8 @@
+# 敏感文件 — 不进入 Docker 镜像
+.env
+deploy/.env
+deploy/.env.*
+deploy/ai_config.json
+*.pem
+*.key
+secrets/

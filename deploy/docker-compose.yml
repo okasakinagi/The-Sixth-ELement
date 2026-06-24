@@ -43,7 +43,7 @@ services:
     env_file:
       - .env
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     restart: unless-stopped
     # 生产部署通常不需要把宿主目录挂载到容器，镜像内已经包含应用代码
     healthcheck:

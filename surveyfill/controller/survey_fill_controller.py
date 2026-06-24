@@ -6,7 +6,7 @@ SurveyFill Controller - 控制器层
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
-from core.views import error, get_current_user, parse_int_id, parse_json, require_auth
+from core.views import error, get_current_user, internal_error, parse_int_id, parse_json, require_auth
 from core.services.user_behavior_log_service import UserBehaviorLogService
 from surveyfill.service.survey_fill_service import SurveyFillError, SurveyFillService
 
@@ -34,7 +34,7 @@ def survey_fill_detail(request, survey_id):
     except SurveyFillError as e:
         return error(e.status, e.message)
     except Exception as e:
-        return error(500, f"Internal server error: {str(e)}")
+        return internal_error(e)
 
 
 @csrf_exempt
@@ -51,4 +51,4 @@ def submit_survey_fill(request, survey_id):
     except SurveyFillError as e:
         return error(e.status, e.message)
     except Exception as e:
-        return error(500, f"Internal server error: {str(e)}")
+        return internal_error(e)

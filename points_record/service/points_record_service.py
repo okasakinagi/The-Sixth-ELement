@@ -32,7 +32,7 @@ class PointsRecordService:
                 "summary": summary,
             }
         except Exception as exc:
-            raise PointsRecordError(500, f"Internal server error: {str(exc)}")
+            raise PointsRecordError(500, "Internal server error")
 
     def list_points_logs(self, user, filters):
         normalized = self._normalize_filters(filters)
@@ -146,7 +146,7 @@ class PointsRecordService:
         except PointsRecordError:
             raise
         except Exception as exc:
-            raise PointsRecordError(500, f"Internal server error: {str(exc)}")
+            raise PointsRecordError(500, "Internal server error")
 
     def get_points_trend(self, user, granularity="day", days=30):
         """按日/周/月聚合积分变动，返回 [{date, income, expense, net}]"""

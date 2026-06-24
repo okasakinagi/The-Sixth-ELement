@@ -8,7 +8,7 @@ from datetime import datetime, timezone as dt_timezone
 from django.http import HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
-from core.views import require_auth
+from core.views import error, require_auth
 from survey_management.service.analytics_service import AnalyticsError, AnalyticsService
 
 _service = AnalyticsService()
@@ -54,7 +54,7 @@ def analytics_summary(request, survey_id):
         data = _service.get_summary(user, pk)
         return JsonResponse(data)
     except AnalyticsError as e:
-        return JsonResponse({"error": e.message}, status=e.status)
+        return error(e.status, e.message)
     except Exception:
         return JsonResponse({"error": "internal server error"}, status=500)
 
@@ -83,7 +83,7 @@ def analytics_questions(request, survey_id):
         data = _service.get_questions_stats(user, pk, text_page, text_page_size)
         return JsonResponse(data)
     except AnalyticsError as e:
-        return JsonResponse({"error": e.message}, status=e.status)
+        return error(e.status, e.message)
     except Exception:
         return JsonResponse({"error": "internal server error"}, status=500)
 
@@ -124,6 +124,6 @@ def analytics_export(request, survey_id):
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
         return response
     except AnalyticsError as e:
-        return JsonResponse({"error": e.message}, status=e.status)
+        return error(e.status, e.message)
     except Exception:
         return JsonResponse({"error": "internal server error"}, status=500)

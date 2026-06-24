@@ -8,7 +8,7 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_exempt
 
-from core.views import error, require_auth
+from core.views import error, internal_error, require_auth
 from team_messaging.service.message_service import (
     MessageService,
     PointsGiftService,
@@ -63,7 +63,7 @@ def get_messages(request):
     except MessageServiceError as e:
         return error(e.status, e.message)
     except Exception as e:
-        return error(500, f"Internal server error: {str(e)}")
+        return internal_error(e)
 
 
 @csrf_exempt
@@ -80,7 +80,7 @@ def get_unread_count(request):
     except MessageServiceError as e:
         return error(e.status, e.message)
     except Exception as e:
-        return error(500, f"Internal server error: {str(e)}")
+        return internal_error(e)
 
 
 @csrf_exempt
@@ -101,7 +101,7 @@ def mark_message_as_read(request, message_id):
     except MessageServiceError as e:
         return error(e.status, e.message)
     except Exception as e:
-        return error(500, f"Internal server error: {str(e)}")
+        return internal_error(e)
 
 
 @csrf_exempt
@@ -122,7 +122,7 @@ def delete_message(request, message_id):
     except MessageServiceError as e:
         return error(e.status, e.message)
     except Exception as e:
-        return error(500, f"Internal server error: {str(e)}")
+        return internal_error(e)
 
 
 @csrf_exempt
@@ -163,7 +163,7 @@ def send_points_gift(request):
     except MessageServiceError as e:
         return error(e.status, e.message)
     except Exception as e:
-        return error(500, f"Internal server error: {str(e)}")
+        return internal_error(e)
 
 
 @csrf_exempt
@@ -180,4 +180,4 @@ def get_points_gift_limit(request):
     except MessageServiceError as e:
         return error(e.status, e.message)
     except Exception as e:
-        return error(500, f"Internal server error: {str(e)}")
+        return internal_error(e)

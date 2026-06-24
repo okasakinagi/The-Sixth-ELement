@@ -170,7 +170,7 @@ cp "$BACKUP_DIR/deploy.env.bak" deploy/.env
 
 # 3. 备份 MySQL（按时间戳保存）
 SQL_BAK="$BACKUP_DIR/backup_${TS}.sql"
-docker compose -f deploy/docker-compose.yml exec -T db sh -c "mysqldump -uroot -p'$DB_ROOT_PASSWORD' --single-transaction --quick $DB_NAME" > "$SQL_BAK"
+docker compose -f deploy/docker-compose.yml exec -T db -e MYSQL_PWD="$DB_ROOT_PASSWORD" sh -c "mysqldump -uroot --single-transaction --quick $DB_NAME" > "$SQL_BAK"
 ls -lh "$SQL_BAK"
 
 # 自动清理旧备份，仅保留最近的 5 份数据库备份和 5 份 env 备份（防止短时间频繁部署占满磁盘）
@@ -179,7 +179,7 @@ ls -tp "$BACKUP_DIR"/deploy.env.bak.* 2>/dev/null | tail -n +6 | xargs -I {} rm 
 echo "[deploy] old backups cleaned up, keeping last 5."
 
 # 4. 用 root 在容器中创建/授权应用用户（从 deploy/.env 读取）
-docker compose -f deploy/docker-compose.yml exec -T db sh -c "mysql -uroot -p'$DB_ROOT_PASSWORD' -e \"CREATE DATABASE IF NOT EXISTS \\\`$DB_NAME\\\` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; CREATE USER IF NOT EXISTS '$DB_USER'@'%' IDENTIFIED WITH mysql_native_password BY '$DB_PASSWORD'; GRANT ALL PRIVILEGES ON \\\`$DB_NAME\\\`.* TO '$DB_USER'@'%'; FLUSH PRIVILEGES;\""
+docker compose -f deploy/docker-compose.yml exec -T db -e MYSQL_PWD="$DB_ROOT_PASSWORD" sh -c "mysql -uroot -e \"CREATE DATABASE IF NOT EXISTS \\\`$DB_NAME\\\` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; CREATE USER IF NOT EXISTS '$DB_USER'@'%' IDENTIFIED WITH mysql_native_password BY '$DB_PASSWORD'; GRANT ALL PRIVILEGES ON \\\`$DB_NAME\\\`.* TO '$DB_USER'@'%'; FLUSH PRIVILEGES;\""
 
 # 5. 构建镜像（打上双标签：latest 和当前 commit，用于快速回滚）
 # export 变量供 docker-compose 里的 image 引用（如果 docker-compose 做了动态支持，没做的话这里打 tag 也方便以后清理）

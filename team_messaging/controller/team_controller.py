@@ -8,7 +8,7 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_exempt
 
-from core.views import error, require_auth
+from core.views import error, internal_error, require_auth
 from team_messaging.service.team_service import TeamService, TeamServiceError
 
 
@@ -53,7 +53,7 @@ def create_team(request):
     except TeamServiceError as e:
         return error(e.status, e.message)
     except Exception as e:
-        return error(500, f"Internal server error: {str(e)}")
+        return internal_error(e)
 
 
 @csrf_exempt
@@ -74,7 +74,7 @@ def get_team_detail(request, team_id):
     except TeamServiceError as e:
         return error(e.status, e.message)
     except Exception as e:
-        return error(500, f"Internal server error: {str(e)}")
+        return internal_error(e)
 
 
 @csrf_exempt
@@ -95,7 +95,7 @@ def get_team_members(request, team_id):
     except TeamServiceError as e:
         return error(e.status, e.message)
     except Exception as e:
-        return error(500, f"Internal server error: {str(e)}")
+        return internal_error(e)
 
 
 @csrf_exempt
@@ -123,7 +123,7 @@ def update_team(request, team_id):
     except TeamServiceError as e:
         return error(e.status, e.message)
     except Exception as e:
-        return error(500, f"Internal server error: {str(e)}")
+        return internal_error(e)
 
 
 @csrf_exempt
@@ -150,7 +150,7 @@ def set_member_role(request, team_id, user_id):
     except TeamServiceError as e:
         return error(e.status, e.message)
     except Exception as e:
-        return error(500, f"Internal server error: {str(e)}")
+        return internal_error(e)
 
 
 @csrf_exempt
@@ -171,7 +171,7 @@ def delete_team(request, team_id):
     except TeamServiceError as e:
         return error(e.status, e.message)
     except Exception as e:
-        return error(500, f"Internal server error: {str(e)}")
+        return internal_error(e)
 
 
 @csrf_exempt
@@ -193,7 +193,7 @@ def remove_team_member(request, team_id, user_id):
     except TeamServiceError as e:
         return error(e.status, e.message)
     except Exception as e:
-        return error(500, f"Internal server error: {str(e)}")
+        return internal_error(e)
 
 
 @csrf_exempt
@@ -219,7 +219,7 @@ def send_team_invitation(request, team_id):
     except TeamServiceError as e:
         return error(e.status, e.message)
     except Exception as e:
-        return error(500, f"Internal server error: {str(e)}")
+        return internal_error(e)
 
 
 @csrf_exempt
@@ -239,7 +239,7 @@ def get_invitations(request):
     except TeamServiceError as e:
         return error(e.status, e.message)
     except Exception as e:
-        return error(500, f"Internal server error: {str(e)}")
+        return internal_error(e)
 
 
 @csrf_exempt
@@ -260,7 +260,7 @@ def accept_invitation(request, invitation_id):
     except TeamServiceError as e:
         return error(e.status, e.message)
     except Exception as e:
-        return error(500, f"Internal server error: {str(e)}")
+        return internal_error(e)
 
 
 @csrf_exempt
@@ -281,7 +281,7 @@ def reject_invitation(request, invitation_id):
     except TeamServiceError as e:
         return error(e.status, e.message)
     except Exception as e:
-        return error(500, f"Internal server error: {str(e)}")
+        return internal_error(e)
 
 
 @csrf_exempt
@@ -298,7 +298,7 @@ def get_my_team(request):
     except TeamServiceError as e:
         return error(e.status, e.message)
     except Exception as e:
-        return error(500, f"Internal server error: {str(e)}")
+        return internal_error(e)
 
 
 @csrf_exempt
@@ -320,4 +320,4 @@ def check_invitation_cooldown(request, team_id, invitee_id):
     except TeamServiceError as e:
         return error(e.status, e.message)
     except Exception as e:
-        return error(500, f"Internal server error: {str(e)}")
+        return internal_error(e)
